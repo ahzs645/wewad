@@ -1,0 +1,1746 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Wii Channel Banner Renderer</title>
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=Exo+2:wght@300;400;600;800&family=JetBrains+Mono:wght@400;600&display=swap');
+
+  :root {
+    --bg-deep: #0a0a12;
+    --bg-card: #12121f;
+    --bg-card-hover: #1a1a2e;
+    --accent-blue: #4a9eff;
+    --accent-cyan: #00d4ff;
+    --accent-purple: #8b5cf6;
+    --text-primary: #e8e8f0;
+    --text-secondary: #8888a0;
+    --border-subtle: #2a2a3e;
+    --wii-blue: #0058c8;
+    --wii-light: #5ac8fa;
+  }
+
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+
+  body {
+    background: var(--bg-deep);
+    color: var(--text-primary);
+    font-family: 'Exo 2', sans-serif;
+    min-height: 100vh;
+    overflow-x: hidden;
+  }
+
+  /* Wii-style grid background */
+  body::before {
+    content: '';
+    position: fixed;
+    inset: 0;
+    background:
+      radial-gradient(ellipse at 20% 50%, rgba(0, 88, 200, 0.08) 0%, transparent 60%),
+      radial-gradient(ellipse at 80% 20%, rgba(90, 200, 250, 0.05) 0%, transparent 50%),
+      repeating-linear-gradient(0deg, transparent, transparent 60px, rgba(255,255,255,0.015) 60px, rgba(255,255,255,0.015) 61px),
+      repeating-linear-gradient(90deg, transparent, transparent 60px, rgba(255,255,255,0.015) 60px, rgba(255,255,255,0.015) 61px);
+    pointer-events: none;
+    z-index: 0;
+  }
+
+  .app {
+    position: relative;
+    z-index: 1;
+    max-width: 1100px;
+    margin: 0 auto;
+    padding: 40px 24px;
+  }
+
+  header {
+    text-align: center;
+    margin-bottom: 48px;
+  }
+
+  header h1 {
+    font-size: 2.4rem;
+    font-weight: 800;
+    letter-spacing: -0.5px;
+    background: linear-gradient(135deg, var(--wii-light), var(--accent-blue), var(--accent-purple));
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+    background-clip: text;
+    margin-bottom: 8px;
+  }
+
+  header p {
+    color: var(--text-secondary);
+    font-size: 0.95rem;
+    font-weight: 300;
+  }
+
+  .drop-zone {
+    border: 2px dashed var(--border-subtle);
+    border-radius: 16px;
+    padding: 64px 32px;
+    text-align: center;
+    cursor: pointer;
+    transition: all 0.3s ease;
+    background: rgba(18, 18, 31, 0.6);
+    backdrop-filter: blur(8px);
+    margin-bottom: 32px;
+  }
+
+  .drop-zone:hover, .drop-zone.dragover {
+    border-color: var(--accent-blue);
+    background: rgba(74, 158, 255, 0.05);
+    box-shadow: 0 0 40px rgba(74, 158, 255, 0.1);
+  }
+
+  .drop-zone .icon {
+    font-size: 3rem;
+    margin-bottom: 16px;
+    opacity: 0.6;
+  }
+
+  .drop-zone h3 {
+    font-size: 1.2rem;
+    font-weight: 600;
+    margin-bottom: 8px;
+  }
+
+  .drop-zone span {
+    color: var(--text-secondary);
+    font-size: 0.85rem;
+  }
+
+  input[type="file"] { display: none; }
+
+  .render-area {
+    display: none;
+    margin-top: 32px;
+  }
+
+  .render-area.visible { display: block; }
+
+  .section-title {
+    font-size: 1.1rem;
+    font-weight: 600;
+    margin-bottom: 16px;
+    color: var(--accent-cyan);
+    display: flex;
+    align-items: center;
+    gap: 8px;
+  }
+
+  .section-title::before {
+    content: '';
+    width: 4px;
+    height: 20px;
+    background: linear-gradient(180deg, var(--accent-cyan), var(--accent-blue));
+    border-radius: 2px;
+  }
+
+  .banner-display {
+    background: var(--bg-card);
+    border: 1px solid var(--border-subtle);
+    border-radius: 12px;
+    padding: 24px;
+    margin-bottom: 32px;
+    position: relative;
+    overflow: hidden;
+  }
+
+  .banner-display::before {
+    content: '';
+    position: absolute;
+    top: 0; left: 0; right: 0;
+    height: 1px;
+    background: linear-gradient(90deg, transparent, var(--accent-blue), transparent);
+  }
+
+  .canvas-wrapper {
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    gap: 32px;
+    flex-wrap: wrap;
+  }
+
+  .canvas-container {
+    text-align: center;
+  }
+
+  .canvas-container label {
+    display: block;
+    font-size: 0.8rem;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 1.5px;
+    color: var(--text-secondary);
+    margin-bottom: 12px;
+  }
+
+  canvas {
+    border-radius: 8px;
+    box-shadow: 0 4px 24px rgba(0,0,0,0.4);
+    image-rendering: auto;
+  }
+
+  .controls {
+    display: flex;
+    gap: 12px;
+    justify-content: center;
+    margin-top: 20px;
+    flex-wrap: wrap;
+  }
+
+  button {
+    font-family: 'Exo 2', sans-serif;
+    padding: 10px 24px;
+    border-radius: 8px;
+    border: 1px solid var(--border-subtle);
+    background: var(--bg-card);
+    color: var(--text-primary);
+    font-size: 0.85rem;
+    font-weight: 600;
+    cursor: pointer;
+    transition: all 0.2s ease;
+  }
+
+  button:hover {
+    border-color: var(--accent-blue);
+    background: rgba(74, 158, 255, 0.1);
+  }
+
+  button.primary {
+    background: linear-gradient(135deg, var(--wii-blue), var(--accent-purple));
+    border: none;
+  }
+
+  button.primary:hover {
+    box-shadow: 0 4px 20px rgba(74, 158, 255, 0.3);
+  }
+
+  .textures-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(140px, 1fr));
+    gap: 16px;
+    margin-top: 16px;
+  }
+
+  .texture-card {
+    background: var(--bg-card);
+    border: 1px solid var(--border-subtle);
+    border-radius: 8px;
+    padding: 12px;
+    text-align: center;
+    transition: all 0.2s ease;
+  }
+
+  .texture-card:hover {
+    border-color: var(--accent-blue);
+    transform: translateY(-2px);
+  }
+
+  .texture-card canvas {
+    max-width: 100%;
+    height: auto;
+    border-radius: 4px;
+    box-shadow: none;
+  }
+
+  .texture-card .name {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 0.7rem;
+    color: var(--text-secondary);
+    margin-top: 8px;
+    word-break: break-all;
+  }
+
+  .texture-card .dims {
+    font-size: 0.65rem;
+    color: var(--accent-blue);
+    margin-top: 2px;
+  }
+
+  .info-panel {
+    background: var(--bg-card);
+    border: 1px solid var(--border-subtle);
+    border-radius: 12px;
+    padding: 20px;
+    margin-bottom: 32px;
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 0.78rem;
+    line-height: 1.8;
+    color: var(--text-secondary);
+  }
+
+  .info-panel .key { color: var(--accent-cyan); }
+  .info-panel .val { color: var(--text-primary); }
+
+  .log {
+    background: #08080f;
+    border: 1px solid var(--border-subtle);
+    border-radius: 8px;
+    padding: 16px;
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 0.72rem;
+    line-height: 1.7;
+    max-height: 300px;
+    overflow-y: auto;
+    color: var(--text-secondary);
+    margin-top: 16px;
+  }
+
+  .log .info { color: var(--accent-cyan); }
+  .log .warn { color: #fbbf24; }
+  .log .error { color: #f87171; }
+  .log .success { color: #34d399; }
+
+  .tab-bar {
+    display: flex;
+    gap: 4px;
+    margin-bottom: 20px;
+    background: rgba(18, 18, 31, 0.8);
+    padding: 4px;
+    border-radius: 10px;
+    border: 1px solid var(--border-subtle);
+  }
+
+  .tab {
+    flex: 1;
+    text-align: center;
+    padding: 10px 16px;
+    border-radius: 7px;
+    font-size: 0.85rem;
+    font-weight: 600;
+    cursor: pointer;
+    transition: all 0.2s ease;
+    color: var(--text-secondary);
+  }
+
+  .tab.active {
+    background: linear-gradient(135deg, rgba(74, 158, 255, 0.15), rgba(139, 92, 246, 0.15));
+    color: var(--text-primary);
+    box-shadow: 0 2px 8px rgba(0,0,0,0.2);
+  }
+
+  .tab:hover:not(.active) {
+    color: var(--text-primary);
+    background: rgba(255,255,255,0.03);
+  }
+
+  .tab-content { display: none; }
+  .tab-content.active { display: block; }
+
+  .anim-status {
+    text-align: center;
+    padding: 8px;
+    font-size: 0.8rem;
+    color: var(--text-secondary);
+  }
+
+  @media (max-width: 600px) {
+    header h1 { font-size: 1.6rem; }
+    .drop-zone { padding: 40px 20px; }
+    .app { padding: 20px 16px; }
+  }
+</style>
+</head>
+<body>
+<div class="app">
+  <header>
+    <h1>Wii Channel Banner Renderer</h1>
+    <p>Drop a .WAD file to extract and render its channel banner &amp; icon</p>
+  </header>
+
+  <div class="drop-zone" id="dropZone">
+    <div class="icon">📀</div>
+    <h3>Drop .WAD file here</h3>
+    <span>or click to browse</span>
+    <input type="file" id="fileInput" accept=".wad">
+  </div>
+
+  <div class="render-area" id="renderArea">
+    <div class="tab-bar" id="tabBar">
+      <div class="tab active" data-tab="preview">Preview</div>
+      <div class="tab" data-tab="textures">Textures</div>
+      <div class="tab" data-tab="layout">Layout Info</div>
+      <div class="tab" data-tab="log">Parse Log</div>
+    </div>
+
+    <div class="tab-content active" id="tab-preview">
+      <div class="banner-display">
+        <div class="section-title">Channel Banner</div>
+        <div class="canvas-wrapper">
+          <div class="canvas-container">
+            <label>Banner</label>
+            <canvas id="bannerCanvas" width="608" height="456"></canvas>
+          </div>
+          <div class="canvas-container">
+            <label>Icon</label>
+            <canvas id="iconCanvas" width="128" height="128"></canvas>
+          </div>
+        </div>
+        <div class="controls">
+          <button class="primary" id="btnPlayPause">▶ Play Animation</button>
+          <button id="btnReset">↺ Reset</button>
+          <button id="btnExportBanner">⬇ Export Banner PNG</button>
+          <button id="btnExportIcon">⬇ Export Icon PNG</button>
+        </div>
+        <div class="anim-status" id="animStatus"></div>
+      </div>
+
+      <div class="info-panel" id="wadInfo"></div>
+    </div>
+
+    <div class="tab-content" id="tab-textures">
+      <div class="section-title">Banner Textures</div>
+      <div class="textures-grid" id="bannerTextures"></div>
+      <div class="section-title" style="margin-top:24px">Icon Textures</div>
+      <div class="textures-grid" id="iconTextures"></div>
+    </div>
+
+    <div class="tab-content" id="tab-layout">
+      <div class="section-title">BRLYT Layout Data</div>
+      <div class="info-panel" id="layoutInfo">No layout data parsed yet.</div>
+      <div class="section-title" style="margin-top:24px">BRLAN Animation Data</div>
+      <div class="info-panel" id="animInfo">No animation data parsed yet.</div>
+    </div>
+
+    <div class="tab-content" id="tab-log">
+      <div class="section-title">Parse Log</div>
+      <div class="log" id="logOutput"></div>
+    </div>
+  </div>
+</div>
+
+<script>
+// ============================================================
+// Wii WAD Channel Banner Renderer
+// Parses: WAD -> U8 Archive -> TPL / BRLYT / BRLAN
+// ============================================================
+
+const log = (() => {
+  const el = document.getElementById('logOutput');
+  return {
+    info: (msg) => { el.innerHTML += `<div class="info">[INFO] ${msg}</div>`; },
+    warn: (msg) => { el.innerHTML += `<div class="warn">[WARN] ${msg}</div>`; },
+    error: (msg) => { el.innerHTML += `<div class="error">[ERR]  ${msg}</div>`; },
+    success: (msg) => { el.innerHTML += `<div class="success">[OK]   ${msg}</div>`; },
+    clear: () => { el.innerHTML = ''; }
+  };
+})();
+
+// ============================================================
+// DataView helpers (big-endian by default for Wii formats)
+// ============================================================
+class BinaryReader {
+  constructor(buffer, offset = 0) {
+    this.buffer = buffer;
+    this.view = new DataView(buffer);
+    this.offset = offset;
+  }
+  u8()  { const v = this.view.getUint8(this.offset); this.offset += 1; return v; }
+  u16() { const v = this.view.getUint16(this.offset, false); this.offset += 2; return v; }
+  u32() { const v = this.view.getUint32(this.offset, false); this.offset += 4; return v; }
+  i16() { const v = this.view.getInt16(this.offset, false); this.offset += 2; return v; }
+  i32() { const v = this.view.getInt32(this.offset, false); this.offset += 4; return v; }
+  f32() { const v = this.view.getFloat32(this.offset, false); this.offset += 4; return v; }
+  skip(n) { this.offset += n; }
+  seek(pos) { this.offset = pos; }
+  slice(len) { const s = this.buffer.slice(this.offset, this.offset + len); this.offset += len; return s; }
+  string(len) {
+    let s = '';
+    for (let i = 0; i < len; i++) {
+      const c = this.view.getUint8(this.offset + i);
+      if (c === 0) break;
+      s += String.fromCharCode(c);
+    }
+    this.offset += len;
+    return s;
+  }
+  nullString() {
+    let s = '';
+    while (this.offset < this.buffer.byteLength) {
+      const c = this.view.getUint8(this.offset++);
+      if (c === 0) break;
+      s += String.fromCharCode(c);
+    }
+    return s;
+  }
+}
+
+function align(offset, alignment) {
+  return Math.ceil(offset / alignment) * alignment;
+}
+
+// ============================================================
+// WAD Parser
+// ============================================================
+function parseWAD(buffer) {
+  const r = new BinaryReader(buffer);
+  const headerSize = r.u32();
+  const wadType = r.u32();
+  const certChainSize = r.u32();
+  const reserved = r.u32();
+  const ticketSize = r.u32();
+  const tmdSize = r.u32();
+  const dataSize = r.u32();
+  const footerSize = r.u32();
+
+  log.info(`WAD header: type=0x${wadType.toString(16)}, certChain=${certChainSize}, ticket=${ticketSize}, tmd=${tmdSize}, data=${dataSize}`);
+
+  // Calculate offsets (each section aligned to 64 bytes)
+  let offset = align(headerSize, 64);
+  const certChainOffset = offset;
+  offset += align(certChainSize, 64);
+  const ticketOffset = offset;
+  offset += align(ticketSize, 64);
+  const tmdOffset = offset;
+
+  // Parse TMD to get content info
+  const tmdReader = new BinaryReader(buffer, tmdOffset);
+  tmdReader.skip(0x1DE); // skip to number of contents
+  const numContents = tmdReader.u16();
+  log.info(`TMD: ${numContents} content(s)`);
+
+  // Content records start at tmdOffset + 0x1E4
+  const contentRecords = [];
+  tmdReader.seek(tmdOffset + 0x1E4);
+  for (let i = 0; i < numContents; i++) {
+    const contentId = tmdReader.u32();
+    const index = tmdReader.u16();
+    const type = tmdReader.u16();
+    const sizeHigh = tmdReader.u32();
+    const sizeLow = tmdReader.u32();
+    const hash = tmdReader.slice(20);
+    contentRecords.push({ contentId, index, type, size: sizeLow });
+  }
+
+  offset += align(tmdSize, 64);
+  const dataOffset = offset;
+
+  // Extract content files
+  const contents = {};
+  let contentOffset = dataOffset;
+  for (const rec of contentRecords) {
+    const name = rec.contentId.toString(16).padStart(8, '0') + '.app';
+    contents[name] = buffer.slice(contentOffset, contentOffset + rec.size);
+    log.info(`Content: ${name} (${rec.size} bytes)`);
+    contentOffset += align(rec.size, 64);
+  }
+
+  // Extract title ID from ticket
+  const titleIdBytes = new Uint8Array(buffer, ticketOffset + 0x1DC, 8);
+  let titleId = '';
+  for (let i = 4; i < 8; i++) {
+    const c = titleIdBytes[i];
+    titleId += (c >= 32 && c < 127) ? String.fromCharCode(c) : '?';
+  }
+
+  return { contents, numContents, titleId, wadType };
+}
+
+// ============================================================
+// U8 Archive Parser
+// ============================================================
+function parseU8(buffer) {
+  const r = new BinaryReader(buffer);
+  const magic = r.u32();
+  if (magic !== 0x55AA382D) {
+    // Check if it starts with an IMD5 header (banner.bin / icon.bin)
+    r.seek(0);
+    const tag = r.string(4);
+    r.seek(0);
+    if (tag === 'IMD5') {
+      // Skip IMD5 header (32 bytes) and try again
+      log.info('Found IMD5 header, skipping 32 bytes');
+      return parseU8(buffer.slice(32));
+    }
+    // Try searching for U8 magic
+    const view = new DataView(buffer);
+    for (let i = 0; i < Math.min(buffer.byteLength, 256); i += 4) {
+      if (view.getUint32(i) === 0x55AA382D) {
+        log.info(`Found U8 magic at offset ${i}`);
+        return parseU8(buffer.slice(i));
+      }
+    }
+    throw new Error('Not a U8 archive (magic: 0x' + magic.toString(16) + ')');
+  }
+
+  const rootNodeOffset = r.u32();
+  const nodesSize = r.u32();
+  const dataOffset = r.u32();
+
+  r.seek(rootNodeOffset);
+
+  // Read root node
+  const rootType = r.u8();
+  const rootNameOff = (r.u8() << 16) | r.u16();
+  const rootDataOffset = r.u32();
+  const rootNumEntries = r.u32();
+
+  // String table starts after all nodes
+  const stringTableOffset = rootNodeOffset + rootNumEntries * 12;
+
+  const nodes = [{ type: rootType, nameOffset: rootNameOff, dataOffset: rootDataOffset, size: rootNumEntries }];
+  for (let i = 1; i < rootNumEntries; i++) {
+    const type = r.u8();
+    const nameOff = (r.u8() << 16) | r.u16();
+    const dOff = r.u32();
+    const size = r.u32();
+    nodes.push({ type, nameOffset: nameOff, dataOffset: dOff, size });
+  }
+
+  // Read names from string table
+  const files = {};
+  const dirStack = [{ name: '', end: rootNumEntries }];
+  let currentPath = '';
+
+  for (let i = 1; i < rootNumEntries; i++) {
+    const node = nodes[i];
+    // Read name
+    const nameReader = new BinaryReader(buffer, stringTableOffset + node.nameOffset);
+    const name = nameReader.nullString();
+
+    // Pop directories
+    while (dirStack.length > 1 && i >= dirStack[dirStack.length - 1].end) {
+      dirStack.pop();
+    }
+    currentPath = dirStack.map(d => d.name).filter(Boolean).join('/');
+
+    if (node.type === 1) {
+      // Directory
+      dirStack.push({ name, end: node.size });
+    } else {
+      // File
+      const fullPath = currentPath ? currentPath + '/' + name : name;
+      files[fullPath] = buffer.slice(node.dataOffset, node.dataOffset + node.size);
+      log.info(`  U8 file: ${fullPath} (${node.size} bytes)`);
+    }
+  }
+
+  return files;
+}
+
+// ============================================================
+// TPL Parser - Decode Wii textures
+// ============================================================
+const TPL_FORMATS = {
+  0: 'I4', 1: 'I8', 2: 'IA4', 3: 'IA8',
+  4: 'RGB565', 5: 'RGB5A3', 6: 'RGBA8',
+  8: 'CI4', 9: 'CI8', 10: 'CI14X2',
+  14: 'CMPR'
+};
+
+function parseTPL(buffer) {
+  const r = new BinaryReader(buffer);
+  const magic = r.u32();
+  if (magic !== 0x0020AF30) {
+    throw new Error('Not a TPL file (magic: 0x' + magic.toString(16) + ')');
+  }
+
+  const numImages = r.u32();
+  const imageTableOffset = r.u32();
+
+  const images = [];
+  r.seek(imageTableOffset);
+
+  for (let i = 0; i < numImages; i++) {
+    const imageHeaderOff = r.u32();
+    const paletteHeaderOff = r.u32();
+
+    const savedPos = r.offset;
+
+    // Read image header
+    r.seek(imageHeaderOff);
+    const height = r.u16();
+    const width = r.u16();
+    const format = r.u32();
+    const dataOffset = r.u32();
+    const wrapS = r.u32();
+    const wrapT = r.u32();
+    const minFilter = r.u32();
+    const magFilter = r.u32();
+    const lodBias = r.f32();
+    const edgeLod = r.u8();
+    const minLod = r.u8();
+    const maxLod = r.u8();
+    const unpacked = r.u8();
+
+    log.info(`  TPL image ${i}: ${width}x${height}, format=${TPL_FORMATS[format] || format}`);
+
+    let palette = null;
+    if (paletteHeaderOff !== 0) {
+      r.seek(paletteHeaderOff);
+      const palCount = r.u16();
+      const palUnpacked = r.u8();
+      r.skip(1);
+      const palFormat = r.u32();
+      const palDataOff = r.u32();
+      palette = { count: palCount, format: palFormat, data: new DataView(buffer, palDataOff, palCount * 2) };
+    }
+
+    const imageData = decodeTPLImage(new Uint8Array(buffer, dataOffset), width, height, format, palette);
+    images.push({ width, height, format, imageData });
+
+    r.seek(savedPos);
+  }
+
+  return images;
+}
+
+function decodeTPLImage(src, width, height, format, palette) {
+  const pixels = new Uint8ClampedArray(width * height * 4);
+
+  function setPixel(x, y, r, g, b, a) {
+    if (x >= width || y >= height) return;
+    const i = (y * width + x) * 4;
+    pixels[i] = r; pixels[i+1] = g; pixels[i+2] = b; pixels[i+3] = a;
+  }
+
+  function decodeRGB5A3(val) {
+    if (val & 0x8000) {
+      // RGB555
+      const r = ((val >> 10) & 0x1F) * 255 / 31;
+      const g = ((val >> 5) & 0x1F) * 255 / 31;
+      const b = (val & 0x1F) * 255 / 31;
+      return [r, g, b, 255];
+    } else {
+      // ARGB3444
+      const a = ((val >> 12) & 0x7) * 255 / 7;
+      const r = ((val >> 8) & 0xF) * 255 / 15;
+      const g = ((val >> 4) & 0xF) * 255 / 15;
+      const b = (val & 0xF) * 255 / 15;
+      return [r, g, b, a];
+    }
+  }
+
+  function decodePaletteColor(palette, index) {
+    if (!palette || index >= palette.count) return [0, 0, 0, 255];
+    const val = palette.data.getUint16(index * 2, false);
+    // Palette format: 0=IA8, 1=RGB565, 2=RGB5A3
+    if (palette.format === 0) {
+      const intensity = (val >> 8) & 0xFF;
+      const alpha = val & 0xFF;
+      return [intensity, intensity, intensity, alpha];
+    } else if (palette.format === 1) {
+      const r = ((val >> 11) & 0x1F) * 255 / 31;
+      const g = ((val >> 5) & 0x3F) * 255 / 63;
+      const b = (val & 0x1F) * 255 / 31;
+      return [r, g, b, 255];
+    } else {
+      return decodeRGB5A3(val);
+    }
+  }
+
+  let srcOff = 0;
+  const srcView = new DataView(src.buffer, src.byteOffset, src.byteLength);
+
+  switch (format) {
+    case 0: { // I4 - 8x8 blocks
+      for (let by = 0; by < height; by += 8) {
+        for (let bx = 0; bx < width; bx += 8) {
+          for (let y = 0; y < 8; y++) {
+            for (let x = 0; x < 8; x += 2) {
+              if (srcOff >= src.length) break;
+              const b = src[srcOff++];
+              const i1 = ((b >> 4) & 0xF) * 17;
+              const i2 = (b & 0xF) * 17;
+              setPixel(bx + x, by + y, i1, i1, i1, 255);
+              setPixel(bx + x + 1, by + y, i2, i2, i2, 255);
+            }
+          }
+        }
+      }
+      break;
+    }
+    case 1: { // I8 - 8x4 blocks
+      for (let by = 0; by < height; by += 4) {
+        for (let bx = 0; bx < width; bx += 8) {
+          for (let y = 0; y < 4; y++) {
+            for (let x = 0; x < 8; x++) {
+              if (srcOff >= src.length) break;
+              const i = src[srcOff++];
+              setPixel(bx + x, by + y, i, i, i, 255);
+            }
+          }
+        }
+      }
+      break;
+    }
+    case 2: { // IA4 - 8x4 blocks
+      for (let by = 0; by < height; by += 4) {
+        for (let bx = 0; bx < width; bx += 8) {
+          for (let y = 0; y < 4; y++) {
+            for (let x = 0; x < 8; x++) {
+              if (srcOff >= src.length) break;
+              const b = src[srcOff++];
+              const a = ((b >> 4) & 0xF) * 17;
+              const i = (b & 0xF) * 17;
+              setPixel(bx + x, by + y, i, i, i, a);
+            }
+          }
+        }
+      }
+      break;
+    }
+    case 3: { // IA8 - 4x4 blocks
+      for (let by = 0; by < height; by += 4) {
+        for (let bx = 0; bx < width; bx += 4) {
+          for (let y = 0; y < 4; y++) {
+            for (let x = 0; x < 4; x++) {
+              if (srcOff + 1 >= src.length) break;
+              const a = src[srcOff++];
+              const i = src[srcOff++];
+              setPixel(bx + x, by + y, i, i, i, a);
+            }
+          }
+        }
+      }
+      break;
+    }
+    case 4: { // RGB565 - 4x4 blocks
+      for (let by = 0; by < height; by += 4) {
+        for (let bx = 0; bx < width; bx += 4) {
+          for (let y = 0; y < 4; y++) {
+            for (let x = 0; x < 4; x++) {
+              if (srcOff + 1 >= src.length) break;
+              const val = (src[srcOff] << 8) | src[srcOff + 1]; srcOff += 2;
+              const r = ((val >> 11) & 0x1F) * 255 / 31;
+              const g = ((val >> 5) & 0x3F) * 255 / 63;
+              const b = (val & 0x1F) * 255 / 31;
+              setPixel(bx + x, by + y, r, g, b, 255);
+            }
+          }
+        }
+      }
+      break;
+    }
+    case 5: { // RGB5A3 - 4x4 blocks
+      for (let by = 0; by < height; by += 4) {
+        for (let bx = 0; bx < width; bx += 4) {
+          for (let y = 0; y < 4; y++) {
+            for (let x = 0; x < 4; x++) {
+              if (srcOff + 1 >= src.length) break;
+              const val = (src[srcOff] << 8) | src[srcOff + 1]; srcOff += 2;
+              const [r, g, b, a] = decodeRGB5A3(val);
+              setPixel(bx + x, by + y, r, g, b, a);
+            }
+          }
+        }
+      }
+      break;
+    }
+    case 6: { // RGBA8 - 4x4 blocks, two passes (AR then GB)
+      for (let by = 0; by < height; by += 4) {
+        for (let bx = 0; bx < width; bx += 4) {
+          // First 32 bytes: AR values
+          const ar = [];
+          for (let i = 0; i < 16; i++) {
+            if (srcOff + 1 >= src.length) { ar.push([255, 0]); continue; }
+            ar.push([src[srcOff++], src[srcOff++]]);
+          }
+          // Next 32 bytes: GB values
+          const gb = [];
+          for (let i = 0; i < 16; i++) {
+            if (srcOff + 1 >= src.length) { gb.push([0, 0]); continue; }
+            gb.push([src[srcOff++], src[srcOff++]]);
+          }
+          for (let y = 0; y < 4; y++) {
+            for (let x = 0; x < 4; x++) {
+              const idx = y * 4 + x;
+              setPixel(bx + x, by + y, ar[idx][1], gb[idx][0], gb[idx][1], ar[idx][0]);
+            }
+          }
+        }
+      }
+      break;
+    }
+    case 8: { // CI4 - 8x8 blocks
+      for (let by = 0; by < height; by += 8) {
+        for (let bx = 0; bx < width; bx += 8) {
+          for (let y = 0; y < 8; y++) {
+            for (let x = 0; x < 8; x += 2) {
+              if (srcOff >= src.length) break;
+              const b = src[srcOff++];
+              const [r1, g1, b1, a1] = decodePaletteColor(palette, (b >> 4) & 0xF);
+              const [r2, g2, b2, a2] = decodePaletteColor(palette, b & 0xF);
+              setPixel(bx + x, by + y, r1, g1, b1, a1);
+              setPixel(bx + x + 1, by + y, r2, g2, b2, a2);
+            }
+          }
+        }
+      }
+      break;
+    }
+    case 9: { // CI8 - 8x4 blocks
+      for (let by = 0; by < height; by += 4) {
+        for (let bx = 0; bx < width; bx += 8) {
+          for (let y = 0; y < 4; y++) {
+            for (let x = 0; x < 8; x++) {
+              if (srcOff >= src.length) break;
+              const idx = src[srcOff++];
+              const [r, g, b, a] = decodePaletteColor(palette, idx);
+              setPixel(bx + x, by + y, r, g, b, a);
+            }
+          }
+        }
+      }
+      break;
+    }
+    case 14: { // CMPR (S3TC/DXT1) - 8x8 super-blocks of 4x4 sub-blocks
+      function decodeDXT1Block(off) {
+        if (off + 7 >= src.length) return null;
+        const c0 = (src[off] << 8) | src[off + 1];
+        const c1 = (src[off + 2] << 8) | src[off + 3];
+
+        function rgb565ToArray(c) {
+          return [
+            ((c >> 11) & 0x1F) * 255 / 31,
+            ((c >> 5) & 0x3F) * 255 / 63,
+            (c & 0x1F) * 255 / 31
+          ];
+        }
+
+        const colors = [rgb565ToArray(c0), rgb565ToArray(c1)];
+        if (c0 > c1) {
+          colors[2] = colors[0].map((v, i) => (2 * v + colors[1][i]) / 3);
+          colors[3] = colors[0].map((v, i) => (v + 2 * colors[1][i]) / 3);
+        } else {
+          colors[2] = colors[0].map((v, i) => (v + colors[1][i]) / 2);
+          colors[3] = [0, 0, 0]; // transparent
+        }
+
+        const indices = [];
+        for (let i = 0; i < 4; i++) {
+          const byte = src[off + 4 + i];
+          indices.push((byte >> 6) & 3, (byte >> 4) & 3, (byte >> 2) & 3, byte & 3);
+        }
+
+        return { colors, indices, transparent: c0 <= c1 };
+      }
+
+      for (let by = 0; by < height; by += 8) {
+        for (let bx = 0; bx < width; bx += 8) {
+          // Each 8x8 super-block has 4 sub-blocks in Z-order
+          for (let sb = 0; sb < 4; sb++) {
+            const subX = (sb & 1) * 4;
+            const subY = (sb >> 1) * 4;
+            const block = decodeDXT1Block(srcOff);
+            srcOff += 8;
+            if (!block) continue;
+            for (let py = 0; py < 4; py++) {
+              for (let px = 0; px < 4; px++) {
+                const ci = block.indices[py * 4 + px];
+                const c = block.colors[ci];
+                const a = (block.transparent && ci === 3) ? 0 : 255;
+                setPixel(bx + subX + px, by + subY + py, c[0], c[1], c[2], a);
+              }
+            }
+          }
+        }
+      }
+      break;
+    }
+    default:
+      log.warn(`Unsupported TPL format: ${format} (${TPL_FORMATS[format] || 'unknown'})`);
+      // Fill with magenta
+      for (let y = 0; y < height; y++) {
+        for (let x = 0; x < width; x++) {
+          setPixel(x, y, 255, 0, 255, 255);
+        }
+      }
+  }
+
+  return pixels;
+}
+
+// ============================================================
+// BRLYT Parser
+// ============================================================
+function parseBRLYT(buffer) {
+  const r = new BinaryReader(buffer);
+  const magic = r.string(4);
+  if (magic !== 'RLYT') throw new Error('Not a BRLYT: ' + magic);
+
+  const bom = r.u16();
+  const version = r.u16();
+  const fileSize = r.u32();
+  const headerSize = r.u16();
+  const numSections = r.u16();
+
+  const layout = { textures: [], materials: [], panes: [], groups: [], width: 608, height: 456 };
+
+  r.seek(headerSize);
+
+  for (let s = 0; s < numSections; s++) {
+    const secStart = r.offset;
+    const secMagic = r.string(4);
+    const secSize = r.u32();
+
+    switch (secMagic) {
+      case 'lyt1': {
+        const drawFromCenter = r.u8();
+        r.skip(3);
+        layout.width = r.f32();
+        layout.height = r.f32();
+        log.info(`  Layout size: ${layout.width}x${layout.height}`);
+        break;
+      }
+      case 'txl1': {
+        const numTex = r.u16();
+        r.skip(2);
+        const offsets = [];
+        for (let i = 0; i < numTex; i++) {
+          offsets.push(r.u32());
+          r.skip(4);
+        }
+        const strBase = secStart + 8 + 4;
+        for (const off of offsets) {
+          const nameReader = new BinaryReader(buffer, strBase + off);
+          const name = nameReader.nullString();
+          layout.textures.push(name);
+          log.info(`  Texture ref: ${name}`);
+        }
+        break;
+      }
+      case 'mat1': {
+        const numMat = r.u16();
+        r.skip(2);
+        const matOffsets = [];
+        for (let i = 0; i < numMat; i++) {
+          matOffsets.push(r.u32());
+        }
+        for (let i = 0; i < numMat; i++) {
+          r.seek(secStart + 8 + matOffsets[i]);
+          const name = r.string(20).replace(/\0+$/, '');
+          layout.materials.push({ name, index: i });
+          log.info(`  Material: ${name}`);
+        }
+        break;
+      }
+      case 'pan1': case 'pic1': case 'txt1': case 'bnd1': case 'wnd1': {
+        const blockSize = r.u8();
+        const visible = r.u8();
+        r.skip(2);
+        const name = r.string(16).replace(/\0+$/, '');
+        r.skip(8);
+        const transX = r.f32();
+        const transY = r.f32();
+        const transZ = r.f32();
+        const rotX = r.f32();
+        const rotY = r.f32();
+        const rotZ = r.f32();
+        const scaleX = r.f32();
+        const scaleY = r.f32();
+        const sizeW = r.f32();
+        const sizeH = r.f32();
+
+        const pane = {
+          type: secMagic, name, visible: visible !== 0,
+          translate: { x: transX, y: transY, z: transZ },
+          rotate: { x: rotX, y: rotY, z: rotZ },
+          scale: { x: scaleX, y: scaleY },
+          size: { w: sizeW, h: sizeH },
+          materialIndex: -1,
+        };
+
+        if (secMagic === 'pic1') {
+          // After base pane data (76 bytes from section data start), we have pic1 specific
+          r.seek(secStart + 8 + 76);
+          // Vertex colors (16 bytes)
+          r.skip(16);
+          // Material index
+          const matIdx = r.u16();
+          pane.materialIndex = matIdx;
+          // Tex coord count
+          const texCoordCount = r.u8();
+          r.skip(1);
+          pane.texCoords = [];
+          for (let tc = 0; tc < texCoordCount; tc++) {
+            pane.texCoords.push({
+              tl: { s: r.f32(), t: r.f32() },
+              tr: { s: r.f32(), t: r.f32() },
+              bl: { s: r.f32(), t: r.f32() },
+              br: { s: r.f32(), t: r.f32() },
+            });
+          }
+        }
+
+        layout.panes.push(pane);
+        if (secMagic === 'pic1') {
+          log.info(`  Pane [pic1]: ${name} at (${transX.toFixed(1)},${transY.toFixed(1)}) size ${sizeW.toFixed(0)}x${sizeH.toFixed(0)} mat=${pane.materialIndex}`);
+        } else {
+          log.info(`  Pane [${secMagic}]: ${name} at (${transX.toFixed(1)},${transY.toFixed(1)}) size ${sizeW.toFixed(0)}x${sizeH.toFixed(0)}`);
+        }
+        break;
+      }
+    }
+
+    r.seek(secStart + secSize);
+  }
+
+  return layout;
+}
+
+// ============================================================
+// BRLAN Parser
+// ============================================================
+const ANIM_TYPES = {
+  0x00: 'X Translation', 0x01: 'Y Translation', 0x02: 'Z Translation',
+  0x03: 'X Rotation', 0x04: 'Y Rotation', 0x05: 'Z Rotation',
+  0x06: 'X Scale', 0x07: 'Y Scale',
+  0x08: 'Width', 0x09: 'Height',
+  0x10: 'Alpha',
+  0x14: 'Red', 0x15: 'Green', 0x16: 'Blue', 0x17: 'Alpha2',
+};
+
+function parseBRLAN(buffer) {
+  const r = new BinaryReader(buffer);
+  const magic = r.string(4);
+  if (magic !== 'RLAN') throw new Error('Not a BRLAN: ' + magic);
+
+  const bom = r.u16();
+  const version = r.u16();
+  const fileSize = r.u32();
+  const headerSize = r.u16();
+  const numSections = r.u16();
+
+  const anim = { frameSize: 0, panes: [] };
+
+  r.seek(headerSize);
+
+  for (let s = 0; s < numSections; s++) {
+    const secStart = r.offset;
+    const secMagic = r.string(4);
+    const secSize = r.u32();
+
+    if (secMagic === 'pai1') {
+      anim.frameSize = r.u16();
+      const flags = r.u8();
+      r.skip(1);
+      const numTimelines = r.u16();
+      const numEntries = r.u16();
+
+      log.info(`  Animation: ${anim.frameSize} frames, ${numEntries} pane(s)`);
+
+      const entryOffsets = [];
+      for (let i = 0; i < numEntries; i++) {
+        entryOffsets.push(r.u32());
+      }
+
+      const paiBase = secStart + 8;
+
+      for (let e = 0; e < numEntries; e++) {
+        r.seek(paiBase + 8 + entryOffsets[e]);
+        const paneName = r.string(20).replace(/\0+$/, '');
+        const numTags = r.u8();
+        r.skip(3);
+
+        const paneAnim = { name: paneName, tags: [] };
+
+        const tagOffsets = [];
+        const tagOffsetsBase = r.offset;
+        for (let t = 0; t < numTags; t++) {
+          tagOffsets.push(r.u32());
+        }
+
+        for (let t = 0; t < numTags; t++) {
+          r.seek(tagOffsetsBase + tagOffsets[t]);
+          const tagType = r.string(4);
+          const numEntries2 = r.u8();
+          r.skip(3);
+
+          const tag = { type: tagType, entries: [] };
+
+          const entryOffsets2 = [];
+          const entryOffsetsBase = r.offset;
+          for (let e2 = 0; e2 < numEntries2; e2++) {
+            entryOffsets2.push(r.u32());
+          }
+
+          for (let e2 = 0; e2 < numEntries2; e2++) {
+            r.seek(entryOffsetsBase + entryOffsets2[e2]);
+            const animType = r.u8();
+            const dataType = r.u8();
+            r.skip(2);
+            const numKeyframes = r.u16();
+            r.skip(2);
+            const kfOffset = r.u32();
+
+            const entry = {
+              type: animType,
+              typeName: ANIM_TYPES[animType] || `0x${animType.toString(16)}`,
+              keyframes: []
+            };
+
+            r.seek(entryOffsetsBase + entryOffsets2[e2] + 12 + kfOffset);
+
+            for (let k = 0; k < numKeyframes; k++) {
+              if (dataType === 2) {
+                // Step key
+                entry.keyframes.push({ frame: r.f32(), value: r.f32(), blend: 0 });
+              } else {
+                // Hermite key
+                entry.keyframes.push({ frame: r.f32(), value: r.f32(), blend: r.f32() });
+              }
+            }
+
+            tag.entries.push(entry);
+            log.info(`    ${paneName}: ${entry.typeName} (${numKeyframes} keyframes)`);
+          }
+
+          paneAnim.tags.push(tag);
+        }
+
+        anim.panes.push(paneAnim);
+      }
+    }
+
+    r.seek(secStart + secSize);
+  }
+
+  return anim;
+}
+
+// ============================================================
+// Animation Engine
+// ============================================================
+function interpolateKeyframes(keyframes, frame) {
+  if (keyframes.length === 0) return 0;
+  if (keyframes.length === 1) return keyframes[0].value;
+
+  // Before first keyframe
+  if (frame <= keyframes[0].frame) return keyframes[0].value;
+  // After last keyframe
+  if (frame >= keyframes[keyframes.length - 1].frame) return keyframes[keyframes.length - 1].value;
+
+  // Find surrounding keyframes
+  for (let i = 0; i < keyframes.length - 1; i++) {
+    if (frame >= keyframes[i].frame && frame <= keyframes[i + 1].frame) {
+      const t = (frame - keyframes[i].frame) / (keyframes[i + 1].frame - keyframes[i].frame);
+      // Hermite interpolation (simplified)
+      const p0 = keyframes[i].value;
+      const p1 = keyframes[i + 1].value;
+      const m0 = keyframes[i].blend;
+      const m1 = keyframes[i + 1].blend;
+
+      const t2 = t * t;
+      const t3 = t2 * t;
+      return (2*t3 - 3*t2 + 1) * p0 + (t3 - 2*t2 + t) * m0 + (-2*t3 + 3*t2) * p1 + (t3 - t2) * m1;
+    }
+  }
+
+  return keyframes[keyframes.length - 1].value;
+}
+
+// ============================================================
+// Renderer
+// ============================================================
+class BannerRenderer {
+  constructor(canvas, layout, anim, textures, tplImages) {
+    this.canvas = canvas;
+    this.ctx = canvas.getContext('2d');
+    this.layout = layout;
+    this.anim = anim;
+    this.textures = textures;
+    this.tplImages = tplImages;
+    this.frame = 0;
+    this.playing = false;
+    this.animId = null;
+    this.lastTime = 0;
+    this.fps = 60;
+
+    // Pre-create ImageBitmaps for textures
+    this.textureCanvases = {};
+    this.prepareTextures();
+  }
+
+  prepareTextures() {
+    for (const [name, images] of Object.entries(this.tplImages)) {
+      if (images.length > 0) {
+        const img = images[0];
+        const c = document.createElement('canvas');
+        c.width = img.width;
+        c.height = img.height;
+        const ctx = c.getContext('2d');
+        const imgData = new ImageData(img.imageData, img.width, img.height);
+        ctx.putImageData(imgData, 0, 0);
+        this.textureCanvases[name] = c;
+      }
+    }
+  }
+
+  getTextureForPane(pane) {
+    // Try to find texture through material index
+    if (pane.materialIndex >= 0 && pane.materialIndex < this.layout.materials.length) {
+      // Materials often map 1:1 with textures by index
+      const matName = this.layout.materials[pane.materialIndex].name;
+      // Try to find by name match
+      for (const tName of this.layout.textures) {
+        if (this.textureCanvases[tName]) return this.textureCanvases[tName];
+      }
+      // Fallback: use material index as texture index
+      if (pane.materialIndex < this.layout.textures.length) {
+        const texName = this.layout.textures[pane.materialIndex];
+        if (this.textureCanvases[texName]) return this.textureCanvases[texName];
+      }
+    }
+
+    // Fallback: try matching by pane name patterns
+    const keys = Object.keys(this.textureCanvases);
+    if (keys.length > 0) {
+      // pic1 panes often index into textures
+      const paneNum = parseInt(pane.name.replace(/\D/g, '')) || 0;
+      if (paneNum < keys.length) return this.textureCanvases[keys[paneNum]];
+      return this.textureCanvases[keys[0]];
+    }
+    return null;
+  }
+
+  getAnimValues(paneName, frame) {
+    const result = {
+      transX: null, transY: null, transZ: null,
+      rotX: null, rotY: null, rotZ: null,
+      scaleX: null, scaleY: null,
+      alpha: null, visible: null,
+      width: null, height: null,
+    };
+
+    if (!this.anim) return result;
+
+    const paneAnim = this.anim.panes.find(p => p.name === paneName);
+    if (!paneAnim) return result;
+
+    for (const tag of paneAnim.tags) {
+      for (const entry of tag.entries) {
+        const val = interpolateKeyframes(entry.keyframes, frame);
+        switch (entry.type) {
+          case 0x00: result.transX = val; break;
+          case 0x01: result.transY = val; break;
+          case 0x02: result.transZ = val; break;
+          case 0x03: result.rotX = val; break;
+          case 0x04: result.rotY = val; break;
+          case 0x05: result.rotZ = val; break;
+          case 0x06: result.scaleX = val; break;
+          case 0x07: result.scaleY = val; break;
+          case 0x08: result.width = val; break;
+          case 0x09: result.height = val; break;
+          case 0x10: result.alpha = val; break;
+        }
+      }
+    }
+
+    return result;
+  }
+
+  renderFrame(frame) {
+    const ctx = this.ctx;
+    const lw = this.layout.width || this.canvas.width;
+    const lh = this.layout.height || this.canvas.height;
+
+    this.canvas.width = lw;
+    this.canvas.height = lh;
+
+    // Clear with Wii channel background
+    ctx.fillStyle = '#000';
+    ctx.fillRect(0, 0, lw, lh);
+
+    // Render panes (pic1 type only - these have textures)
+    const picPanes = this.layout.panes.filter(p => p.type === 'pic1');
+
+    for (const pane of picPanes) {
+      const tex = this.getTextureForPane(pane);
+      if (!tex) continue;
+
+      const av = this.getAnimValues(pane.name, frame);
+
+      const tx = av.transX ?? pane.translate.x;
+      const ty = av.transY ?? pane.translate.y;
+      const sx = av.scaleX ?? pane.scale.x;
+      const sy = av.scaleY ?? pane.scale.y;
+      const rz = av.rotZ ?? pane.rotate.z;
+      const alpha = av.alpha != null ? (av.alpha / 255) : (pane.visible ? 1 : 0);
+      const w = av.width ?? pane.size.w;
+      const h = av.height ?? pane.size.h;
+
+      if (alpha <= 0) continue;
+
+      ctx.save();
+      ctx.globalAlpha = Math.max(0, Math.min(1, alpha));
+
+      // Translate to center of layout + pane offset
+      ctx.translate(lw / 2 + tx, lh / 2 - ty);
+
+      // Rotate
+      if (rz !== 0) ctx.rotate(rz * Math.PI / 180);
+
+      // Scale
+      ctx.scale(sx, sy);
+
+      // Draw centered
+      ctx.drawImage(tex, -w / 2, -h / 2, w, h);
+
+      ctx.restore();
+    }
+  }
+
+  render() {
+    this.renderFrame(this.frame);
+  }
+
+  play() {
+    this.playing = true;
+    this.lastTime = performance.now();
+    const tick = (now) => {
+      if (!this.playing) return;
+      const delta = now - this.lastTime;
+      if (delta >= 1000 / this.fps) {
+        this.lastTime = now;
+        this.frame = (this.frame + 1) % (this.anim ? this.anim.frameSize || 120 : 120);
+        this.renderFrame(this.frame);
+        document.getElementById('animStatus').textContent = `Frame ${this.frame} / ${this.anim ? this.anim.frameSize : '?'}`;
+      }
+      this.animId = requestAnimationFrame(tick);
+    };
+    this.animId = requestAnimationFrame(tick);
+  }
+
+  stop() {
+    this.playing = false;
+    if (this.animId) cancelAnimationFrame(this.animId);
+  }
+
+  reset() {
+    this.frame = 0;
+    this.renderFrame(0);
+    document.getElementById('animStatus').textContent = 'Frame 0';
+  }
+}
+
+// ============================================================
+// Main Pipeline
+// ============================================================
+let bannerRenderer = null;
+let iconRenderer = null;
+
+async function processWAD(buffer) {
+  log.clear();
+  log.info('=== Parsing WAD ===');
+
+  try {
+    const wad = parseWAD(buffer);
+
+    // Show WAD info
+    document.getElementById('wadInfo').innerHTML =
+      `<span class="key">Title ID:</span> <span class="val">${wad.titleId}</span><br>` +
+      `<span class="key">WAD Type:</span> <span class="val">0x${wad.wadType.toString(16)}</span><br>` +
+      `<span class="key">Contents:</span> <span class="val">${wad.numContents} file(s)</span>`;
+
+    // Extract banner data (00000000.app)
+    const bannerApp = wad.contents['00000000.app'];
+    if (!bannerApp) {
+      log.error('No 00000000.app found in WAD');
+      return;
+    }
+
+    log.info('=== Parsing opening.bnr (00000000.app) ===');
+    const metaFiles = parseU8(bannerApp);
+
+    // Process banner.bin and icon.bin
+    const results = {};
+
+    for (const target of ['banner', 'icon']) {
+      const binKey = Object.keys(metaFiles).find(k => k.toLowerCase().includes(`${target}.bin`));
+      if (!binKey) {
+        log.warn(`${target}.bin not found`);
+        continue;
+      }
+
+      log.info(`=== Parsing ${target}.bin ===`);
+      const innerFiles = parseU8(metaFiles[binKey]);
+
+      // Find TPLs
+      const tplImages = {};
+      for (const [path, data] of Object.entries(innerFiles)) {
+        if (path.toLowerCase().endsWith('.tpl')) {
+          const name = path.split('/').pop();
+          try {
+            tplImages[name] = parseTPL(data);
+            log.success(`Decoded ${name}`);
+          } catch (e) {
+            log.error(`Failed to decode ${name}: ${e.message}`);
+          }
+        }
+      }
+
+      // Find BRLYT
+      let layout = null;
+      for (const [path, data] of Object.entries(innerFiles)) {
+        if (path.toLowerCase().endsWith('.brlyt')) {
+          log.info(`=== Parsing ${path} ===`);
+          try {
+            layout = parseBRLYT(data);
+          } catch (e) {
+            log.error(`BRLYT parse error: ${e.message}`);
+          }
+          break;
+        }
+      }
+
+      // Find BRLANs
+      let anim = null;
+      for (const [path, data] of Object.entries(innerFiles)) {
+        if (path.toLowerCase().endsWith('.brlan')) {
+          log.info(`=== Parsing ${path} ===`);
+          try {
+            const parsed = parseBRLAN(data);
+            if (!anim || path.toLowerCase().includes('loop')) {
+              anim = parsed; // prefer loop animation
+            }
+          } catch (e) {
+            log.error(`BRLAN parse error: ${e.message}`);
+          }
+        }
+      }
+
+      results[target] = { tplImages, layout, anim };
+    }
+
+    // Render banner
+    if (results.banner) {
+      const bannerCanvas = document.getElementById('bannerCanvas');
+      const layout = results.banner.layout || { textures: [], materials: [], panes: [], width: 608, height: 456 };
+
+      // If no pic1 panes found, create synthetic ones from textures
+      if (layout.panes.filter(p => p.type === 'pic1').length === 0) {
+        log.warn('No pic1 panes found, creating synthetic layout from textures');
+        const texNames = Object.keys(results.banner.tplImages);
+        for (let i = 0; i < texNames.length; i++) {
+          const imgs = results.banner.tplImages[texNames[i]];
+          if (imgs.length > 0) {
+            layout.panes.push({
+              type: 'pic1', name: `Picture_${i.toString().padStart(2, '0')}`,
+              visible: true,
+              translate: { x: 0, y: 0, z: 0 },
+              rotate: { x: 0, y: 0, z: 0 },
+              scale: { x: 1, y: 1 },
+              size: { w: imgs[0].width, h: imgs[0].height },
+              materialIndex: i,
+            });
+            if (!layout.textures.includes(texNames[i])) layout.textures.push(texNames[i]);
+          }
+        }
+      }
+
+      bannerRenderer = new BannerRenderer(bannerCanvas, layout, results.banner.anim, results.banner.tplImages, results.banner.tplImages);
+      bannerRenderer.render();
+      log.success('Banner rendered!');
+
+      // Show layout info
+      showLayoutInfo(results.banner);
+    }
+
+    // Render icon
+    if (results.icon) {
+      const iconCanvas = document.getElementById('iconCanvas');
+      const layout = results.icon.layout || { textures: [], materials: [], panes: [], width: 128, height: 128 };
+
+      if (layout.panes.filter(p => p.type === 'pic1').length === 0) {
+        const texNames = Object.keys(results.icon.tplImages);
+        for (let i = 0; i < texNames.length; i++) {
+          const imgs = results.icon.tplImages[texNames[i]];
+          if (imgs.length > 0) {
+            layout.panes.push({
+              type: 'pic1', name: `Picture_${i.toString().padStart(2, '0')}`,
+              visible: true,
+              translate: { x: 0, y: 0, z: 0 },
+              rotate: { x: 0, y: 0, z: 0 },
+              scale: { x: 1, y: 1 },
+              size: { w: imgs[0].width, h: imgs[0].height },
+              materialIndex: i,
+            });
+            if (!layout.textures.includes(texNames[i])) layout.textures.push(texNames[i]);
+          }
+        }
+      }
+
+      iconRenderer = new BannerRenderer(iconCanvas, layout, results.icon.anim, results.icon.tplImages, results.icon.tplImages);
+      iconRenderer.render();
+      log.success('Icon rendered!');
+    }
+
+    // Show textures
+    showTextures('bannerTextures', results.banner?.tplImages || {});
+    showTextures('iconTextures', results.icon?.tplImages || {});
+
+    // Show UI
+    document.getElementById('renderArea').classList.add('visible');
+    log.success('=== Done! ===');
+
+  } catch (e) {
+    log.error(`Fatal: ${e.message}`);
+    console.error(e);
+  }
+}
+
+function showTextures(containerId, tplImages) {
+  const container = document.getElementById(containerId);
+  container.innerHTML = '';
+  for (const [name, images] of Object.entries(tplImages)) {
+    for (let i = 0; i < images.length; i++) {
+      const img = images[i];
+      const card = document.createElement('div');
+      card.className = 'texture-card';
+
+      const c = document.createElement('canvas');
+      c.width = img.width;
+      c.height = img.height;
+      c.style.maxWidth = '120px';
+      c.style.height = 'auto';
+      const ctx = c.getContext('2d');
+      const imgData = new ImageData(img.imageData, img.width, img.height);
+      ctx.putImageData(imgData, 0, 0);
+
+      const nameEl = document.createElement('div');
+      nameEl.className = 'name';
+      nameEl.textContent = name;
+
+      const dims = document.createElement('div');
+      dims.className = 'dims';
+      dims.textContent = `${img.width}×${img.height} ${TPL_FORMATS[img.format] || '?'}`;
+
+      card.appendChild(c);
+      card.appendChild(nameEl);
+      card.appendChild(dims);
+      container.appendChild(card);
+    }
+  }
+}
+
+function showLayoutInfo(data) {
+  const layoutEl = document.getElementById('layoutInfo');
+  const animEl = document.getElementById('animInfo');
+
+  if (data.layout) {
+    const l = data.layout;
+    let html = `<span class="key">Layout size:</span> <span class="val">${l.width}×${l.height}</span><br>`;
+    html += `<span class="key">Textures:</span> <span class="val">${l.textures.join(', ') || 'none'}</span><br>`;
+    html += `<span class="key">Materials:</span> <span class="val">${l.materials.map(m=>m.name).join(', ') || 'none'}</span><br><br>`;
+
+    for (const p of l.panes) {
+      html += `<span class="key">[${p.type}]</span> <span class="val">${p.name}</span> `;
+      html += `pos(${p.translate.x.toFixed(1)}, ${p.translate.y.toFixed(1)}) `;
+      html += `scale(${p.scale.x.toFixed(2)}, ${p.scale.y.toFixed(2)}) `;
+      html += `size(${p.size.w.toFixed(0)}×${p.size.h.toFixed(0)})`;
+      if (p.materialIndex >= 0) html += ` mat=${p.materialIndex}`;
+      html += '<br>';
+    }
+    layoutEl.innerHTML = html;
+  }
+
+  if (data.anim) {
+    const a = data.anim;
+    let html = `<span class="key">Frame count:</span> <span class="val">${a.frameSize}</span><br><br>`;
+
+    for (const pane of a.panes) {
+      html += `<span class="key">Pane: ${pane.name}</span><br>`;
+      for (const tag of pane.tags) {
+        html += `  <span class="val">Tag: ${tag.type}</span><br>`;
+        for (const entry of tag.entries) {
+          html += `    ${entry.typeName}: `;
+          html += entry.keyframes.map(k => `f${k.frame.toFixed(0)}→${k.value.toFixed(2)}`).join(', ');
+          html += '<br>';
+        }
+      }
+    }
+    animEl.innerHTML = html;
+  }
+}
+
+// ============================================================
+// UI Event Handlers
+// ============================================================
+const dropZone = document.getElementById('dropZone');
+const fileInput = document.getElementById('fileInput');
+
+dropZone.addEventListener('click', () => fileInput.click());
+
+dropZone.addEventListener('dragover', (e) => {
+  e.preventDefault();
+  dropZone.classList.add('dragover');
+});
+
+dropZone.addEventListener('dragleave', () => dropZone.classList.remove('dragover'));
+
+dropZone.addEventListener('drop', (e) => {
+  e.preventDefault();
+  dropZone.classList.remove('dragover');
+  const file = e.dataTransfer.files[0];
+  if (file) loadFile(file);
+});
+
+fileInput.addEventListener('change', (e) => {
+  if (e.target.files[0]) loadFile(e.target.files[0]);
+});
+
+function loadFile(file) {
+  dropZone.querySelector('h3').textContent = `Loading: ${file.name}`;
+  const reader = new FileReader();
+  reader.onload = (e) => {
+    dropZone.querySelector('h3').textContent = `Loaded: ${file.name}`;
+    processWAD(e.target.result);
+  };
+  reader.readAsArrayBuffer(file);
+}
+
+// Tabs
+document.querySelectorAll('.tab').forEach(tab => {
+  tab.addEventListener('click', () => {
+    document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
+    document.querySelectorAll('.tab-content').forEach(t => t.classList.remove('active'));
+    tab.classList.add('active');
+    document.getElementById('tab-' + tab.dataset.tab).classList.add('active');
+  });
+});
+
+// Play/Pause
+document.getElementById('btnPlayPause').addEventListener('click', () => {
+  const btn = document.getElementById('btnPlayPause');
+  if (bannerRenderer?.playing) {
+    bannerRenderer.stop();
+    iconRenderer?.stop();
+    btn.textContent = '▶ Play Animation';
+  } else {
+    bannerRenderer?.play();
+    iconRenderer?.play();
+    btn.textContent = '⏸ Pause';
+  }
+});
+
+document.getElementById('btnReset').addEventListener('click', () => {
+  bannerRenderer?.stop();
+  iconRenderer?.stop();
+  bannerRenderer?.reset();
+  iconRenderer?.reset();
+  document.getElementById('btnPlayPause').textContent = '▶ Play Animation';
+});
+
+// Export
+document.getElementById('btnExportBanner').addEventListener('click', () => {
+  const canvas = document.getElementById('bannerCanvas');
+  const a = document.createElement('a');
+  a.download = 'banner.png';
+  a.href = canvas.toDataURL('image/png');
+  a.click();
+});
+
+document.getElementById('btnExportIcon').addEventListener('click', () => {
+  const canvas = document.getElementById('iconCanvas');
+  const a = document.createElement('a');
+  a.download = 'icon.png';
+  a.href = canvas.toDataURL('image/png');
+  a.click();
+});
+</script>
+</body>
+</html>

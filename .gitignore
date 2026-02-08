@@ -1,0 +1,6 @@
+node_modules
+dist
+*.wad
+tmp-*.mjs
+customizemii-master
+.codex
