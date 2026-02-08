@@ -172,10 +172,100 @@ function suggestInitialFrame(result) {
   return 0;
 }
 
+function resolveIconViewport(layout) {
+  if (!layout) {
+    return { width: 128, height: 96 };
+  }
+
+  const picturePanes = (layout.panes ?? []).filter((pane) => pane.type === "pic1");
+
+  const explicitViewportPane =
+    picturePanes.find((pane) => /^ch\d+$/i.test(pane.name)) ??
+    picturePanes.find((pane) => /(?:^|_)(?:tv|icon|cork|frame|bg|back|base|board)(?:_|$)/i.test(pane.name));
+
+  const fallbackViewportPane = picturePanes
+    .filter((pane) => pane.visible !== false)
+    .filter((pane) => (pane.alpha ?? 255) > 0)
+    .filter((pane) => Math.abs(pane.size?.w ?? 0) >= 64 && Math.abs(pane.size?.h ?? 0) >= 32)
+    .sort((left, right) => {
+      const leftArea = Math.abs(left.size?.w ?? 0) * Math.abs(left.size?.h ?? 0);
+      const rightArea = Math.abs(right.size?.w ?? 0) * Math.abs(right.size?.h ?? 0);
+      return rightArea - leftArea;
+    })[0];
+
+  const iconPane = explicitViewportPane ?? fallbackViewportPane;
+
+  if (!iconPane) {
+    return { width: 128, height: 96 };
+  }
+
+  const width = Math.max(1, Math.round(Math.abs(iconPane.size?.w ?? 128)));
+  const height = Math.max(1, Math.round(Math.abs(iconPane.size?.h ?? 96)));
+  return { width, height };
+}
+
+function createWavBuffer(audio) {
+  if (!audio?.pcm16?.length || !Number.isFinite(audio.sampleRate) || audio.sampleRate <= 0) {
+    return null;
+  }
+
+  const channelCount = Math.max(1, audio.channelCount ?? audio.pcm16.length);
+  const frameCount = Math.min(...audio.pcm16.map((channelData) => channelData.length));
+  if (!Number.isFinite(frameCount) || frameCount <= 0) {
+    return null;
+  }
+
+  const blockAlign = channelCount * 2;
+  const byteRate = audio.sampleRate * blockAlign;
+  const dataSize = frameCount * blockAlign;
+  const buffer = new ArrayBuffer(44 + dataSize);
+  const view = new DataView(buffer);
+
+  const writeAscii = (offset, value) => {
+    for (let i = 0; i < value.length; i += 1) {
+      view.setUint8(offset + i, value.charCodeAt(i));
+    }
+  };
+
+  writeAscii(0, "RIFF");
+  view.setUint32(4, 36 + dataSize, true);
+  writeAscii(8, "WAVE");
+  writeAscii(12, "fmt ");
+  view.setUint32(16, 16, true);
+  view.setUint16(20, 1, true);
+  view.setUint16(22, channelCount, true);
+  view.setUint32(24, audio.sampleRate, true);
+  view.setUint32(28, byteRate, true);
+  view.setUint16(32, blockAlign, true);
+  view.setUint16(34, 16, true);
+  writeAscii(36, "data");
+  view.setUint32(40, dataSize, true);
+
+  let writeOffset = 44;
+  for (let frame = 0; frame < frameCount; frame += 1) {
+    for (let channel = 0; channel < channelCount; channel += 1) {
+      const channelData = audio.pcm16[channel] ?? audio.pcm16[audio.pcm16.length - 1];
+      const sample = channelData?.[frame] ?? 0;
+      view.setInt16(writeOffset, sample, true);
+      writeOffset += 2;
+    }
+  }
+
+  return buffer;
+}
+
+function formatDuration(seconds) {
+  if (!Number.isFinite(seconds) || seconds <= 0) {
+    return "0.00s";
+  }
+  return `${seconds.toFixed(2)}s`;
+}
+
 export default function App() {
   const fileInputRef = useRef(null);
   const bannerCanvasRef = useRef(null);
   const iconCanvasRef = useRef(null);
+  const audioElementRef = useRef(null);
   const bannerRendererRef = useRef(null);
   const iconRendererRef = useRef(null);
 
@@ -188,6 +278,7 @@ export default function App() {
   const [startFrameInput, setStartFrameInput] = useState("0");
   const [selectedFileName, setSelectedFileName] = useState("");
   const [parsed, setParsed] = useState(null);
+  const [audioUrl, setAudioUrl] = useState(null);
   const [logEntries, setLogEntries] = useState([]);
 
   const maxStartFrame = useMemo(() => {
@@ -219,6 +310,12 @@ export default function App() {
     iconRendererRef.current?.dispose();
     bannerRendererRef.current = null;
     iconRendererRef.current = null;
+
+    const audioElement = audioElementRef.current;
+    if (audioElement) {
+      audioElement.pause();
+      audioElement.currentTime = 0;
+    }
   }, []);
 
   const handleFile = useCallback(
@@ -264,6 +361,27 @@ export default function App() {
   );
 
   useEffect(() => {
+    const audio = parsed?.results?.audio;
+    if (!audio) {
+      setAudioUrl(null);
+      return undefined;
+    }
+
+    const wavBuffer = createWavBuffer(audio);
+    if (!wavBuffer) {
+      setAudioUrl(null);
+      return undefined;
+    }
+
+    const nextAudioUrl = URL.createObjectURL(new Blob([wavBuffer], { type: "audio/wav" }));
+    setAudioUrl(nextAudioUrl);
+
+    return () => {
+      URL.revokeObjectURL(nextAudioUrl);
+    };
+  }, [parsed]);
+
+  useEffect(() => {
     stopRenderers();
     setIsPlaying(false);
 
@@ -297,9 +415,15 @@ export default function App() {
     }
 
     if (iconResult && iconCanvasRef.current) {
+      const iconViewport = resolveIconViewport(iconResult.renderLayout);
+      const iconLayout = {
+        ...iconResult.renderLayout,
+        width: iconViewport.width,
+        height: iconViewport.height,
+      };
       const iconRenderer = new BannerRenderer(
         iconCanvasRef.current,
-        iconResult.renderLayout,
+        iconLayout,
         iconResult.anim,
         iconResult.tplImages,
         {
@@ -318,12 +442,17 @@ export default function App() {
   useEffect(() => {
     const bannerRenderer = bannerRendererRef.current;
     const iconRenderer = iconRendererRef.current;
-    if (!bannerRenderer && !iconRenderer) {
+    const audioElement = audioElementRef.current;
+    if (!bannerRenderer && !iconRenderer && !audioElement) {
       return;
     }
 
     bannerRenderer?.setStartFrame(startFrame);
     iconRenderer?.setStartFrame(startFrame);
+    if (audioElement) {
+      audioElement.pause();
+      audioElement.currentTime = 0;
+    }
     setIsPlaying(false);
   }, [startFrame]);
 
@@ -338,34 +467,58 @@ export default function App() {
 
   const layoutInfo = useMemo(() => formatLayoutInfo(parsed?.results.banner?.layout), [parsed]);
   const animationInfo = useMemo(() => formatAnimationInfo(parsed?.results.banner?.anim), [parsed]);
+  const audioInfo = useMemo(() => {
+    const audio = parsed?.results?.audio;
+    if (!audio) {
+      return "No channel audio decoded.";
+    }
+
+    const loopText = audio.loopFlag ? `loop starts at sample ${audio.loopStart}` : "no loop";
+    return `${audio.channelCount} channel(s), ${audio.sampleRate} Hz, ${audio.sampleCount} samples, ${formatDuration(audio.durationSeconds)}, ${loopText}`;
+  }, [parsed]);
 
   const showRenderArea = Boolean(parsed || logEntries.length > 0);
 
   const togglePlayback = useCallback(() => {
     const bannerRenderer = bannerRendererRef.current;
     const iconRenderer = iconRendererRef.current;
+    const audioElement = audioElementRef.current;
 
-    if (!bannerRenderer && !iconRenderer) {
+    if (!bannerRenderer && !iconRenderer && !audioElement) {
       return;
     }
 
     if (isPlaying) {
       bannerRenderer?.stop();
       iconRenderer?.stop();
+      audioElement?.pause();
       setIsPlaying(false);
       return;
     }
 
     bannerRenderer?.play();
     iconRenderer?.play();
+    if (audioElement && audioUrl) {
+      const playPromise = audioElement.play();
+      if (typeof playPromise?.catch === "function") {
+        playPromise.catch(() => {});
+      }
+    }
     setIsPlaying(true);
-  }, [isPlaying]);
+  }, [audioUrl, isPlaying]);
 
   const resetPlayback = useCallback(() => {
     bannerRendererRef.current?.stop();
     iconRendererRef.current?.stop();
     bannerRendererRef.current?.reset();
     iconRendererRef.current?.reset();
+
+    const audioElement = audioElementRef.current;
+    if (audioElement) {
+      audioElement.pause();
+      audioElement.currentTime = 0;
+    }
+
     setIsPlaying(false);
   }, []);
 
@@ -523,6 +676,21 @@ export default function App() {
                   <span className="frame-settings-range">0-{maxStartFrame}</span>
                 </div>
                 <div className="anim-status">{animStatus}</div>
+
+                <div className="audio-section">
+                  <label>Channel Audio</label>
+                  {audioUrl ? (
+                    <audio
+                      ref={audioElementRef}
+                      controls
+                      loop={parsed?.results?.audio?.loopFlag ?? false}
+                      src={audioUrl}
+                    />
+                  ) : (
+                    <div className="empty-state">No channel audio decoded.</div>
+                  )}
+                  <div className="audio-meta">{audioInfo}</div>
+                </div>
               </div>
 
               <div className="info-panel">

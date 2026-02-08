@@ -1,6 +1,7 @@
 export {
   ANIM_TYPES,
   TPL_FORMATS,
+  parseBNS,
   parseBRLAN,
   parseBRLYT,
   parseTPL,

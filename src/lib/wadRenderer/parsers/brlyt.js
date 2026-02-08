@@ -1,5 +1,32 @@
 import { BinaryReader, withLogger } from "../shared/index";
 
+function decodeUtf16BeString(view, start, end) {
+  if (start < 0 || start >= end) {
+    return "";
+  }
+
+  const chars = [];
+  let cursor = start;
+  while (cursor + 1 < end) {
+    const code = view.getUint16(cursor, false);
+    if (code === 0) {
+      break;
+    }
+    chars.push(code);
+    cursor += 2;
+  }
+
+  if (chars.length === 0) {
+    return "";
+  }
+
+  let value = "";
+  for (const code of chars) {
+    value += String.fromCharCode(code);
+  }
+  return value;
+}
+
 export function parseBRLYT(buffer, loggerInput) {
   const logger = withLogger(loggerInput);
   const reader = new BinaryReader(buffer);
@@ -17,6 +44,7 @@ export function parseBRLYT(buffer, loggerInput) {
 
   const layout = {
     textures: [],
+    fonts: [],
     materials: [],
     panes: [],
     groups: [],
@@ -59,6 +87,26 @@ export function parseBRLYT(buffer, loggerInput) {
           const textureName = nameReader.nullString();
           layout.textures.push(textureName);
           logger.info(`  Texture ref: ${textureName}`);
+        }
+        break;
+      }
+
+      case "fnl1": {
+        const numFonts = reader.u16();
+        reader.skip(2);
+
+        const offsets = [];
+        for (let i = 0; i < numFonts; i += 1) {
+          offsets.push(reader.u32());
+          reader.skip(4);
+        }
+
+        const stringBase = sectionStart + 12;
+        for (const offset of offsets) {
+          const nameReader = new BinaryReader(buffer, stringBase + offset);
+          const fontName = nameReader.nullString();
+          layout.fonts.push(fontName);
+          logger.info(`  Font ref: ${fontName}`);
         }
         break;
       }
@@ -219,6 +267,67 @@ export function parseBRLYT(buffer, loggerInput) {
               bl: { s: reader.f32(), t: reader.f32() },
               br: { s: reader.f32(), t: reader.f32() },
             });
+          }
+        } else if (sectionMagic === "txt1") {
+          // txt1 extends pan1 with text metadata and UTF-16BE payload.
+          // Field order (big-endian):
+          // +0  u16 textBufferBytes
+          // +2  u16 textLengthBytes
+          // +4  u16 material index
+          // +6  u16 font index
+          // +8  u8  text alignment/position flags
+          // +9  u8  text line alignment
+          // +10 u16 reserved
+          // +12 u32 text offset (relative to section start)
+          // +16 RGBA top color
+          // +20 RGBA bottom color
+          // +24 f32 font size x
+          // +28 f32 font size y
+          // +32 f32 char spacing
+          // +36 f32 line spacing
+          const txtBase = sectionStart + 8 + 68;
+          const sectionEnd = sectionStart + sectionSize;
+
+          if (txtBase + 40 <= sectionEnd) {
+            pane.textBufferBytes = reader.view.getUint16(txtBase, false);
+            pane.textLengthBytes = reader.view.getUint16(txtBase + 2, false);
+            pane.materialIndex = reader.view.getUint16(txtBase + 4, false);
+            pane.fontIndex = reader.view.getUint16(txtBase + 6, false);
+            pane.textPositionFlags = reader.view.getUint8(txtBase + 8);
+            pane.textAlignment = reader.view.getUint8(txtBase + 9);
+
+            const textOffset = reader.view.getUint32(txtBase + 12, false);
+            pane.textOffset = textOffset;
+            pane.textTopColor = {
+              r: reader.view.getUint8(txtBase + 16),
+              g: reader.view.getUint8(txtBase + 17),
+              b: reader.view.getUint8(txtBase + 18),
+              a: reader.view.getUint8(txtBase + 19),
+            };
+            pane.textBottomColor = {
+              r: reader.view.getUint8(txtBase + 20),
+              g: reader.view.getUint8(txtBase + 21),
+              b: reader.view.getUint8(txtBase + 22),
+              a: reader.view.getUint8(txtBase + 23),
+            };
+            pane.textSize = {
+              x: reader.view.getFloat32(txtBase + 24, false),
+              y: reader.view.getFloat32(txtBase + 28, false),
+            };
+            pane.charSpacing = reader.view.getFloat32(txtBase + 32, false);
+            pane.lineSpacing = reader.view.getFloat32(txtBase + 36, false);
+
+            const textStart = sectionStart + textOffset;
+            const textEnd = Math.min(sectionEnd, textStart + Math.max(0, pane.textBufferBytes));
+            if (textStart >= sectionStart && textStart < sectionEnd && textEnd > textStart) {
+              pane.text = decodeUtf16BeString(reader.view, textStart, textEnd);
+            } else {
+              pane.text = "";
+            }
+
+            if (pane.fontIndex >= 0 && pane.fontIndex < layout.fonts.length) {
+              pane.fontName = layout.fonts[pane.fontIndex];
+            }
           }
         }
 

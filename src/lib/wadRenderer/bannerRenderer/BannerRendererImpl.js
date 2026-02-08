@@ -37,7 +37,9 @@ export class BannerRenderer {
     this.gsapDriver = { frame: 0 };
     this.patternTextureCache = new Map();
     this.textureMaskCache = new Map();
+    this.lumaAlphaTextureCache = new Map();
     this.vertexColorModulationCache = new WeakMap();
+    this.materialColorModulationCache = new WeakMap();
     this.paneCompositeSurface = null;
     this.paneCompositeContext = null;
 

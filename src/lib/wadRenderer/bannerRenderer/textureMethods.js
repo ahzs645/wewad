@@ -23,6 +23,41 @@ export function getTextureFormat(textureName) {
   return this.textureFormats[textureName] ?? null;
 }
 
+export function getLumaAlphaTexture(textureName) {
+  const key = `${textureName}|luma-alpha`;
+  const cached = this.lumaAlphaTextureCache.get(key);
+  if (cached) {
+    return cached;
+  }
+
+  const source = this.textureCanvases[textureName];
+  if (!source) {
+    return null;
+  }
+
+  const width = source.width;
+  const height = source.height;
+  const canvas = document.createElement("canvas");
+  canvas.width = width;
+  canvas.height = height;
+  const context = canvas.getContext("2d");
+  context.drawImage(source, 0, 0);
+
+  const imageData = context.getImageData(0, 0, width, height);
+  const out = imageData.data;
+  for (let i = 0; i < out.length; i += 4) {
+    const alpha = Math.max(out[i], out[i + 1], out[i + 2]);
+    out[i] = 255;
+    out[i + 1] = 255;
+    out[i + 2] = 255;
+    out[i + 3] = alpha;
+  }
+
+  context.putImageData(imageData, 0, 0);
+  this.lumaAlphaTextureCache.set(key, canvas);
+  return canvas;
+}
+
 export function getMaskedTexture(baseTextureName, maskTextureName) {
   const key = `${baseTextureName}|${maskTextureName}`;
   const cached = this.textureMaskCache.get(key);
@@ -76,6 +111,7 @@ export function getTextureBindingForPane(pane) {
         bindings.push({
           texture: this.textureCanvases[textureName],
           textureName,
+          material,
           wrapS: textureMap.wrapS ?? 0,
           wrapT: textureMap.wrapT ?? 0,
           textureSRT: textureSRTs[mapIndex] ?? null,
@@ -126,7 +162,7 @@ export function getTextureBindingForPane(pane) {
         if (this.getTextureFormat(textureName) === 0 && isLikelyAlphaOnlyTitleMask(textureName)) {
           return null;
         }
-        return { texture: this.textureCanvases[textureName], textureName, wrapS: 0, wrapT: 0, textureSRT: null };
+        return { texture: this.textureCanvases[textureName], textureName, material, wrapS: 0, wrapT: 0, textureSRT: null };
       }
     }
   }
@@ -134,13 +170,13 @@ export function getTextureBindingForPane(pane) {
   if (pane.materialIndex >= 0 && pane.materialIndex < this.layout.textures.length) {
     const textureName = this.layout.textures[pane.materialIndex];
     if (this.textureCanvases[textureName]) {
-      return { texture: this.textureCanvases[textureName], textureName, wrapS: 0, wrapT: 0, textureSRT: null };
+      return { texture: this.textureCanvases[textureName], textureName, material: null, wrapS: 0, wrapT: 0, textureSRT: null };
     }
   }
 
   for (const textureName of this.layout.textures) {
     if (this.textureCanvases[textureName]) {
-      return { texture: this.textureCanvases[textureName], textureName, wrapS: 0, wrapT: 0, textureSRT: null };
+      return { texture: this.textureCanvases[textureName], textureName, material: null, wrapS: 0, wrapT: 0, textureSRT: null };
     }
   }
 
@@ -150,7 +186,7 @@ export function getTextureBindingForPane(pane) {
   }
 
   const textureName = textureKeys[0];
-  return { texture: this.textureCanvases[textureName], textureName, wrapS: 0, wrapT: 0, textureSRT: null };
+  return { texture: this.textureCanvases[textureName], textureName, material: null, wrapS: 0, wrapT: 0, textureSRT: null };
 }
 
 export function getTextureForPane(pane) {

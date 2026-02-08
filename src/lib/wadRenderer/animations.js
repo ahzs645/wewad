@@ -23,15 +23,22 @@ export function interpolateKeyframes(keyframes, frame) {
       continue;
     }
 
-    const t = (frame - left.frame) / (right.frame - left.frame);
+    const span = right.frame - left.frame;
+    if (Math.abs(span) < 1e-6) {
+      return right.value;
+    }
+
+    const t = (frame - left.frame) / span;
     const t2 = t * t;
     const t3 = t2 * t;
+    const leftTangent = left.blend * span;
+    const rightTangent = right.blend * span;
 
     return (
       (2 * t3 - 3 * t2 + 1) * left.value +
-      (t3 - 2 * t2 + t) * left.blend +
+      (t3 - 2 * t2 + t) * leftTangent +
       (-2 * t3 + 3 * t2) * right.value +
-      (t3 - t2) * right.blend
+      (t3 - t2) * rightTangent
     );
   }
 

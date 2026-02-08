@@ -7,6 +7,28 @@ function clampChannel(value, fallback = 255) {
   return Math.max(0, Math.min(255, Math.round(value)));
 }
 
+function normalizeMaterialColor(color) {
+  if (!Array.isArray(color) || color.length < 4) {
+    return null;
+  }
+
+  return {
+    r: clampChannel(color[0]),
+    g: clampChannel(color[1]),
+    b: clampChannel(color[2]),
+    a: clampChannel(color[3]),
+  };
+}
+
+function buildCssColor(color) {
+  const normalized = normalizeMaterialColor([color?.r, color?.g, color?.b, color?.a]);
+  if (!normalized) {
+    return "rgba(0, 0, 0, 1)";
+  }
+
+  return `rgba(${normalized.r}, ${normalized.g}, ${normalized.b}, ${normalized.a / 255})`;
+}
+
 function normalizePaneVertexColors(pane) {
   const rawColors = pane?.vertexColors;
   if (!Array.isArray(rawColors) || rawColors.length !== 4) {
@@ -198,6 +220,64 @@ export function getPaneVertexColorModulation(pane) {
   return modulation;
 }
 
+export function getPaneMaterialColorModulation(pane) {
+  const cached = this.materialColorModulationCache.get(pane);
+  if (cached !== undefined) {
+    return cached;
+  }
+
+  if (!Number.isInteger(pane?.materialIndex) || pane.materialIndex < 0 || pane.materialIndex >= this.layout.materials.length) {
+    this.materialColorModulationCache.set(pane, null);
+    return null;
+  }
+
+  const material = this.layout.materials[pane.materialIndex];
+  const color = normalizeMaterialColor(material?.color2);
+  if (!color) {
+    this.materialColorModulationCache.set(pane, null);
+    return null;
+  }
+
+  const hasColorTint = color.r !== 255 || color.g !== 255 || color.b !== 255;
+  const hasAlphaTint = color.a !== 255;
+  if (!hasColorTint && !hasAlphaTint) {
+    this.materialColorModulationCache.set(pane, null);
+    return null;
+  }
+
+  const modulation = { ...color, hasColorTint, hasAlphaTint };
+  this.materialColorModulationCache.set(pane, modulation);
+  return modulation;
+}
+
+export function applyPaneMaterialColorModulation(context, pane, width, height) {
+  const modulation = this.getPaneMaterialColorModulation(pane);
+  if (!modulation) {
+    return;
+  }
+
+  const x = -width / 2;
+  const y = -height / 2;
+
+  if (modulation.hasColorTint) {
+    context.save();
+    context.globalAlpha = 1;
+    context.globalCompositeOperation = "multiply";
+    context.fillStyle = `rgba(${modulation.r}, ${modulation.g}, ${modulation.b}, 1)`;
+    context.fillRect(x, y, width, height);
+    context.restore();
+  }
+
+  if (modulation.hasAlphaTint) {
+    context.save();
+    context.globalAlpha = 1;
+    context.globalCompositeOperation = "destination-in";
+    context.fillStyle = `rgba(255, 255, 255, ${modulation.a / 255})`;
+    context.fillRect(x, y, width, height);
+    context.restore();
+  }
+}
+
 export function applyPaneVertexColorModulation(context, pane, width, height) {
   const modulation = this.getPaneVertexColorModulation(pane);
   if (!modulation) {
@@ -222,6 +302,69 @@ export function applyPaneVertexColorModulation(context, pane, width, height) {
     context.drawImage(modulation.alphaCanvas, x, y, width, height);
     context.restore();
   }
+}
+
+export function shouldTreatPaneAsLumaMask(pane, binding) {
+  if (!pane || !binding) {
+    return false;
+  }
+
+  const paneName = String(pane.name ?? "").toLowerCase();
+  if (paneName !== "ch2") {
+    return false;
+  }
+
+  const baseTextureName = String(binding.textureName ?? "").split("|", 1)[0];
+  if (!baseTextureName) {
+    return false;
+  }
+
+  const format = this.getTextureFormat(baseTextureName);
+  if (format !== 1) {
+    return false;
+  }
+
+  const material =
+    binding.material ??
+    (Number.isInteger(pane.materialIndex) && pane.materialIndex >= 0 && pane.materialIndex < this.layout.materials.length
+      ? this.layout.materials[pane.materialIndex]
+      : null);
+  const color1 = normalizeMaterialColor(material?.color1);
+  if (!color1) {
+    return true;
+  }
+
+  return color1.a === 0 && color1.r >= 200 && color1.g >= 200 && color1.b >= 200;
+}
+
+export function drawPaneAsLumaMask(context, binding, pane, width, height) {
+  const baseTextureName = String(binding.textureName ?? "").split("|", 1)[0];
+  const maskTexture = this.getLumaAlphaTexture(baseTextureName);
+  if (!maskTexture) {
+    return false;
+  }
+
+  const maskBinding = {
+    ...binding,
+    texture: maskTexture,
+    textureName: `${baseTextureName}|luma-alpha`,
+  };
+
+  // First, clip the accumulated icon layers to the rounded luma mask.
+  context.save();
+  context.globalAlpha = 1;
+  context.globalCompositeOperation = "destination-in";
+  this.drawPaneTexture(context, maskBinding, pane, width, height);
+  context.restore();
+
+  // Then add a subtle white wash so the icon reads like Wii menu artwork.
+  context.save();
+  context.globalAlpha = 0.55;
+  context.globalCompositeOperation = "source-atop";
+  this.drawPaneTexture(context, maskBinding, pane, width, height);
+  context.restore();
+
+  return true;
 }
 
 export function getWrappedSurface(
@@ -504,8 +647,15 @@ export function drawPaneTexture(context, binding, pane, width, height) {
 }
 
 export function drawPane(context, binding, pane, width, height) {
-  const modulation = this.getPaneVertexColorModulation(pane);
-  if (!modulation) {
+  if (this.shouldTreatPaneAsLumaMask(pane, binding)) {
+    if (this.drawPaneAsLumaMask(context, binding, pane, width, height)) {
+      return;
+    }
+  }
+
+  const vertexModulation = this.getPaneVertexColorModulation(pane);
+  const materialModulation = this.getPaneMaterialColorModulation(pane);
+  if (!vertexModulation && !materialModulation) {
     this.drawPaneTexture(context, binding, pane, width, height);
     return;
   }
@@ -536,10 +686,74 @@ export function drawPane(context, binding, pane, width, height) {
   paneContext.save();
   paneContext.translate(surfaceWidth / 2, surfaceHeight / 2);
   this.drawPaneTexture(paneContext, binding, pane, surfaceWidth, surfaceHeight);
+  this.applyPaneMaterialColorModulation(paneContext, pane, surfaceWidth, surfaceHeight);
   this.applyPaneVertexColorModulation(paneContext, pane, surfaceWidth, surfaceHeight);
   paneContext.restore();
 
   context.drawImage(this.paneCompositeSurface, -width / 2, -height / 2, width, height);
+}
+
+export function drawTextPane(context, pane, width, height) {
+  const rawText = typeof pane?.text === "string" ? pane.text : "";
+  if (rawText.length === 0) {
+    return;
+  }
+
+  const absWidth = Math.abs(width);
+  const absHeight = Math.abs(height);
+  if (absWidth < 1e-6 || absHeight < 1e-6) {
+    return;
+  }
+
+  const lines = rawText.replace(/\r/g, "").split("\n");
+  if (lines.length === 0) {
+    return;
+  }
+
+  const fontSize = Math.max(1, Number.isFinite(pane?.textSize?.y) ? pane.textSize.y : absHeight * 0.45);
+  const lineSpacing = Number.isFinite(pane?.lineSpacing) ? pane.lineSpacing : 0;
+  const lineHeight = Math.max(1, fontSize + lineSpacing);
+  const contentHeight = lineHeight * lines.length;
+
+  let textAlign = "left";
+  if (pane?.textAlignment === 1) {
+    textAlign = "center";
+  } else if (pane?.textAlignment === 2) {
+    textAlign = "right";
+  }
+
+  const boxLeft = -width / 2;
+  const boxTop = -height / 2;
+  const textX = textAlign === "center" ? 0 : textAlign === "right" ? width / 2 : boxLeft;
+  const textY = boxTop + Math.max(0, (height - contentHeight) / 2);
+
+  const topColor = pane?.textTopColor ?? { r: 32, g: 32, b: 32, a: 255 };
+  const bottomColor = pane?.textBottomColor ?? topColor;
+
+  context.save();
+  context.textBaseline = "top";
+  context.textAlign = textAlign;
+  context.font = `${fontSize}px sans-serif`;
+
+  const sameColor =
+    topColor.r === bottomColor.r &&
+    topColor.g === bottomColor.g &&
+    topColor.b === bottomColor.b &&
+    topColor.a === bottomColor.a;
+
+  if (sameColor) {
+    context.fillStyle = buildCssColor(topColor);
+  } else {
+    const gradient = context.createLinearGradient(0, boxTop, 0, boxTop + height);
+    gradient.addColorStop(0, buildCssColor(topColor));
+    gradient.addColorStop(1, buildCssColor(bottomColor));
+    context.fillStyle = gradient;
+  }
+
+  for (let i = 0; i < lines.length; i += 1) {
+    context.fillText(lines[i], textX, textY + i * lineHeight, absWidth);
+  }
+  context.restore();
 }
 
 export function renderFrame(frame) {
@@ -570,15 +784,10 @@ export function renderFrame(frame) {
     localPaneStates.set(pane, this.getLocalPaneState(pane, frame));
   }
 
-  const picturePanes = this.layout.panes.filter((pane) => pane.type === "pic1");
+  const renderablePanes = this.layout.panes.filter((pane) => pane.type === "pic1" || pane.type === "txt1");
 
-  for (const pane of picturePanes) {
+  for (const pane of renderablePanes) {
     if (!this.shouldRenderPaneForLocale(pane)) {
-      continue;
-    }
-
-    const binding = this.getTextureBindingForPane(pane);
-    if (!binding) {
       continue;
     }
 
@@ -617,7 +826,18 @@ export function renderFrame(frame) {
     }
 
     context.globalAlpha = Math.max(0, Math.min(1, alpha));
-    this.drawPane(context, binding, pane, paneState.width, paneState.height);
+
+    if (pane.type === "pic1") {
+      const binding = this.getTextureBindingForPane(pane);
+      if (!binding) {
+        context.restore();
+        continue;
+      }
+      this.drawPane(context, binding, pane, paneState.width, paneState.height);
+    } else if (pane.type === "txt1") {
+      this.drawTextPane(context, pane, paneState.width, paneState.height);
+    }
+
     context.restore();
   }
 }
@@ -691,6 +911,8 @@ export function dispose() {
   }
   this.patternTextureCache.clear();
   this.textureMaskCache.clear();
+  this.lumaAlphaTextureCache.clear();
+  this.materialColorModulationCache = new WeakMap();
   this.vertexColorModulationCache = new WeakMap();
   this.paneCompositeSurface = null;
   this.paneCompositeContext = null;

@@ -3,7 +3,7 @@ import { withLogger } from "../shared/index";
 import { tryFindBannerArchiveByTmdIndex, tryFindMetaArchive } from "./archiveSelection";
 import { decryptWadContents } from "./decryption";
 import { createRenderableLayout } from "./layout";
-import { extractTargetResources } from "./resourceExtraction";
+import { extractChannelAudio, extractTargetResources } from "./resourceExtraction";
 
 export async function processWAD(buffer, loggerInput) {
   const logger = withLogger(loggerInput);
@@ -40,6 +40,10 @@ export async function processWAD(buffer, loggerInput) {
   const metaFiles = metaArchive.files;
 
   const results = {};
+  const channelAudio = extractChannelAudio(metaFiles, logger);
+  if (channelAudio) {
+    results.audio = channelAudio;
+  }
 
   for (const target of ["banner", "icon"]) {
     const parsedTarget = extractTargetResources(metaFiles, target, logger);

@@ -272,6 +272,32 @@ button.primary:hover {
   font-size: 0.8rem;
 }
 
+.audio-section {
+  margin-top: 16px;
+  text-align: center;
+}
+
+.audio-section label {
+  display: block;
+  margin-bottom: 8px;
+  color: var(--text-secondary);
+  font-size: 0.8rem;
+  font-weight: 600;
+  letter-spacing: 1.2px;
+  text-transform: uppercase;
+}
+
+.audio-section audio {
+  width: min(520px, 100%);
+}
+
+.audio-meta {
+  margin-top: 8px;
+  color: var(--text-secondary);
+  font-family: "JetBrains Mono", monospace;
+  font-size: 0.72rem;
+}
+
 .tab-bar {
   display: flex;
   gap: 4px;

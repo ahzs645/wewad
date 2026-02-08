@@ -1,4 +1,4 @@
-import { parseBRLAN, parseBRLYT, parseTPL, parseU8 } from "../parsers/index";
+import { parseBNS, parseBRLAN, parseBRLYT, parseTPL, parseU8 } from "../parsers/index";
 import { NOOP_LOGGER, withLogger } from "../shared/index";
 
 function parseResourceSet(files, loggerInput) {
@@ -178,4 +178,23 @@ export function extractTargetResources(metaFiles, target, loggerInput) {
   }
 
   return parseResourceSet(sourceFiles, logger);
+}
+
+export function extractChannelAudio(metaFiles, loggerInput) {
+  const logger = withLogger(loggerInput);
+  const soundEntry = Object.entries(metaFiles).find(([path]) => path.toLowerCase().endsWith("sound.bin"));
+  if (!soundEntry) {
+    logger.info("sound.bin not found");
+    return null;
+  }
+
+  const [soundPath, soundData] = soundEntry;
+  logger.info(`=== Parsing ${soundPath} ===`);
+
+  try {
+    return parseBNS(soundData, logger);
+  } catch (error) {
+    logger.warn(`Failed to parse ${soundPath}: ${error.message}`);
+    return null;
+  }
 }
