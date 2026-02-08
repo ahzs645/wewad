@@ -337,9 +337,28 @@ export function shouldTreatPaneAsLumaMask(pane, binding) {
   return color1.a === 0 && color1.r >= 200 && color1.g >= 200 && color1.b >= 200;
 }
 
+export function shouldTreatPaneAsLumaOverlay(pane, binding) {
+  if (!pane || !binding) {
+    return false;
+  }
+
+  const paneName = String(pane.name ?? "").toLowerCase();
+  if (paneName !== "tvline_00" && paneName !== "logobg") {
+    return false;
+  }
+
+  const baseTextureName = String(binding.textureName ?? "").split("|", 1)[0];
+  if (!baseTextureName) {
+    return false;
+  }
+
+  const format = this.getTextureFormat(baseTextureName);
+  return format === 0;
+}
+
 export function drawPaneAsLumaMask(context, binding, pane, width, height) {
   const baseTextureName = String(binding.textureName ?? "").split("|", 1)[0];
-  const maskTexture = this.getLumaAlphaTexture(baseTextureName);
+  const maskTexture = this.getLumaAlphaTexture(baseTextureName, { mode: "binary" });
   if (!maskTexture) {
     return false;
   }
@@ -359,11 +378,27 @@ export function drawPaneAsLumaMask(context, binding, pane, width, height) {
 
   // Then add a subtle white wash so the icon reads like Wii menu artwork.
   context.save();
-  context.globalAlpha = 0.55;
+  context.globalAlpha = 0.45;
   context.globalCompositeOperation = "source-atop";
   this.drawPaneTexture(context, maskBinding, pane, width, height);
   context.restore();
 
+  return true;
+}
+
+export function drawPaneAsLumaOverlay(context, binding, pane, width, height) {
+  const baseTextureName = String(binding.textureName ?? "").split("|", 1)[0];
+  const overlayTexture = this.getLumaAlphaTexture(baseTextureName, { mode: "linear" });
+  if (!overlayTexture) {
+    return false;
+  }
+
+  const overlayBinding = {
+    ...binding,
+    texture: overlayTexture,
+    textureName: `${baseTextureName}|luma-overlay`,
+  };
+  this.drawPaneTexture(context, overlayBinding, pane, width, height);
   return true;
 }
 
@@ -649,6 +684,12 @@ export function drawPaneTexture(context, binding, pane, width, height) {
 export function drawPane(context, binding, pane, width, height) {
   if (this.shouldTreatPaneAsLumaMask(pane, binding)) {
     if (this.drawPaneAsLumaMask(context, binding, pane, width, height)) {
+      return;
+    }
+  }
+
+  if (this.shouldTreatPaneAsLumaOverlay(pane, binding)) {
+    if (this.drawPaneAsLumaOverlay(context, binding, pane, width, height)) {
       return;
     }
   }

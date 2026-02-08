@@ -23,8 +23,9 @@ export function getTextureFormat(textureName) {
   return this.textureFormats[textureName] ?? null;
 }
 
-export function getLumaAlphaTexture(textureName) {
-  const key = `${textureName}|luma-alpha`;
+export function getLumaAlphaTexture(textureName, options = {}) {
+  const mode = options.mode ?? "threshold";
+  const key = `${textureName}|luma-alpha|${mode}`;
   const cached = this.lumaAlphaTextureCache.get(key);
   if (cached) {
     return cached;
@@ -45,8 +46,32 @@ export function getLumaAlphaTexture(textureName) {
 
   const imageData = context.getImageData(0, 0, width, height);
   const out = imageData.data;
+  let maxLuma = 0;
   for (let i = 0; i < out.length; i += 4) {
-    const alpha = Math.max(out[i], out[i + 1], out[i + 2]);
+    const luma = Math.max(out[i], out[i + 1], out[i + 2]);
+    if (luma > maxLuma) {
+      maxLuma = luma;
+    }
+  }
+
+  // Different panes need different luma -> alpha behavior:
+  // - threshold: preserve soft AA edges but avoid interior dark shading (Ch2)
+  // - linear: preserve grayscale scanline/translucency patterns (logoBg/TVline)
+  // - binary: keep every non-zero texel fully opaque
+  const softEdgeLuma = Math.max(1, Math.round(maxLuma * 0.08));
+  for (let i = 0; i < out.length; i += 4) {
+    const luma = Math.max(out[i], out[i + 1], out[i + 2]);
+    let alpha;
+    if (mode === "linear") {
+      alpha = luma;
+    } else if (mode === "binary") {
+      alpha = luma > 0 ? 255 : 0;
+    } else {
+      alpha = 0;
+      if (luma > 0) {
+        alpha = luma >= softEdgeLuma ? 255 : Math.round((luma * 255) / softEdgeLuma);
+      }
+    }
     out[i] = 255;
     out[i + 1] = 255;
     out[i + 2] = 255;

@@ -285,7 +285,10 @@ function decodeTPLImage(src, width, height, format, palette, logger) {
           colors[3] = colors[0].map((value, i) => (value + 2 * colors[1][i]) / 3);
         } else {
           colors[2] = colors[0].map((value, i) => (value + colors[1][i]) / 2);
-          colors[3] = [0, 0, 0];
+          // DXT1 transparent mode defines color index 3 as fully transparent.
+          // Keeping RGB close to neighboring colors avoids dark fringes after
+          // linear filtering on the 2D canvas.
+          colors[3] = [...colors[2]];
         }
 
         const indices = [];
