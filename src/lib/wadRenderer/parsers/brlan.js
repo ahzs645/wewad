@@ -89,7 +89,6 @@ export function parseBRLAN(buffer, loggerInput) {
               dataType === 1 ? "step" :
               dataType === 2 ? "hermite" :
               "linear";
-            const shouldLoop = (animation.flags & 0x01) !== 0;
 
             const entry = {
               targetGroup,
@@ -97,8 +96,8 @@ export function parseBRLAN(buffer, loggerInput) {
               dataType,
               typeName: ANIM_TYPES[animType] ?? `0x${animType.toString(16)}`,
               interpolation,
-              preExtrapolation: shouldLoop ? "loop" : "clamp",
-              postExtrapolation: shouldLoop ? "loop" : "clamp",
+              preExtrapolation: "clamp",
+              postExtrapolation: "clamp",
               keyframes: [],
             };
 

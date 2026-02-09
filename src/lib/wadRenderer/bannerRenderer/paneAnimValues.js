@@ -102,10 +102,7 @@ export function getAnimValues(paneName, frame) {
             break;
         }
       } else if (tagType === "RLVC") {
-        const value = sampleAnimationEntryWithDataType(entry, frame, this.anim.frameSize, {
-          wrapBeforeFirst: false,
-          returnNullBeforeFirst: false,
-        });
+        const value = sampleAnimationEntryWithDataType(entry, frame, this.anim.frameSize);
         if (value == null) {
           continue;
         }
@@ -126,10 +123,7 @@ export function getAnimValues(paneName, frame) {
       } else if (tagType === "RLVI") {
         // Some channels use RLVI to hard-toggle pane visibility (0 = hidden, 1 = visible).
         if (entry.type === 0x00) {
-          const visibilityValue = sampleDiscreteAnimationEntry(entry, frame, this.anim.frameSize, {
-            wrapBeforeFirst: true,
-            returnNullBeforeFirst: false,
-          });
+          const visibilityValue = sampleDiscreteAnimationEntry(entry, frame, this.anim.frameSize);
           if (visibilityValue != null) {
             result.visible = visibilityValue >= 0.5;
           }
@@ -137,10 +131,7 @@ export function getAnimValues(paneName, frame) {
       } else if (tagType === "RLTP") {
         // Texture pattern animation: swap which texture map index is active.
         if (entry.type === 0x00) {
-          const texIdx = sampleDiscreteAnimationEntry(entry, frame, this.anim.frameSize, {
-            wrapBeforeFirst: true,
-            returnNullBeforeFirst: false,
-          });
+          const texIdx = sampleDiscreteAnimationEntry(entry, frame, this.anim.frameSize);
           if (texIdx != null) {
             result.textureIndex = Math.max(0, Math.floor(texIdx));
           }
@@ -250,9 +241,7 @@ export function getPaneMaterialAnimColor(paneName, frame) {
     }
 
     for (const entry of tag.entries ?? []) {
-      const value = sampleAnimationEntryWithDataType(entry, frame, this.anim.frameSize, {
-        wrapBeforeFirst: false,
-      });
+      const value = sampleAnimationEntryWithDataType(entry, frame, this.anim.frameSize);
       if (value == null) {
         continue;
       }

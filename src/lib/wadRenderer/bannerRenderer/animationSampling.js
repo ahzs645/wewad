@@ -6,20 +6,14 @@ export function sampleAnimationEntry(entry, frame, frameSize, options = {}) {
     return null;
   }
 
-  const wrapBeforeFirst = options.wrapBeforeFirst !== false;
-  let sampleFrame = frame;
-  const returnNullBeforeFirst = options.returnNullBeforeFirst ?? !wrapBeforeFirst;
-  if (!wrapBeforeFirst && returnNullBeforeFirst && sampleFrame < keyframes[0].frame) {
-    return null;
-  }
-  if (wrapBeforeFirst && frameSize > 0 && keyframes[0].frame >= 0 && frame < keyframes[0].frame) {
-    sampleFrame += frameSize;
-  }
+  // Match NW4R/reference behavior: always clamp to [firstKey, lastKey].
+  // Loop wrapping is handled at the playback level (normalizeFrame), not here.
+  const sampleFrame = frame;
 
   return interpolateKeyframes(keyframes, sampleFrame, {
     mode: options.mode ?? entry?.interpolation ?? "hermite",
-    preExtrapolation: options.preExtrapolation ?? entry?.preExtrapolation ?? "clamp",
-    postExtrapolation: options.postExtrapolation ?? entry?.postExtrapolation ?? "clamp",
+    preExtrapolation: "clamp",
+    postExtrapolation: "clamp",
     scaleTangents: options.scaleTangents ?? true,
   });
 }
@@ -30,15 +24,8 @@ export function sampleDiscreteAnimationEntry(entry, frame, frameSize, options = 
     return null;
   }
 
-  const wrapBeforeFirst = options.wrapBeforeFirst !== false;
-  let sampleFrame = frame;
-  const returnNullBeforeFirst = options.returnNullBeforeFirst ?? !wrapBeforeFirst;
-  if (!wrapBeforeFirst && returnNullBeforeFirst && sampleFrame < keyframes[0].frame) {
-    return null;
-  }
-  if (wrapBeforeFirst && frameSize > 0 && keyframes[0].frame >= 0 && frame < keyframes[0].frame) {
-    sampleFrame += frameSize;
-  }
+  // Match NW4R/reference behavior: clamp — use first keyframe value if before first keyframe.
+  const sampleFrame = frame;
 
   let selected = keyframes[0];
   for (const keyframe of keyframes) {

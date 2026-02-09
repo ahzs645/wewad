@@ -165,36 +165,24 @@ function findAlphaRevealFrame(animation, paneNamePattern = null) {
   return Math.min(...revealFrames);
 }
 
-function sampleAnimatedEntry(entry, frame, frameSize, options = {}) {
+function sampleAnimatedEntry(entry, frame, frameSize) {
   const keyframes = entry?.keyframes ?? [];
   if (keyframes.length === 0) {
     return null;
   }
 
-  const wrapBeforeFirst = options.wrapBeforeFirst !== false;
-  let sampleFrame = frame;
-  if (wrapBeforeFirst && frameSize > 0 && keyframes[0].frame >= 0 && frame < keyframes[0].frame) {
-    sampleFrame += frameSize;
-  }
-
-  return interpolateKeyframes(keyframes, sampleFrame);
+  return interpolateKeyframes(keyframes, frame);
 }
 
-function sampleDiscreteAnimatedEntry(entry, frame, frameSize, options = {}) {
+function sampleDiscreteAnimatedEntry(entry, frame, frameSize) {
   const keyframes = entry?.keyframes ?? [];
   if (keyframes.length === 0) {
     return null;
-  }
-
-  const wrapBeforeFirst = options.wrapBeforeFirst !== false;
-  let sampleFrame = frame;
-  if (wrapBeforeFirst && frameSize > 0 && keyframes[0].frame >= 0 && frame < keyframes[0].frame) {
-    sampleFrame += frameSize;
   }
 
   let selected = keyframes[0];
   for (const keyframe of keyframes) {
-    if (sampleFrame < keyframe.frame) {
+    if (frame < keyframe.frame) {
       break;
     }
     selected = keyframe;
@@ -263,7 +251,7 @@ function getAnimatedPaneState(pane, paneAnimation, frame, frameSize) {
     const tagType = String(tag?.type ?? "");
     for (const entry of tag.entries ?? []) {
       if (tagType === "RLPA" || !tagType) {
-        const value = sampleAnimatedEntry(entry, frame, frameSize, { wrapBeforeFirst: true });
+        const value = sampleAnimatedEntry(entry, frame, frameSize);
         if (value == null) {
           continue;
         }
@@ -290,7 +278,7 @@ function getAnimatedPaneState(pane, paneAnimation, frame, frameSize) {
         if (entry.type !== 0x10) {
           continue;
         }
-        const value = sampleAnimatedEntry(entry, frame, frameSize, { wrapBeforeFirst: false });
+        const value = sampleAnimatedEntry(entry, frame, frameSize);
         if (value != null) {
           alpha = value;
         }
@@ -298,7 +286,7 @@ function getAnimatedPaneState(pane, paneAnimation, frame, frameSize) {
         if (entry.type !== 0x00) {
           continue;
         }
-        const value = sampleDiscreteAnimatedEntry(entry, frame, frameSize, { wrapBeforeFirst: false });
+        const value = sampleDiscreteAnimatedEntry(entry, frame, frameSize);
         if (value != null) {
           visible = value >= 0.5;
         }
