@@ -577,6 +577,7 @@ export function getTextureBindingForPane(pane, paneState = null) {
       return primary;
     }
 
+    // Fallback: try textureIndices (from textureMaps) with basic single binding.
     const textureIndices = material?.textureIndices ?? [];
     for (const textureIndex of textureIndices) {
       if (textureIndex < 0 || textureIndex >= this.layout.textures.length) {
@@ -600,6 +601,7 @@ export function getTextureBindingForPane(pane, paneState = null) {
     }
   }
 
+  // Fallback: try materialIndex as texture index (legacy compatibility).
   if (pane.materialIndex >= 0 && pane.materialIndex < this.layout.textures.length) {
     const textureName = this.layout.textures[pane.materialIndex];
     if (this.textureCanvases[textureName]) {
@@ -615,6 +617,7 @@ export function getTextureBindingForPane(pane, paneState = null) {
     }
   }
 
+  // Last resort: first available texture.
   for (const textureName of this.layout.textures) {
     if (this.textureCanvases[textureName]) {
       return {
@@ -629,21 +632,7 @@ export function getTextureBindingForPane(pane, paneState = null) {
     }
   }
 
-  const textureKeys = Object.keys(this.textureCanvases);
-  if (textureKeys.length === 0) {
-    return null;
-  }
-
-  const textureName = textureKeys[0];
-  return {
-    texture: this.textureCanvases[textureName],
-    textureName,
-    material: null,
-    wrapS: 0,
-    wrapT: 0,
-    textureSRT: null,
-    texCoordIndex: 0,
-  };
+  return null;
 }
 
 export function getTextureForPane(pane) {
@@ -661,10 +650,19 @@ export function transformTexCoord(point, textureSRT) {
   const yTrans = Number.isFinite(textureSRT.yTrans) ? textureSRT.yTrans : 0;
   const rotation = Number.isFinite(textureSRT.rotation) ? textureSRT.rotation : 0;
 
-  // Match Alameda/OpenGL texture matrix order:
-  // T(0.5) * T(trans) * R(rot) * S(scale) * T(-0.5)
-  let s = point.s - 0.5;
-  let t = point.t - 0.5;
+  // Match wii-banner-player / OpenGL texture matrix order:
+  // T(0.5) * R(rot) * S(scale) * T(trans/scale - 0.5)
+  // In OpenGL this is applied as matrix multiplication right-to-left.
+  // For per-vertex math we apply left-to-right on the point:
+  //   1. offset by (trans/scale - 0.5)
+  //   2. scale
+  //   3. rotate
+  //   4. translate back by +0.5
+  const safeXScale = xScale !== 0 ? xScale : 1;
+  const safeYScale = yScale !== 0 ? yScale : 1;
+
+  let s = point.s + xTrans / safeXScale - 0.5;
+  let t = point.t + yTrans / safeYScale - 0.5;
 
   s *= xScale;
   t *= yScale;
@@ -679,8 +677,8 @@ export function transformTexCoord(point, textureSRT) {
     t = nextT;
   }
 
-  s += xTrans + 0.5;
-  t += yTrans + 0.5;
+  s += 0.5;
+  t += 0.5;
 
   return { s, t };
 }

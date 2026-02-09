@@ -263,6 +263,56 @@ export function evaluateTevStagesForPixel(stages, texSamples, rasColor, material
   };
 }
 
+// Generate the default 2-stage TEV configuration for materials with no explicit stages.
+// Reference: wii-banner-player Material.cpp:204-239
+// Stage 0: modulate texture × raster (tex * ras color, texA * rasA)
+// Stage 1: previous × raster color (prev * ras, prevA * rasA)
+export function getDefaultTevStages() {
+  return [
+    {
+      // Stage 0: output = tex × ras
+      texCoord: 0, colorChan: 0xff, texMap: 0, rasSel: 0, texSel: 0,
+      aC: CC_C0,    bC: CC_C1,    cC: CC_TEXC,  dC: CC_ZERO,
+      tevOpC: TEV_ADD, tevBiasC: 0, tevScaleC: 0, tevRegIdC: 0, clampC: 1,
+      kColorSelC: 0,
+      aA: CA_A0,    bA: CA_A1,    cA: CA_TEXA,  dA: CA_ZERO,
+      tevOpA: TEV_ADD, tevBiasA: 0, tevScaleA: 0, tevRegIdA: 0, clampA: 1,
+      kAlphaSelA: 0,
+      indTexId: 0, indBias: 0, indMtxId: 0, indWrapS: 0, indWrapT: 0,
+      indFormat: 0, indAddPrev: 0, indUtcLod: 0, indAlpha: 0,
+    },
+    {
+      // Stage 1: output = prev × ras
+      texCoord: 0, colorChan: 0xff, texMap: 0, rasSel: 0, texSel: 0,
+      aC: CC_ZERO,  bC: CC_CPREV, cC: CC_RASC,  dC: CC_ZERO,
+      tevOpC: TEV_ADD, tevBiasC: 0, tevScaleC: 0, tevRegIdC: 0, clampC: 1,
+      kColorSelC: 0,
+      aA: CA_ZERO,  bA: CA_APREV, cA: CA_RASA,  dA: CA_ZERO,
+      tevOpA: TEV_ADD, tevBiasA: 0, tevScaleA: 0, tevRegIdA: 0, clampA: 1,
+      kAlphaSelA: 0,
+      indTexId: 0, indBias: 0, indMtxId: 0, indWrapS: 0, indWrapT: 0,
+      indFormat: 0, indAddPrev: 0, indUtcLod: 0, indAlpha: 0,
+    },
+  ];
+}
+
+// Single modulate stage: output = texture × raster color.
+// Used as fallback when material needs TEV processing (e.g. alpha compare)
+// but has no explicit TEV stages defined.
+export function getModulateTevStages() {
+  return [{
+    texCoord: 0, colorChan: 0xff, texMap: 0, rasSel: 0, texSel: 0,
+    aC: CC_ZERO, bC: CC_TEXC, cC: CC_RASC, dC: CC_ZERO,
+    tevOpC: TEV_ADD, tevBiasC: 0, tevScaleC: 0, tevRegIdC: 0, clampC: 1,
+    kColorSelC: 0,
+    aA: CA_ZERO, bA: CA_TEXA, cA: CA_RASA, dA: CA_ZERO,
+    tevOpA: TEV_ADD, tevBiasA: 0, tevScaleA: 0, tevRegIdA: 0, clampA: 1,
+    kAlphaSelA: 0,
+    indTexId: 0, indBias: 0, indMtxId: 0, indWrapS: 0, indWrapT: 0,
+    indFormat: 0, indAddPrev: 0, indUtcLod: 0, indAlpha: 0,
+  }];
+}
+
 // Detect trivial identity passthrough: single stage that passes texture through unchanged.
 // Pattern: aC=ZERO, bC=ZERO, cC=ZERO, dC=TEXC, opC=ADD, biasC=0, scaleC=1
 //          aA=ZERO, bA=ZERO, cA=ZERO, dA=TEXA, opA=ADD, biasA=0, scaleA=1
@@ -302,6 +352,40 @@ export function isTevModulatePattern(stages) {
   return colorMod && alphaMod;
 }
 
+// Alpha compare conditions (GX AlphaOp).
+// 0=NEVER, 1=LESS, 2=EQUAL, 3=LEQUAL, 4=GREATER, 5=NOTEQUAL, 6=GEQUAL, 7=ALWAYS
+function alphaTestCondition(condition, value, ref) {
+  switch (condition) {
+    case 0: return false;                // NEVER
+    case 1: return value < ref;          // LESS
+    case 2: return value === ref;        // EQUAL
+    case 3: return value <= ref;         // LEQUAL
+    case 4: return value > ref;          // GREATER
+    case 5: return value !== ref;        // NOTEQUAL
+    case 6: return value >= ref;         // GEQUAL
+    case 7: return true;                 // ALWAYS
+    default: return true;
+  }
+}
+
+// Evaluate alpha compare: returns true if pixel passes, false if it should be discarded.
+// alphaCompare: { condition0, condition1, operation, value0, value1 }
+// operation: 0=AND, 1=OR, 2=XOR, 3=XNOR
+export function evaluateAlphaCompare(alphaCompare, alpha255) {
+  if (!alphaCompare) {
+    return true;
+  }
+  const pass0 = alphaTestCondition(alphaCompare.condition0, alpha255, alphaCompare.value0);
+  const pass1 = alphaTestCondition(alphaCompare.condition1, alpha255, alphaCompare.value1);
+  switch (alphaCompare.operation) {
+    case 0: return pass0 && pass1;       // AND
+    case 1: return pass0 || pass1;       // OR
+    case 2: return pass0 !== pass1;      // XOR
+    case 3: return pass0 === pass1;      // XNOR
+    default: return pass0 && pass1;
+  }
+}
+
 // Evaluate TEV pipeline for an entire pixel buffer.
 // textureImageDatas: array indexed by texMap slot, each is { data, width, height } (ImageData-like).
 // rasColorData: { data, width, height } (ImageData-like) with rasterized vertex colors.
@@ -309,6 +393,7 @@ export function isTevModulatePattern(stages) {
 export function evaluateTevPipeline(stages, material, textureImageDatas, rasColorData, width, height) {
   const kColors = material?.tevColors ?? [];
   const swapTable = material?.tevSwapTable ?? null;
+  const alphaCompare = material?.alphaCompare ?? null;
   const output = new Uint8ClampedArray(width * height * 4);
 
   for (let y = 0; y < height; y += 1) {
@@ -350,10 +435,18 @@ export function evaluateTevPipeline(stages, material, textureImageDatas, rasColo
       }
 
       const result = evaluateTevStagesForPixel(stages, texSamples, rasColor, material, kColors, swapTable);
+      const alpha255 = Math.round(result.a * 255);
+
+      // Apply alpha compare (alpha test): discard pixel if it fails.
+      if (alphaCompare && !evaluateAlphaCompare(alphaCompare, alpha255)) {
+        // Pixel discarded — leave as transparent.
+        continue;
+      }
+
       output[pixelIdx] = Math.round(result.r * 255);
       output[pixelIdx + 1] = Math.round(result.g * 255);
       output[pixelIdx + 2] = Math.round(result.b * 255);
-      output[pixelIdx + 3] = Math.round(result.a * 255);
+      output[pixelIdx + 3] = alpha255;
     }
   }
 

@@ -1,7 +1,7 @@
 import { BinaryReader, withLogger } from "../shared/index";
 import { TPL_FORMATS } from "./constants";
 
-function decodeTPLImage(src, width, height, format, palette, logger) {
+export function decodeTPLImage(src, width, height, format, palette, logger) {
   const pixels = new Uint8ClampedArray(width * height * 4);
 
   function setPixel(x, y, red, green, blue, alpha) {

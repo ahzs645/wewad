@@ -1,4 +1,4 @@
-import { parseBNS, parseBRLAN, parseBRLYT, parseTPL, parseU8 } from "../parsers/index";
+import { parseBNS, parseBRFNT, parseBRLAN, parseBRLYT, parseTPL, parseU8 } from "../parsers/index";
 import { NOOP_LOGGER, withLogger } from "../shared/index";
 
 function inferAnimationRole(filePath) {
@@ -80,6 +80,24 @@ function parseResourceSet(files, loggerInput) {
     }
   }
 
+  const parsedFonts = {};
+  for (const [filePath, data] of Object.entries(sourceFiles)) {
+    if (!filePath.toLowerCase().endsWith(".brfnt")) {
+      continue;
+    }
+
+    const baseName = filePath.split("/").pop() ?? filePath;
+    try {
+      const font = parseBRFNT(data, logger);
+      if (font) {
+        parsedFonts[baseName] = font;
+        logger.success(`Decoded font ${baseName}`);
+      }
+    } catch (error) {
+      logger.warn(`Failed to decode font ${baseName}: ${error.message}`);
+    }
+  }
+
   const brlytEntries = Object.entries(sourceFiles)
     .filter(([filePath]) => filePath.toLowerCase().endsWith(".brlyt"))
     .sort((left, right) => right[1].byteLength - left[1].byteLength);
@@ -140,6 +158,7 @@ function parseResourceSet(files, loggerInput) {
     animStart: animationStart,
     animLoop: animationLoop,
     animEntries: animationEntries,
+    fonts: parsedFonts,
   };
 }
 

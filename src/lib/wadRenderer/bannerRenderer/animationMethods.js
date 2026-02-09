@@ -29,6 +29,24 @@ export function setActiveAnim(anim, phase = this.phase) {
   this.anim = anim ?? this.loopAnim ?? this.startAnim ?? null;
   this.phase = phase;
   this.animByPaneName = this.getAnimPaneMap(this.anim);
+  this.textureSrtAnimationCache.clear();
+}
+
+export function captureStartEndState() {
+  this.frozenStartState.clear();
+  if (!this.startAnim) return;
+
+  const startFrames = this.getFrameCountForAnim(this.startAnim);
+  const finalFrame = Math.max(0, startFrames - 1);
+
+  const startPaneMap = this.getAnimPaneMap(this.startAnim);
+  for (const [paneName] of startPaneMap) {
+    this.frozenStartState.set(paneName, {
+      animValues: this.getAnimValues(paneName, finalFrame),
+      matColor: this.getPaneMaterialAnimColor(paneName, finalFrame),
+      texSrt: this.getPaneTextureSRTAnimations(paneName, finalFrame),
+    });
+  }
 }
 
 export function getFrameCountForAnim(anim) {
@@ -131,6 +149,7 @@ export function advanceFrame(deltaMs = 1000 / this.fps) {
     const nextStartFrame = this.frame + frameDelta;
     if (nextStartFrame >= startFrames) {
       if (this.loopAnim) {
+        this.captureStartEndState();
         this.setActiveAnim(this.loopAnim, "loop");
         this.applyFrame(this.loopPlaybackStartFrame);
       } else {

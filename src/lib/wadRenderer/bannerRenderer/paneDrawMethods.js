@@ -7,33 +7,80 @@ function resolveBlendCompositeOp(pane, materials) {
   }
 
   const blendMode = materials[pane.materialIndex]?.blendMode;
-  if (!blendMode || blendMode.func === 0) {
+  if (!blendMode) {
+    // Default blend mode: src=srcAlpha(4), dst=1-srcAlpha(5), func=blend(1)
+    // This is standard alpha blending → null (Canvas 2D default).
     return null;
   }
 
-  // Blend func 1 = blend calculation: (Pixel × srcFactor) + (eFB × dstFactor)
-  // Blend factor values: 0=zero, 1=one, 4=srcAlpha, 5=1-srcAlpha
+  // func=0: blending disabled → replace (overwrite destination).
+  if (blendMode.func === 0) {
+    return "copy";
+  }
+
+  // GX blend factors:
+  //   0=ZERO, 1=ONE, 2=srcColor, 3=1-srcColor,
+  //   4=srcAlpha, 5=1-srcAlpha, 6=dstAlpha, 7=1-dstAlpha
+  const src = blendMode.srcFactor & 0x7;
+  const dst = blendMode.dstFactor & 0x7;
+
+  // func=1: ADD — (pixel × srcFactor) + (dest × dstFactor)
   if (blendMode.func === 1) {
-    const src = blendMode.srcFactor;
-    const dst = blendMode.dstFactor;
-
-    // Additive: src×1 + dst×1, or src×srcAlpha + dst×1
-    if ((src === 1 && dst === 1) || (src === 4 && dst === 1)) {
-      return "lighter";
-    }
-
-    // Standard alpha blend: src×srcAlpha + dst×(1-srcAlpha) → default
+    // Standard alpha blend: src×srcAlpha + dst×(1-srcAlpha) → Canvas default
     if (src === 4 && dst === 5) {
       return null;
     }
 
-    // src×one + dst×zero = replace (no blend, just overwrite)
+    // Additive blending: src×1 + dst×1, or src×srcAlpha + dst×1
+    if ((src === 1 && dst === 1) || (src === 4 && dst === 1)) {
+      return "lighter";
+    }
+
+    // Replace: src×1 + dst×0
     if (src === 1 && dst === 0) {
       return "copy";
     }
+
+    // src×0 + dst×srcAlpha → multiply destination by source alpha
+    if (src === 0 && dst === 4) {
+      return "destination-in";
+    }
+
+    // src×dstAlpha + dst×(1-srcAlpha) — premultiplied-style
+    if (src === 6 && dst === 5) {
+      return null; // Best approximation is standard alpha blend
+    }
+
+    // src×srcAlpha + dst×srcColor — screen-like additive
+    if (src === 4 && dst === 2) {
+      return "lighter";
+    }
+
+    // src×0 + dst×1 — no-op (destination unchanged)
+    if (src === 0 && dst === 1) {
+      return null;
+    }
+
+    // src×1 + dst×(1-srcAlpha) — premultiplied alpha
+    if (src === 1 && dst === 5) {
+      return null; // Standard Canvas 2D handles premultiplied fine
+    }
+
+    // Fallback: if dst is zero, it's a replace regardless of src
+    if (dst === 0) {
+      return "copy";
+    }
+
+    // Fallback: if both contribute, closest Canvas 2D op is default compositing
+    return null;
   }
 
-  // Blend func 3 = subtract from eFB
+  // func=2: REVERSE_SUBTRACT — dest - src (GX_BM_LOGIC mapped to subtract by reference)
+  if (blendMode.func === 2) {
+    return "difference";
+  }
+
+  // func=3: SUBTRACT — dest - src
   if (blendMode.func === 3) {
     return "difference";
   }
@@ -85,6 +132,17 @@ function drawPaneWithResolvedState(renderer, context, pane, paneState, localPane
   }
 
   if (pane.type === "pic1" || pane.type === "bnd1" || pane.type === "wnd1") {
+    // Try the TEV pipeline first for materials with non-trivial TEV stages.
+    if (renderer.shouldUseTevPipeline(pane)) {
+      const tevResult = renderer.runTevPipeline(pane, paneState, paneState.width, paneState.height);
+      if (tevResult) {
+        renderer.drawTevResult(context, tevResult, paneState.width, paneState.height);
+        context.restore();
+        return;
+      }
+    }
+
+    // Fallback to Canvas 2D heuristic path.
     const binding = renderer.getTextureBindingForPane(pane, paneState);
     if (!binding) {
       context.restore();
@@ -169,6 +227,21 @@ export function drawTextPane(context, pane, width, height) {
   if (absWidth < 1e-6 || absHeight < 1e-6) {
     return;
   }
+
+  // Try bitmap font rendering if a font file is available.
+  const fontData = this.getFontForPane?.(pane);
+  if (fontData && fontData.sheets.length > 0) {
+    this.drawBitmapTextPane(context, pane, fontData, rawText, width, height);
+    return;
+  }
+
+  // Fallback: Canvas 2D fillText.
+  this.drawFillTextPane(context, pane, rawText, width, height);
+}
+
+export function drawFillTextPane(context, pane, rawText, width, height) {
+  const absWidth = Math.abs(width);
+  const absHeight = Math.abs(height);
 
   const paragraphs = rawText.replace(/\r/g, "").split("\n");
   if (paragraphs.length === 0) {

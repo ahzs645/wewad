@@ -1,9 +1,40 @@
-import { evaluateTevPipeline, isTevIdentityPassthrough, isTevModulatePattern } from "./tevEvaluator.js";
+import { evaluateTevPipeline, isTevIdentityPassthrough, isTevModulatePattern, getDefaultTevStages, getModulateTevStages } from "./tevEvaluator.js";
 import { normalizePaneVertexColors } from "./renderColorUtils.js";
 
-// Check whether a pane's material has non-trivial TEV stages that require the per-pixel pipeline.
-// Only activates for multi-texture materials where the stages reference more than one texture,
-// since single-texture materials are already handled well by the existing Canvas 2D heuristic path.
+// Resolve the effective TEV stages for a material.
+// If the material has explicit stages, use them. Otherwise, use the default 2-stage setup.
+function getEffectiveTevStages(material) {
+  const stages = material?.tevStages;
+  if (stages && stages.length > 0) {
+    return stages;
+  }
+  return getDefaultTevStages();
+}
+
+// Check whether an alpha compare setting always passes (trivial / no-op).
+function isAlphaCompareAlwaysPass(alphaCompare) {
+  if (!alphaCompare) {
+    return true;
+  }
+  const alwaysPasses = (condition, ref) => {
+    if (condition === 7) return true;             // ALWAYS
+    if (condition === 6 && ref === 0) return true; // GEQUAL 0 (alpha is always >= 0)
+    if (condition === 3 && ref === 255) return true; // LEQUAL 255 (alpha is always <= 255)
+    return false;
+  };
+  const pass0 = alwaysPasses(alphaCompare.condition0, alphaCompare.value0);
+  const pass1 = alwaysPasses(alphaCompare.condition1, alphaCompare.value1);
+  if (pass0 && pass1) return true;
+  // OR: if either always passes, combined result always passes.
+  if (alphaCompare.operation === 1 && (pass0 || pass1)) return true;
+  return false;
+}
+
+// Check whether a pane's material should use the per-pixel TEV pipeline.
+// Activates for:
+//   - Materials with explicit non-trivial TEV stages (any texture count)
+//   - Materials with non-trivial alpha compare (alpha test only runs in TEV pipeline)
+// Simple materials without alpha compare use the Canvas 2D heuristic path.
 export function shouldUseTevPipeline(pane) {
   if (!Number.isInteger(pane?.materialIndex) || pane.materialIndex < 0) {
     return false;
@@ -12,30 +43,30 @@ export function shouldUseTevPipeline(pane) {
   if (!material) {
     return false;
   }
-  const stages = material.tevStages;
-  if (!stages || stages.length === 0) {
-    return false;
-  }
-  if (isTevIdentityPassthrough(stages)) {
-    return false;
-  }
-  // Only use TEV for materials with multiple texture maps where stages reference different textures.
-  // Single-texture materials are handled correctly by the existing Canvas path.
+
+  const needsAlphaCompare = !isAlphaCompareAlwaysPass(material?.alphaCompare);
+  const explicitStages = material.tevStages;
+  const hasExplicitStages = explicitStages && explicitStages.length > 0;
   const textureMaps = material.textureMaps ?? [];
-  if (textureMaps.length <= 1) {
-    return false;
-  }
-  // Check if stages actually reference more than one distinct texture slot.
-  const referencedTexMaps = new Set();
-  for (const stage of stages) {
-    if (stage.texMap !== 0xff && stage.texMap < textureMaps.length) {
-      referencedTexMaps.add(stage.texMap);
+
+  if (hasExplicitStages) {
+    // Skip trivial identity passthrough — Canvas 2D handles it fine (unless alpha compare is needed).
+    if (isTevIdentityPassthrough(explicitStages) && !needsAlphaCompare) {
+      return false;
     }
+    // Skip common modulate pattern for single-texture — Canvas 2D handles it well (unless alpha compare is needed).
+    if (textureMaps.length <= 1 && isTevModulatePattern(explicitStages) && !needsAlphaCompare) {
+      return false;
+    }
+    return true;
   }
-  if (referencedTexMaps.size <= 1) {
-    return false;
+
+  // No explicit stages: use TEV pipeline only if alpha compare requires per-pixel processing.
+  if (needsAlphaCompare) {
+    return true;
   }
-  return true;
+
+  return false;
 }
 
 // Get all texture bindings for a pane (one per texMap slot), needed for multi-texture TEV.
@@ -179,17 +210,14 @@ export function runTevPipeline(pane, paneState, width, height) {
   }
 
   const material = this.layout?.materials?.[pane.materialIndex];
-  if (!material?.tevStages?.length) {
+  if (!material) {
     return null;
   }
 
+  // Use explicit stages; modulate fallback (tex × ras) for materials routed here only for alpha compare.
+  const stages = material.tevStages?.length > 0 ? material.tevStages : getModulateTevStages();
   const w = Math.max(1, Math.ceil(width));
   const h = Math.max(1, Math.ceil(height));
-
-  // For the common modulate pattern (tex * ras), use the fast Canvas 2D path.
-  if (isTevModulatePattern(material.tevStages)) {
-    return null; // Fall through to existing heuristic path which handles modulate well.
-  }
 
   // Get all texture bindings.
   const bindings = this.getAllTextureBindingsForPane(pane, paneState);
@@ -203,8 +231,8 @@ export function runTevPipeline(pane, paneState, width, height) {
   // Build rasterized vertex color buffer.
   const rasBuffer = buildRasterizedColorBuffer(pane, paneState, w, h);
 
-  // Run per-pixel TEV evaluation.
-  const result = evaluateTevPipeline(material.tevStages, material, textureBuffers, rasBuffer, w, h);
+  // Run per-pixel TEV evaluation with effective stages (may be default if none defined).
+  const result = evaluateTevPipeline(stages, material, textureBuffers, rasBuffer, w, h);
 
   return result;
 }

@@ -24,6 +24,48 @@ function createPartialVertexColorArray() {
   ];
 }
 
+function mergeFrozenAnimValues(renderer, paneName, result) {
+  if (renderer.phase !== "loop" || !renderer.frozenStartState?.size) {
+    return result;
+  }
+  const frozen = renderer.frozenStartState.get(paneName)?.animValues;
+  if (!frozen) {
+    return result;
+  }
+  for (const key of Object.keys(result)) {
+    if (key === "vertexColors") continue;
+    if (result[key] == null && frozen[key] != null) {
+      result[key] = frozen[key];
+    }
+  }
+  if (frozen.vertexColors && !result.vertexColors) {
+    result.vertexColors = frozen.vertexColors;
+  }
+  return result;
+}
+
+function mergeFrozenMatColor(renderer, paneName, result) {
+  if (renderer.phase !== "loop" || !renderer.frozenStartState?.size) {
+    return result;
+  }
+  const frozen = renderer.frozenStartState.get(paneName)?.matColor;
+  if (!frozen) {
+    return result;
+  }
+  const channels = ["r", "g", "b", "a"];
+  for (const slot of ["color1", "color2", "color3"]) {
+    for (const ch of channels) {
+      if (result[slot][ch] == null && frozen[slot]?.[ch] != null) {
+        result[slot][ch] = frozen[slot][ch];
+      }
+    }
+  }
+  for (const ch of channels) {
+    result[ch] = result.color2[ch] ?? result.color3[ch] ?? result.color1[ch];
+  }
+  return result;
+}
+
 export function getAnimValues(paneName, frame) {
   const result = {
     transX: null,
@@ -44,12 +86,12 @@ export function getAnimValues(paneName, frame) {
   };
 
   if (!this.anim) {
-    return result;
+    return mergeFrozenAnimValues(this, paneName, result);
   }
 
   const paneAnimation = this.animByPaneName.get(paneName);
   if (!paneAnimation) {
-    return result;
+    return mergeFrozenAnimValues(this, paneName, result);
   }
 
   for (const tag of paneAnimation.tags ?? []) {
@@ -140,11 +182,14 @@ export function getAnimValues(paneName, frame) {
     }
   }
 
-  return result;
+  return mergeFrozenAnimValues(this, paneName, result);
 }
 
 export function getPaneTextureSRTAnimations(paneName, frame) {
   if (!this.anim) {
+    if (this.phase === "loop" && this.frozenStartState?.size > 0) {
+      return this.frozenStartState.get(paneName)?.texSrt ?? null;
+    }
     return null;
   }
 
@@ -156,8 +201,11 @@ export function getPaneTextureSRTAnimations(paneName, frame) {
 
   const paneAnimation = this.animByPaneName.get(paneName);
   if (!paneAnimation) {
-    this.textureSrtAnimationCache.set(cacheKey, null);
-    return null;
+    const frozenResult = (this.phase === "loop" && this.frozenStartState?.size > 0)
+      ? (this.frozenStartState.get(paneName)?.texSrt ?? null)
+      : null;
+    this.textureSrtAnimationCache.set(cacheKey, frozenResult);
+    return frozenResult;
   }
 
   const byMapIndex = new Map();
@@ -206,7 +254,10 @@ export function getPaneTextureSRTAnimations(paneName, frame) {
     }
   }
 
-  const result = byMapIndex.size > 0 ? byMapIndex : null;
+  let result = byMapIndex.size > 0 ? byMapIndex : null;
+  if (!result && this.phase === "loop" && this.frozenStartState?.size > 0) {
+    result = this.frozenStartState.get(paneName)?.texSrt ?? null;
+  }
   this.textureSrtAnimationCache.set(cacheKey, result);
   return result;
 }
@@ -226,12 +277,12 @@ export function getPaneMaterialAnimColor(paneName, frame) {
     r: null, g: null, b: null, a: null,
   };
   if (!this.anim) {
-    return result;
+    return mergeFrozenMatColor(this, paneName, result);
   }
 
   const paneAnimation = this.animByPaneName.get(paneName);
   if (!paneAnimation) {
-    return result;
+    return mergeFrozenMatColor(this, paneName, result);
   }
 
   const channelNames = ["r", "g", "b", "a"];
@@ -258,6 +309,20 @@ export function getPaneMaterialAnimColor(paneName, frame) {
         const ch = channelNames[type - 0x10];
         if (result.color3[ch] == null) {
           result.color3[ch] = clampChannel(value);
+        }
+      }
+    }
+  }
+
+  // During loop phase, fill in missing material color values from frozen start state.
+  if (this.phase === "loop" && this.frozenStartState?.size > 0) {
+    const frozen = this.frozenStartState.get(paneName)?.matColor;
+    if (frozen) {
+      for (const slot of ["color1", "color2", "color3"]) {
+        for (const ch of channelNames) {
+          if (result[slot][ch] == null && frozen[slot]?.[ch] != null) {
+            result[slot][ch] = frozen[slot][ch];
+          }
         }
       }
     }

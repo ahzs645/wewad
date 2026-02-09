@@ -1,5 +1,6 @@
 export { ANIM_TYPES, TPL_FORMATS } from "./constants";
 export { parseBNS } from "./bns";
+export { parseBRFNT } from "./brfnt";
 export { parseBRLAN } from "./brlan";
 export { parseBRLYT } from "./brlyt";
 export { parseTPL } from "./tpl";

@@ -521,6 +521,7 @@ function createRecentIconPreview(result) {
         loopAnim: animationSelection.loopAnim ?? animationSelection.anim ?? null,
         renderState: animationSelection.renderState,
         playbackMode: animationSelection.playbackMode ?? "loop",
+        fonts: iconResult.fonts,
       },
     );
     renderer.render();
@@ -1417,6 +1418,7 @@ export default function App() {
           titleLocale: requestedLocale,
           customWeather: customWeatherData,
           displayAspect: previewDisplayAspect,
+          fonts: bannerResult.fonts,
           onFrame: (frame, total, phase) => {
             const phaseLabel = phase === "start" ? "Start" : "Loop";
             setAnimStatus(`${phaseLabel} ${Math.floor(frame)} / ${Math.max(1, Math.floor(total))}`);
@@ -1449,6 +1451,7 @@ export default function App() {
           titleLocale: requestedLocale,
           customWeather: customWeatherData,
           displayAspect: previewDisplayAspect,
+          fonts: iconResult.fonts,
         },
       );
       iconRenderer.render();

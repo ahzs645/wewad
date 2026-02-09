@@ -13,6 +13,7 @@ import * as playbackMethods from "./playbackMethods";
 import * as stateMethods from "./stateMethods";
 import * as textureMethods from "./textureMethods";
 import * as tevMethods from "./tevMethods";
+import * as fontMethods from "./fontMethods";
 
 const DEFAULT_REFERENCE_ASPECT = 4 / 3;
 
@@ -112,6 +113,10 @@ export class BannerRenderer {
     this.tevResultContext = null;
     this.tevSampleSurface = null;
     this.tevSampleContext = null;
+    this.parsedFonts = options.fonts ?? {};
+    this.fontGlyphCanvases = {};
+    this.textScratchSurface = null;
+    this.textScratchContext = null;
 
     this.textureCanvases = {};
     this.textureFormats = {};
@@ -120,6 +125,7 @@ export class BannerRenderer {
     this.paneGroupNames = new Map();
     this.animMapByAnim = new WeakMap();
     this.animByPaneName = new Map();
+    this.frozenStartState = new Map();
     this.titleLocalePreference = options.titleLocale ?? detectPreferredTitleLocale();
     this.availableTitleLocales = new Set();
     this.activeTitleLocale = null;
@@ -194,6 +200,7 @@ export class BannerRenderer {
     this.startFrame = this.normalizeFrameForPlayback(this.startFrame);
     this.frame = this.startFrame;
     this.prepareTextures();
+    this.prepareFonts();
   }
 }
 
@@ -213,4 +220,5 @@ Object.assign(
   paneDrawMethods,
   playbackMethods,
   tevMethods,
+  fontMethods,
 );
