@@ -24,4 +24,13 @@ export const ANIM_TYPES = {
   0x08: "Width",
   0x09: "Height",
   0x0a: "Alpha",
+  0x0b: "Material Alpha 0",
+  0x0c: "Tex S Translation",
+  0x0d: "Tex T Translation",
+  0x0e: "Tex Rotation",
+  0x0f: "Tex S Scale",
+  0x10: "Tex T Scale / Vertex Alpha",
+  0x11: "Material R",
+  0x12: "Material G",
+  0x13: "Material B / Material Alpha 1",
 };

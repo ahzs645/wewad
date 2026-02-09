@@ -45,14 +45,24 @@ export function getLoopPlaybackLength() {
 
 export function normalizeFrameInRange(rawFrame, startFrame, endFrame) {
   const span = Math.max(1, endFrame - startFrame);
-  const numeric = Number.isFinite(rawFrame) ? Math.floor(rawFrame) : startFrame;
+  const numeric = Number.isFinite(rawFrame) ? rawFrame : startFrame;
   return startFrame + ((((numeric - startFrame) % span) + span) % span);
 }
 
 export function normalizeFrame(rawFrame) {
   const total = this.getTotalFrames();
-  const numeric = Number.isFinite(rawFrame) ? Math.floor(rawFrame) : 0;
+  const numeric = Number.isFinite(rawFrame) ? rawFrame : 0;
   return ((numeric % total) + total) % total;
+}
+
+export function normalizeFrameForPlayback(rawFrame) {
+  if (this.playbackMode === "hold") {
+    const total = this.getTotalFrames();
+    const numeric = Number.isFinite(rawFrame) ? rawFrame : 0;
+    return Math.max(0, Math.min(total - 1, numeric));
+  }
+
+  return this.normalizeFrame(rawFrame);
 }
 
 export function applyFrame(rawFrame) {
@@ -61,12 +71,12 @@ export function applyFrame(rawFrame) {
     const loopLength = this.getLoopPlaybackLength();
     this.frame = nextFrame;
     this.renderFrame(this.frame);
-    this.onFrame(this.frame - this.loopPlaybackStartFrame, loopLength, this.phase);
+    this.onFrame(Math.max(0, this.frame - this.loopPlaybackStartFrame), loopLength, this.phase);
     return;
   }
 
   const total = this.getTotalFrames();
-  const nextFrame = this.normalizeFrame(rawFrame);
+  const nextFrame = this.normalizeFrameForPlayback(rawFrame);
   this.frame = nextFrame;
   this.renderFrame(this.frame);
   this.onFrame(this.frame, total, this.phase);
@@ -76,7 +86,7 @@ export function setStartFrame(rawFrame) {
   if (this.sequenceEnabled && this.startAnim) {
     this.setActiveAnim(this.startAnim, "start");
   }
-  const normalized = this.normalizeFrame(rawFrame);
+  const normalized = this.normalizeFrameForPlayback(rawFrame);
   this.startFrame = normalized;
   this.stop();
   if (this.gsapTimeline) {
@@ -88,11 +98,13 @@ export function setStartFrame(rawFrame) {
 }
 
 export function ensureGsapTimeline() {
-  if (this.sequenceEnabled || !this.useGsap || this.gsapTimeline) {
+  if (this.sequenceEnabled || !this.useGsap || this.playbackMode === "hold" || this.gsapTimeline) {
     return;
   }
 
   const total = this.getTotalFrames();
+  const duration = Math.max(1e-3, total / this.fps);
+  const targetFrame = this.subframePlayback ? Math.max(0, total - 1e-4) : Math.max(0, total - 1);
   this.gsapDriver.frame = this.frame;
 
   this.gsapTimeline = gsap.timeline({
@@ -105,24 +117,47 @@ export function ensureGsapTimeline() {
   });
 
   this.gsapTimeline.to(this.gsapDriver, {
-    frame: total,
-    duration: total / this.fps,
+    frame: targetFrame,
+    duration,
     ease: "none",
   });
 }
 
-export function advanceFrame() {
+export function advanceFrame(deltaMs = 1000 / this.fps) {
+  const frameDelta = this.subframePlayback ? Math.max(0, (deltaMs * this.fps) / 1000) : 1;
+
   if (this.sequenceEnabled && this.phase === "start") {
     const startFrames = this.getFrameCountForAnim(this.startAnim);
-    const nextStartFrame = this.frame + 1;
+    const nextStartFrame = this.frame + frameDelta;
     if (nextStartFrame >= startFrames) {
-      this.setActiveAnim(this.loopAnim ?? this.startAnim, "loop");
-      this.applyFrame(this.loopPlaybackStartFrame);
+      if (this.loopAnim) {
+        this.setActiveAnim(this.loopAnim, "loop");
+        this.applyFrame(this.loopPlaybackStartFrame);
+      } else {
+        this.applyFrame(Math.max(0, startFrames - 1));
+        this.stop();
+      }
       return;
     }
     this.applyFrame(nextStartFrame);
     return;
   }
 
-  this.applyFrame(this.frame + 1);
+  if (this.playbackMode === "hold") {
+    const total = this.getTotalFrames();
+    if (total <= 1) {
+      this.applyFrame(0);
+      this.stop();
+      return;
+    }
+
+    const nextFrame = Math.min(total - 1, this.frame + frameDelta);
+    this.applyFrame(nextFrame);
+    if (nextFrame >= total - 1) {
+      this.stop();
+    }
+    return;
+  }
+
+  this.applyFrame(this.frame + frameDelta);
 }

@@ -1,5 +1,19 @@
 import { isLikelyAlphaOnlyTitleMask } from "./locale";
 
+function mergeTextureSRT(base, animated) {
+  if (!base && !animated) {
+    return null;
+  }
+
+  return {
+    xTrans: Number.isFinite(animated?.xTrans) ? animated.xTrans : base?.xTrans ?? 0,
+    yTrans: Number.isFinite(animated?.yTrans) ? animated.yTrans : base?.yTrans ?? 0,
+    rotation: Number.isFinite(animated?.rotation) ? animated.rotation : base?.rotation ?? 0,
+    xScale: Number.isFinite(animated?.xScale) ? animated.xScale : base?.xScale ?? 1,
+    yScale: Number.isFinite(animated?.yScale) ? animated.yScale : base?.yScale ?? 1,
+  };
+}
+
 export function prepareTextures() {
   for (const [name, images] of Object.entries(this.tplImages)) {
     if (!images.length) {
@@ -25,7 +39,8 @@ export function getTextureFormat(textureName) {
 
 export function getLumaAlphaTexture(textureName, options = {}) {
   const mode = options.mode ?? "threshold";
-  const key = `${textureName}|luma-alpha|${mode}`;
+  const alphaScale = Number.isFinite(options.alphaScale) ? Math.max(0, options.alphaScale) : 1;
+  const key = `${textureName}|luma-alpha|${mode}|scale:${alphaScale}`;
   const cached = this.lumaAlphaTextureCache.get(key);
   if (cached) {
     return cached;
@@ -75,7 +90,7 @@ export function getLumaAlphaTexture(textureName, options = {}) {
     out[i] = 255;
     out[i + 1] = 255;
     out[i + 2] = 255;
-    out[i + 3] = alpha;
+    out[i + 3] = clampByte(alpha * alphaScale);
   }
 
   context.putImageData(imageData, 0, 0);
@@ -144,6 +159,41 @@ function shouldSkipStandaloneAlphaMask(pane, material, textureName, format) {
   // Keep alpha-only masks when the pane/material applies tint/alpha modulation,
   // which is how locale title shadows are authored (e.g. N_ShaUS_00 letters).
   return !hasStandaloneAlphaMaskModulation(pane, material);
+}
+
+function shouldTreatI4AsLumaAlphaMask(pane, material, textureName, format) {
+  if (format !== 0) {
+    return false;
+  }
+
+  const paneNameLower = String(pane?.name ?? "").toLowerCase();
+  const textureLower = String(textureName ?? "").toLowerCase();
+  if (paneNameLower.includes("ninlogo") || textureLower.includes("nintendo")) {
+    return true;
+  }
+
+  if (isLikelyAlphaOnlyTitleMask(textureName)) {
+    return true;
+  }
+
+  const color1 = Array.isArray(material?.color1) ? material.color1 : null;
+  if (!color1 || color1.length < 4 || clampByte(color1[3], 255) !== 0) {
+    return false;
+  }
+
+  const color2 = Array.isArray(material?.color2) ? material.color2 : null;
+  if (color2 && color2.length >= 3) {
+    const r = clampByte(color2[0], 255);
+    const g = clampByte(color2[1], 255);
+    const b = clampByte(color2[2], 255);
+    const luma = 0.299 * r + 0.587 * g + 0.114 * b;
+    // Avoid solid-dark art like the Nintendo badge where I4 is not used as a mask.
+    if (luma < 24) {
+      return false;
+    }
+  }
+
+  return true;
 }
 
 function getCornerAverageColor(data, width, height) {
@@ -288,7 +338,107 @@ export function getMaskedTexture(baseTextureName, maskTextureName, options = {})
   return canvas;
 }
 
+export function getLumaRemapTexture(textureName, options = {}) {
+  const dark = parseKeyColor(options.darkColor);
+  const light = parseKeyColor(options.lightColor);
+  if (!dark || !light) {
+    return null;
+  }
+
+  const key = `${textureName}|luma-remap|${dark.r},${dark.g},${dark.b}|${light.r},${light.g},${light.b}`;
+  const cached = this.textureMaskCache.get(key);
+  if (cached) {
+    return cached;
+  }
+
+  const source = this.textureCanvases[textureName];
+  if (!source) {
+    return null;
+  }
+
+  const width = source.width;
+  const height = source.height;
+  const canvas = document.createElement("canvas");
+  canvas.width = width;
+  canvas.height = height;
+  const context = canvas.getContext("2d");
+  context.drawImage(source, 0, 0);
+
+  const imageData = context.getImageData(0, 0, width, height);
+  const out = imageData.data;
+  for (let i = 0; i < out.length; i += 4) {
+    const luma = Math.max(out[i], out[i + 1], out[i + 2]) / 255;
+    out[i] = clampByte(dark.r + (light.r - dark.r) * luma);
+    out[i + 1] = clampByte(dark.g + (light.g - dark.g) * luma);
+    out[i + 2] = clampByte(dark.b + (light.b - dark.b) * luma);
+  }
+
+  context.putImageData(imageData, 0, 0);
+  this.textureMaskCache.set(key, canvas);
+  return canvas;
+}
+
+function shouldApplyLumaRemap(pane, textureName, material, format) {
+  const paneName = String(pane?.name ?? "");
+  const textureKey = String(textureName ?? "");
+  const isFaceTexture = /icon_face/i.test(textureKey) || /^P_face_/i.test(paneName);
+  const isTitleLogoTexture = /titlelogo/i.test(textureKey) || /^P_title(?:Sh)?[A-Z]_/i.test(paneName);
+  if (!isFaceTexture && !isTitleLogoTexture) {
+    return false;
+  }
+
+  // Restrict remap to luma-encoded sources (IA8/CMPR used as grayscale masks).
+  // Keeping this narrow avoids desaturating authored full-color atlases.
+  if (format !== 2 && format !== 14) {
+    return false;
+  }
+
+  const color1 = Array.isArray(material?.color1) ? material.color1 : null;
+  const color2 = Array.isArray(material?.color2) ? material.color2 : null;
+  if (!color1 || color1.length < 4 || !color2 || color2.length < 4) {
+    return false;
+  }
+
+  if (clampByte(color1[3], 255) !== 0) {
+    return false;
+  }
+
+  const c1r = clampByte(color1[0]);
+  const c1g = clampByte(color1[1]);
+  const c1b = clampByte(color1[2]);
+  const c2r = clampByte(color2[0], 255);
+  const c2g = clampByte(color2[1], 255);
+  const c2b = clampByte(color2[2], 255);
+  return c1r !== c2r || c1g !== c2g || c1b !== c2b;
+}
+
+function getLumaRemapColors(pane, material, textureName) {
+  const color1 = Array.isArray(material?.color1) ? material.color1 : null;
+  const color2 = Array.isArray(material?.color2) ? material.color2 : null;
+  if (!color1 || color1.length < 3 || !color2 || color2.length < 3) {
+    return null;
+  }
+
+  const paneName = String(pane?.name ?? "");
+  const isFaceTexture = /icon_face/i.test(String(textureName ?? "")) || /^P_face_/i.test(paneName);
+  if (isFaceTexture) {
+    // Face atlases use darker texels for fill and brighter texels for line art.
+    // Map dark -> color1 (white) and bright -> color2 (blue) for Wii Speak.
+    return {
+      darkColor: color1,
+      lightColor: color2,
+    };
+  }
+
+  return {
+    darkColor: color1,
+    lightColor: color2,
+  };
+}
+
 export function getTextureBindingForPane(pane) {
+  const animatedTextureSRTs = this.getPaneTextureSRTAnimations?.(pane?.name, this.frame) ?? null;
+
   if (pane.materialIndex >= 0 && pane.materialIndex < this.layout.materials.length) {
     const material = this.layout.materials[pane.materialIndex];
     const textureMaps = material?.textureMaps ?? [];
@@ -303,13 +453,15 @@ export function getTextureBindingForPane(pane) {
 
       const textureName = this.layout.textures[textureIndex];
       if (this.textureCanvases[textureName]) {
+        const animatedTextureSRT = animatedTextureSRTs?.get(mapIndex) ?? null;
         bindings.push({
           texture: this.textureCanvases[textureName],
           textureName,
           material,
           wrapS: textureMap.wrapS ?? 0,
           wrapT: textureMap.wrapT ?? 0,
-          textureSRT: textureSRTs[mapIndex] ?? null,
+          textureSRT: mergeTextureSRT(textureSRTs[mapIndex] ?? null, animatedTextureSRT),
+          texCoordIndex: mapIndex,
         });
       }
     }
@@ -384,6 +536,40 @@ export function getTextureBindingForPane(pane) {
         return null;
       }
 
+      if (
+        bindings.length === 1 &&
+        shouldTreatI4AsLumaAlphaMask(pane, material, primary.textureName, this.getTextureFormat(primary.textureName))
+      ) {
+        const isTitleShadowPane = /^N_Sha/i.test(String(pane?.parent ?? ""));
+        const lumaMask = this.getLumaAlphaTexture(primary.textureName, {
+          mode: "linear",
+          alphaScale: isTitleShadowPane ? 0.42 : 1,
+        });
+        if (lumaMask) {
+          return {
+            ...primary,
+            texture: lumaMask,
+            textureName: `${primary.textureName}|luma-alpha`,
+          };
+        }
+      }
+
+      if (
+        bindings.length === 1 &&
+        shouldApplyLumaRemap(pane, primary.textureName, material, this.getTextureFormat(primary.textureName))
+      ) {
+        const remapColors = getLumaRemapColors(pane, material, primary.textureName);
+        const remapped = remapColors ? this.getLumaRemapTexture(primary.textureName, remapColors) : null;
+        if (remapped) {
+          return {
+            ...primary,
+            texture: remapped,
+            textureName: `${primary.textureName}|luma-remap`,
+            skipMaterialColorModulation: true,
+          };
+        }
+      }
+
       return primary;
     }
 
@@ -397,7 +583,15 @@ export function getTextureBindingForPane(pane) {
         if (shouldSkipStandaloneAlphaMask(pane, material, textureName, this.getTextureFormat(textureName))) {
           return null;
         }
-        return { texture: this.textureCanvases[textureName], textureName, material, wrapS: 0, wrapT: 0, textureSRT: null };
+        return {
+          texture: this.textureCanvases[textureName],
+          textureName,
+          material,
+          wrapS: 0,
+          wrapT: 0,
+          textureSRT: null,
+          texCoordIndex: 0,
+        };
       }
     }
   }
@@ -405,13 +599,29 @@ export function getTextureBindingForPane(pane) {
   if (pane.materialIndex >= 0 && pane.materialIndex < this.layout.textures.length) {
     const textureName = this.layout.textures[pane.materialIndex];
     if (this.textureCanvases[textureName]) {
-      return { texture: this.textureCanvases[textureName], textureName, material: null, wrapS: 0, wrapT: 0, textureSRT: null };
+      return {
+        texture: this.textureCanvases[textureName],
+        textureName,
+        material: null,
+        wrapS: 0,
+        wrapT: 0,
+        textureSRT: null,
+        texCoordIndex: 0,
+      };
     }
   }
 
   for (const textureName of this.layout.textures) {
     if (this.textureCanvases[textureName]) {
-      return { texture: this.textureCanvases[textureName], textureName, material: null, wrapS: 0, wrapT: 0, textureSRT: null };
+      return {
+        texture: this.textureCanvases[textureName],
+        textureName,
+        material: null,
+        wrapS: 0,
+        wrapT: 0,
+        textureSRT: null,
+        texCoordIndex: 0,
+      };
     }
   }
 
@@ -421,7 +631,15 @@ export function getTextureBindingForPane(pane) {
   }
 
   const textureName = textureKeys[0];
-  return { texture: this.textureCanvases[textureName], textureName, material: null, wrapS: 0, wrapT: 0, textureSRT: null };
+  return {
+    texture: this.textureCanvases[textureName],
+    textureName,
+    material: null,
+    wrapS: 0,
+    wrapT: 0,
+    textureSRT: null,
+    texCoordIndex: 0,
+  };
 }
 
 export function getTextureForPane(pane) {
@@ -463,12 +681,15 @@ export function transformTexCoord(point, textureSRT) {
   return { s, t };
 }
 
-export function getTransformedTexCoords(pane, textureSRT = null) {
+export function getTransformedTexCoords(pane, textureSRT = null, texCoordIndex = 0) {
   if (!pane.texCoords || pane.texCoords.length === 0) {
     return null;
   }
 
-  const coords = pane.texCoords[0];
+  const safeTexCoordIndex = Number.isFinite(texCoordIndex)
+    ? Math.max(0, Math.min(pane.texCoords.length - 1, Math.floor(texCoordIndex)))
+    : 0;
+  const coords = pane.texCoords[safeTexCoordIndex];
   if (!coords?.tl || !coords?.tr || !coords?.bl || !coords?.br) {
     return null;
   }
@@ -481,8 +702,8 @@ export function getTransformedTexCoords(pane, textureSRT = null) {
   };
 }
 
-export function getTransformedTexCoordValues(pane, textureSRT = null) {
-  const transformed = this.getTransformedTexCoords(pane, textureSRT);
+export function getTransformedTexCoordValues(pane, textureSRT = null, texCoordIndex = 0) {
+  const transformed = this.getTransformedTexCoords(pane, textureSRT, texCoordIndex);
   if (!transformed) {
     return null;
   }
@@ -497,12 +718,12 @@ export function getTransformedTexCoordValues(pane, textureSRT = null) {
   return { sValues, tValues };
 }
 
-export function getTexCoordSpans(pane, textureSRT = null) {
+export function getTexCoordSpans(pane, textureSRT = null, texCoordIndex = 0) {
   if (!pane.texCoords || pane.texCoords.length === 0) {
     return null;
   }
 
-  const values = this.getTransformedTexCoordValues(pane, textureSRT);
+  const values = this.getTransformedTexCoordValues(pane, textureSRT, texCoordIndex);
   if (!values) {
     return null;
   }
@@ -530,12 +751,13 @@ export function getSourceRectForPane(pane, texture, options = {}) {
   const repeatX = options.repeatX ?? false;
   const repeatY = options.repeatY ?? false;
   const textureSRT = options.textureSRT ?? null;
+  const texCoordIndex = options.texCoordIndex ?? 0;
 
   if (!pane.texCoords || pane.texCoords.length === 0) {
     return null;
   }
 
-  const values = this.getTransformedTexCoordValues(pane, textureSRT);
+  const values = this.getTransformedTexCoordValues(pane, textureSRT, texCoordIndex);
   if (!values) {
     return null;
   }

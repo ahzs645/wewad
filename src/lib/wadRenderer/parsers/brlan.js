@@ -16,7 +16,7 @@ export function parseBRLAN(buffer, loggerInput) {
   const headerSize = reader.u16();
   const numSections = reader.u16();
 
-  const animation = { frameSize: 0, panes: [] };
+  const animation = { frameSize: 0, flags: 0, panes: [] };
 
   reader.seek(headerSize);
 
@@ -27,7 +27,7 @@ export function parseBRLAN(buffer, loggerInput) {
 
     if (sectionMagic === "pai1") {
       animation.frameSize = reader.u16();
-      reader.u8(); // flags
+      animation.flags = reader.u8();
       reader.skip(1);
       reader.u16(); // num timelines
       const numEntries = reader.u16();
@@ -77,7 +77,7 @@ export function parseBRLAN(buffer, loggerInput) {
             const entryStart = tagStart + tagEntryOffsets[entryIndex];
             reader.seek(entryStart);
 
-            reader.u8(); // target/type group (unused in current renderer)
+            const targetGroup = reader.u8();
             const animType = reader.u8();
             const dataType = reader.u8();
             reader.skip(1);
@@ -85,10 +85,20 @@ export function parseBRLAN(buffer, loggerInput) {
             reader.skip(2);
             const keyframeOffset = reader.u32();
 
+            const interpolation =
+              dataType === 1 ? "step" :
+              dataType === 2 ? "hermite" :
+              "linear";
+            const shouldLoop = (animation.flags & 0x01) !== 0;
+
             const entry = {
+              targetGroup,
               type: animType,
               dataType,
               typeName: ANIM_TYPES[animType] ?? `0x${animType.toString(16)}`,
+              interpolation,
+              preExtrapolation: shouldLoop ? "loop" : "clamp",
+              postExtrapolation: shouldLoop ? "loop" : "clamp",
               keyframes: [],
             };
 
@@ -119,7 +129,9 @@ export function parseBRLAN(buffer, loggerInput) {
             }
 
             tag.entries.push(entry);
-            logger.info(`    ${paneName}: ${entry.typeName} (${numKeyframes} keyframes)`);
+            logger.info(
+              `    ${paneName}: ${entry.typeName} [grp=${targetGroup}] (${numKeyframes} keyframes)`,
+            );
           }
 
           paneAnimation.tags.push(tag);

@@ -111,6 +111,104 @@ input[type="file"] {
   display: none;
 }
 
+.recent-wads {
+  margin: -8px 0 28px;
+  border: 1px solid var(--border-subtle);
+  border-radius: 12px;
+  padding: 14px;
+  background: rgb(18 18 31 / 72%);
+}
+
+.recent-wads-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 12px;
+}
+
+.recent-wads-title {
+  color: var(--accent-cyan);
+  font-size: 0.84rem;
+  font-weight: 700;
+  letter-spacing: 1.1px;
+  text-transform: uppercase;
+}
+
+.clear-recent-button {
+  padding: 6px 12px;
+  font-size: 0.72rem;
+}
+
+.recent-wads-list {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(230px, 1fr));
+  gap: 10px;
+}
+
+.recent-wad-item {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 7px;
+  width: 100%;
+  border: 1px solid var(--border-subtle);
+  border-radius: 8px;
+  padding: 11px 12px;
+  text-align: left;
+  background: rgb(8 8 15 / 60%);
+}
+
+.recent-wad-preview {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 100%;
+  min-height: 70px;
+  border: 1px solid rgb(255 255 255 / 10%);
+  border-radius: 6px;
+  background:
+    linear-gradient(135deg, rgb(74 158 255 / 10%), rgb(139 92 246 / 10%)),
+    rgb(3 3 8 / 85%);
+  overflow: hidden;
+}
+
+.recent-wad-preview img {
+  max-width: 100%;
+  max-height: 80px;
+  object-fit: contain;
+  image-rendering: pixelated;
+}
+
+.recent-wad-preview-empty {
+  color: var(--text-secondary);
+  font-family: "JetBrains Mono", monospace;
+  font-size: 0.68rem;
+}
+
+.recent-wad-item:hover:not(:disabled) {
+  border-color: var(--accent-blue);
+  background: rgb(74 158 255 / 8%);
+}
+
+.recent-wad-item:disabled {
+  cursor: wait;
+  opacity: 0.75;
+}
+
+.recent-wad-name {
+  color: var(--text-primary);
+  font-size: 0.82rem;
+  font-weight: 600;
+  word-break: break-word;
+}
+
+.recent-wad-meta {
+  color: var(--text-secondary);
+  font-family: "JetBrains Mono", monospace;
+  font-size: 0.7rem;
+}
+
 .render-area {
   margin-top: 32px;
   display: none;
@@ -266,6 +364,78 @@ canvas {
 }
 
 .state-control select:focus {
+  outline: none;
+  border-color: var(--accent-blue);
+  box-shadow: 0 0 0 2px rgb(74 158 255 / 20%);
+}
+
+.custom-weather-settings {
+  margin-top: 12px;
+  border: 1px solid var(--border-subtle);
+  border-radius: 10px;
+  padding: 10px 12px;
+  background: rgb(9 18 38 / 45%);
+}
+
+.custom-weather-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  color: var(--text-secondary);
+  font-size: 0.8rem;
+  font-weight: 600;
+  letter-spacing: 0.6px;
+  text-transform: uppercase;
+}
+
+.custom-weather-toggle input {
+  accent-color: var(--accent-blue);
+}
+
+.custom-weather-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(220px, 1fr));
+  gap: 10px 12px;
+  margin-top: 10px;
+}
+
+.custom-weather-wide {
+  grid-column: 1 / -1;
+}
+
+.custom-weather-temp-row {
+  display: flex;
+  gap: 8px;
+  width: 100%;
+}
+
+.state-control input,
+.state-control textarea {
+  width: 100%;
+  border: 1px solid var(--border-subtle);
+  border-radius: 8px;
+  padding: 8px 10px;
+  color: var(--text-primary);
+  background: rgb(8 8 15 / 70%);
+  font-family: "JetBrains Mono", monospace;
+  font-size: 0.8rem;
+}
+
+.state-control textarea {
+  resize: vertical;
+  min-height: 68px;
+}
+
+.custom-weather-temp-row input {
+  min-width: 90px;
+}
+
+.custom-weather-temp-row select {
+  min-width: 72px;
+}
+
+.state-control input:focus,
+.state-control textarea:focus {
   outline: none;
   border-color: var(--accent-blue);
   box-shadow: 0 0 0 2px rgb(74 158 255 / 20%);
@@ -486,6 +656,15 @@ button.primary:hover {
     padding: 40px 20px;
   }
 
+  .recent-wads {
+    margin-top: -2px;
+    padding: 12px;
+  }
+
+  .recent-wads-list {
+    grid-template-columns: 1fr;
+  }
+
   .controls {
     justify-content: stretch;
   }
@@ -515,6 +694,10 @@ button.primary:hover {
   .state-control select {
     min-width: 0;
     flex: 1 1 auto;
+  }
+
+  .custom-weather-grid {
+    grid-template-columns: 1fr;
   }
 
   .tab-bar {

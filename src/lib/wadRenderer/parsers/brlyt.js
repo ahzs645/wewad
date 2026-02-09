@@ -27,6 +27,67 @@ function decodeUtf16BeString(view, start, end) {
   return value;
 }
 
+function readTexturedPaneBlock(reader, sectionStart, sectionSize, includeVertexColors = true) {
+  const sectionEnd = sectionStart + sectionSize;
+  const dataStart = sectionStart + 8 + 68;
+  if (dataStart >= sectionEnd) {
+    return {
+      vertexColors: includeVertexColors
+        ? [
+            { r: 255, g: 255, b: 255, a: 255 },
+            { r: 255, g: 255, b: 255, a: 255 },
+            { r: 255, g: 255, b: 255, a: 255 },
+            { r: 255, g: 255, b: 255, a: 255 },
+          ]
+        : null,
+      materialIndex: -1,
+      texCoords: [],
+    };
+  }
+
+  reader.seek(dataStart);
+
+  let vertexColors = null;
+  if (includeVertexColors && reader.offset + 16 <= sectionEnd) {
+    vertexColors = [
+      { r: reader.u8(), g: reader.u8(), b: reader.u8(), a: reader.u8() }, // tl
+      { r: reader.u8(), g: reader.u8(), b: reader.u8(), a: reader.u8() }, // tr
+      { r: reader.u8(), g: reader.u8(), b: reader.u8(), a: reader.u8() }, // bl
+      { r: reader.u8(), g: reader.u8(), b: reader.u8(), a: reader.u8() }, // br
+    ];
+  }
+
+  let materialIndex = -1;
+  if (reader.offset + 2 <= sectionEnd) {
+    materialIndex = reader.u16();
+  }
+
+  let texCoordCount = 0;
+  if (reader.offset + 1 <= sectionEnd) {
+    texCoordCount = reader.u8();
+    reader.skip(1);
+  }
+
+  const texCoords = [];
+  const remainingBytes = sectionEnd - reader.offset;
+  const maxTexCoordCount = Math.max(0, Math.floor(remainingBytes / 32));
+  const safeTexCoordCount = Math.min(texCoordCount, maxTexCoordCount);
+  for (let i = 0; i < safeTexCoordCount; i += 1) {
+    texCoords.push({
+      tl: { s: reader.f32(), t: reader.f32() },
+      tr: { s: reader.f32(), t: reader.f32() },
+      bl: { s: reader.f32(), t: reader.f32() },
+      br: { s: reader.f32(), t: reader.f32() },
+    });
+  }
+
+  return {
+    vertexColors,
+    materialIndex,
+    texCoords,
+  };
+}
+
 export function parseBRLYT(buffer, loggerInput) {
   const logger = withLogger(loggerInput);
   const reader = new BinaryReader(buffer);
@@ -257,36 +318,13 @@ export function parseBRLYT(buffer, loggerInput) {
           materialIndex: -1,
         };
 
-        if (sectionMagic === "pic1") {
-          // pic1 extends the 68-byte pan1 block:
-          // +16 vertex colors, +2 material index, +1 tex coord count, +1 pad.
-          reader.seek(sectionStart + 8 + 68);
-          pane.vertexColors = [
-            { r: reader.u8(), g: reader.u8(), b: reader.u8(), a: reader.u8() }, // tl
-            { r: reader.u8(), g: reader.u8(), b: reader.u8(), a: reader.u8() }, // tr
-            { r: reader.u8(), g: reader.u8(), b: reader.u8(), a: reader.u8() }, // bl
-            { r: reader.u8(), g: reader.u8(), b: reader.u8(), a: reader.u8() }, // br
-          ];
-          pane.materialIndex = reader.u16();
-
-          let texCoordCount = reader.u8();
-          reader.skip(1);
-          pane.texCoords = [];
-
-          const remainingBytes = sectionStart + sectionSize - reader.offset;
-          const maxTexCoordCount = Math.max(0, Math.floor(remainingBytes / 32));
-          if (texCoordCount > maxTexCoordCount) {
-            texCoordCount = maxTexCoordCount;
+        if (sectionMagic === "pic1" || sectionMagic === "bnd1" || sectionMagic === "wnd1") {
+          const texturedData = readTexturedPaneBlock(reader, sectionStart, sectionSize, true);
+          if (texturedData.vertexColors) {
+            pane.vertexColors = texturedData.vertexColors;
           }
-
-          for (let i = 0; i < texCoordCount; i += 1) {
-            pane.texCoords.push({
-              tl: { s: reader.f32(), t: reader.f32() },
-              tr: { s: reader.f32(), t: reader.f32() },
-              bl: { s: reader.f32(), t: reader.f32() },
-              br: { s: reader.f32(), t: reader.f32() },
-            });
-          }
+          pane.materialIndex = texturedData.materialIndex;
+          pane.texCoords = texturedData.texCoords;
         } else if (sectionMagic === "txt1") {
           // txt1 extends pan1 with text metadata and UTF-16BE payload.
           // Field order (big-endian):

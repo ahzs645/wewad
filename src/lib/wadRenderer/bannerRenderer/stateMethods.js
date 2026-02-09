@@ -45,7 +45,7 @@ function hasRenderableDescendant(paneName, childrenByParent, cache) {
   const children = childrenByParent.get(paneName) ?? [];
   let value = false;
   for (const child of children) {
-    if (child.type === "pic1" || child.type === "txt1") {
+    if (child.type === "pic1" || child.type === "txt1" || child.type === "bnd1" || child.type === "wnd1") {
       value = true;
       break;
     }
@@ -65,6 +65,15 @@ function buildPaneStateLabel(parentName, baseName) {
     return safeBase;
   }
   return `${parentName}/${safeBase}`;
+}
+
+function hasAnimatedPaneInTransformChain(renderer, pane) {
+  for (const chainPane of renderer.getPaneTransformChain(pane)) {
+    if (renderer.animByPaneName?.has(chainPane.name)) {
+      return true;
+    }
+  }
+  return false;
 }
 
 export function getPaneGroupNames(paneName) {
@@ -142,7 +151,13 @@ export function shouldRenderPaneForState(pane) {
     return true;
   }
 
-  return paneStates.has(this.activeRenderState);
+  if (paneStates.has(this.activeRenderState)) {
+    return true;
+  }
+
+  // BRLAN state animations often drive panes across multiple RSO groups; keep
+  // panes visible when the active animation explicitly targets their chain.
+  return hasAnimatedPaneInTransformChain(this, pane);
 }
 
 export function collectPaneStateGroups() {
@@ -218,7 +233,7 @@ export function resolvePaneStateSelections(preferredSelections = null) {
       ? Number.parseInt(String(preferredSelections[group.id]), 10)
       : null;
     const hasPreferred = Number.isFinite(preferredValue) && group.options.some((option) => option.index === preferredValue);
-    selections[group.id] = hasPreferred ? preferredValue : group.options[0]?.index ?? null;
+    selections[group.id] = hasPreferred ? preferredValue : null;
   }
   return selections;
 }

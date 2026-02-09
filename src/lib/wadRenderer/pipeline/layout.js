@@ -32,7 +32,9 @@ export function createRenderableLayout(layout, tplImages, fallbackWidth, fallbac
         height: fallbackHeight,
       };
 
-  const hasPicturePanes = renderLayout.panes.some((pane) => pane.type === "pic1");
+  const hasPicturePanes = renderLayout.panes.some(
+    (pane) => pane.type === "pic1" || pane.type === "bnd1" || pane.type === "wnd1",
+  );
   if (!hasPicturePanes) {
     logger.warn("No pic1 panes found, creating synthetic layout from textures");
 

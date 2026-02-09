@@ -262,6 +262,28 @@ function decodeTPLImage(src, width, height, format, palette, logger) {
       break;
     }
 
+    case 10: {
+      // CI14X2: 14-bit palette index packed into a u16 (lowest 2 bits unused).
+      for (let blockY = 0; blockY < height; blockY += 4) {
+        for (let blockX = 0; blockX < width; blockX += 4) {
+          for (let y = 0; y < 4; y += 1) {
+            for (let x = 0; x < 4; x += 1) {
+              if (srcOffset + 1 >= src.length) {
+                break;
+              }
+
+              const packed = (src[srcOffset] << 8) | src[srcOffset + 1];
+              srcOffset += 2;
+              const index = (packed >> 2) & 0x3fff;
+              const [red, green, blue, alpha] = decodePaletteColor(palette, index);
+              setPixel(blockX + x, blockY + y, red, green, blue, alpha);
+            }
+          }
+        }
+      }
+      break;
+    }
+
     case 14: {
       function decodeDXT1Block(offset) {
         if (offset + 7 >= src.length) {

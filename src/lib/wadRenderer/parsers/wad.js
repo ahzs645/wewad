@@ -61,7 +61,8 @@ export function parseWAD(buffer, loggerInput) {
   const ticketBytes = new Uint8Array(buffer, ticketOffset, ticketSize);
   const titleIdBytes = ticketBytes.slice(0x1dc, 0x1dc + 8);
   const encryptedTitleKey = ticketBytes.slice(0x1bf, 0x1bf + 16);
-  const commonKeyIndex = ticketBytes.length > 0x1f1 ? ticketBytes[0x1f1] : 0;
+  // Wii ticket field offsets: common key index is at 0x1F5 (not 0x1F1).
+  const commonKeyIndex = ticketBytes.length > 0x1f5 ? ticketBytes[0x1f5] : 0;
 
   let titleId = "";
   for (let i = 4; i < 8; i += 1) {
