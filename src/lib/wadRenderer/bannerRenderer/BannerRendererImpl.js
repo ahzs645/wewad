@@ -2,7 +2,14 @@ import { detectPreferredTitleLocale } from "./locale";
 import * as animationMethods from "./animationMethods";
 import * as customWeatherMethods from "./customWeatherMethods";
 import * as localeMethods from "./localeMethods";
-import * as renderMethods from "./renderMethods";
+import * as transformMethods from "./transformMethods";
+import * as paneAnimValues from "./paneAnimValues";
+import * as paneStateMethods from "./paneStateMethods";
+import * as colorModulationMethods from "./colorModulationMethods";
+import * as lumaEffectMethods from "./lumaEffectMethods";
+import * as textureDrawMethods from "./textureDrawMethods";
+import * as paneDrawMethods from "./paneDrawMethods";
+import * as playbackMethods from "./playbackMethods";
 import * as stateMethods from "./stateMethods";
 import * as textureMethods from "./textureMethods";
 
@@ -192,5 +199,12 @@ Object.assign(
   textureMethods,
   stateMethods,
   customWeatherMethods,
-  renderMethods,
+  transformMethods,
+  paneAnimValues,
+  paneStateMethods,
+  colorModulationMethods,
+  lumaEffectMethods,
+  textureDrawMethods,
+  paneDrawMethods,
+  playbackMethods,
 );

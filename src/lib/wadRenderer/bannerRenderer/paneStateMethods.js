@@ -1,0 +1,70 @@
+import { clampChannel, normalizePaneVertexColors } from "./renderColorUtils";
+
+function mergeAnimatedVertexColors(pane, animatedVertexColors) {
+  if (!animatedVertexColors) {
+    return pane?.vertexColors ?? null;
+  }
+
+  const base = normalizePaneVertexColors(pane) ?? [
+    { r: 255, g: 255, b: 255, a: 255 },
+    { r: 255, g: 255, b: 255, a: 255 },
+    { r: 255, g: 255, b: 255, a: 255 },
+    { r: 255, g: 255, b: 255, a: 255 },
+  ];
+
+  return base.map((color, index) => ({
+    r: clampChannel(animatedVertexColors[index]?.r ?? color.r),
+    g: clampChannel(animatedVertexColors[index]?.g ?? color.g),
+    b: clampChannel(animatedVertexColors[index]?.b ?? color.b),
+    a: clampChannel(animatedVertexColors[index]?.a ?? color.a),
+  }));
+}
+
+export function getLocalPaneState(pane, frame) {
+  const animValues = this.getAnimValues(pane.name, frame);
+  const tx = animValues.transX ?? pane.translate?.x ?? 0;
+  const ty = animValues.transY ?? pane.translate?.y ?? 0;
+  const tz = animValues.transZ ?? pane.translate?.z ?? 0;
+  const rotX = animValues.rotX ?? pane.rotate?.x ?? 0;
+  const rotY = animValues.rotY ?? pane.rotate?.y ?? 0;
+  const sx = animValues.scaleX ?? pane.scale?.x ?? 1;
+  const sy = animValues.scaleY ?? pane.scale?.y ?? 1;
+  const rotation = animValues.rotZ ?? pane.rotate?.z ?? 0;
+  const width = animValues.width ?? pane.size?.w ?? 0;
+  const height = animValues.height ?? pane.size?.h ?? 0;
+
+  const visibilityOverride = this.getCustomWeatherVisibilityOverride?.(pane);
+  const hasAnimatedAlpha = animValues.alpha != null;
+  const isVisible = visibilityOverride != null
+    ? visibilityOverride
+    : animValues.visible != null
+      ? animValues.visible
+      : hasAnimatedAlpha
+        ? true
+        : pane.visible !== false;
+  const defaultAlpha = isVisible ? (pane.alpha ?? 255) / 255 : 0;
+  const animatedAlpha = hasAnimatedAlpha ? animValues.alpha / 255 : defaultAlpha;
+  const materialAlphaFactor = animValues.materialAlpha != null ? Math.max(0, Math.min(1, animValues.materialAlpha / 255)) : 1;
+  const alpha = isVisible ? animatedAlpha * materialAlphaFactor : 0;
+  const propagatesAlpha = (pane.flags & 0x02) !== 0 || pane.type === "pic1" || pane.type === "txt1" || pane.type === "bnd1" || pane.type === "wnd1";
+  const propagatesVisibility = true;
+
+  return {
+    tx,
+    ty,
+    tz,
+    rotX,
+    rotY,
+    sx,
+    sy,
+    rotation,
+    width,
+    height,
+    visible: isVisible,
+    propagatesAlpha,
+    propagatesVisibility,
+    vertexColors: mergeAnimatedVertexColors(pane, animValues.vertexColors),
+    alpha: Math.max(0, Math.min(1, alpha)),
+    textureIndex: animValues.textureIndex,
+  };
+}
