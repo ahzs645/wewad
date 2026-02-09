@@ -271,33 +271,8 @@ export function drawFillTextPane(context, pane, rawText, width, height) {
   context.font = `${fontSize}px sans-serif`;
   const lineHeight = Math.max(1, fontSize + lineSpacing);
 
-  const wrapParagraph = (paragraph) => {
-    const trimmed = String(paragraph ?? "");
-    if (trimmed.length === 0) {
-      return [""];
-    }
-    const words = trimmed.split(/\s+/);
-    const wrapped = [];
-    let current = "";
-    for (const word of words) {
-      const candidate = current ? `${current} ${word}` : word;
-      if (context.measureText(candidate).width <= absWidth || !current) {
-        current = candidate;
-        continue;
-      }
-      wrapped.push(current);
-      current = word;
-    }
-    if (current) {
-      wrapped.push(current);
-    }
-    return wrapped.length > 0 ? wrapped : [""];
-  };
-
-  const lines = [];
-  for (const paragraph of paragraphs) {
-    lines.push(...wrapParagraph(paragraph));
-  }
+  // Wii does NOT word-wrap text — only explicit \n causes line breaks.
+  const lines = paragraphs;
   if (lines.length === 0) {
     context.restore();
     return;

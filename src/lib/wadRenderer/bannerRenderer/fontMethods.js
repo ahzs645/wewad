@@ -194,11 +194,8 @@ export function drawBitmapTextPane(context, pane, fontData, rawText, width, heig
   const topColor = pane?.textTopColor ?? { r: 32, g: 32, b: 32, a: 255 };
   const bottomColor = pane?.textBottomColor ?? topColor;
 
-  // Word-wrap paragraphs.
-  const lines = [];
-  for (const paragraph of paragraphs) {
-    lines.push(...this.wrapBitmapTextParagraph(fontData, paragraph, fontSize, charSpacing, absWidth));
-  }
+  // Wii does NOT word-wrap text — only explicit \n causes line breaks.
+  const lines = paragraphs;
   if (lines.length === 0) {
     return;
   }
