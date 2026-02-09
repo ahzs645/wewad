@@ -522,13 +522,105 @@ export function parseBRLYT(buffer, loggerInput) {
           materialIndex: -1,
         };
 
-        if (sectionMagic === "pic1" || sectionMagic === "bnd1" || sectionMagic === "wnd1") {
+        if (sectionMagic === "pic1" || sectionMagic === "bnd1") {
           const texturedData = readTexturedPaneBlock(reader, sectionStart, sectionSize, true);
           if (texturedData.vertexColors) {
             pane.vertexColors = texturedData.vertexColors;
           }
           pane.materialIndex = texturedData.materialIndex;
           pane.texCoords = texturedData.texCoords;
+        } else if (sectionMagic === "wnd1") {
+          // wnd1 has extra fields between pane header and Quad data:
+          //   inflation (4 floats = 16 bytes) + frame_count (u8) + pad (3) + content_offset (u32) + frame_table_offset (u32)
+          // The Quad data (vertex colors, material, tex coords) is at content_offset from section start.
+          const wndDataStart = sectionStart + 8 + 68;
+          const sectionEnd = sectionStart + sectionSize;
+          if (wndDataStart + 28 <= sectionEnd) {
+            reader.seek(wndDataStart);
+            pane.inflation = {
+              l: reader.f32(),
+              r: reader.f32(),
+              t: reader.f32(),
+              b: reader.f32(),
+            };
+            const frameCount = reader.u8();
+            reader.skip(3);
+            const contentOffset = reader.u32();
+            const frameTableOffset = reader.u32();
+
+            // Read content Quad at content_offset (relative to section start).
+            if (contentOffset > 0 && sectionStart + contentOffset < sectionEnd) {
+              const savedOffset = reader.offset;
+              // readTexturedPaneBlock expects to read from sectionStart + 8 + 68, so we create
+              // a virtual section where the Quad data starts at the content offset.
+              reader.seek(sectionStart + contentOffset);
+              const vtxClr = [];
+              if (reader.offset + 16 <= sectionEnd) {
+                for (let c = 0; c < 4; c += 1) {
+                  vtxClr.push({ r: reader.u8(), g: reader.u8(), b: reader.u8(), a: reader.u8() });
+                }
+              }
+              let matIdx = -1;
+              if (reader.offset + 2 <= sectionEnd) {
+                matIdx = reader.u16();
+              }
+              let texCoordCnt = 0;
+              if (reader.offset + 1 <= sectionEnd) {
+                texCoordCnt = reader.u8();
+                reader.skip(1);
+              }
+              const texCrds = [];
+              for (let i = 0; i < texCoordCnt; i += 1) {
+                if (reader.offset + 32 > sectionEnd) {
+                  break;
+                }
+                texCrds.push({
+                  tl: { s: reader.f32(), t: reader.f32() },
+                  tr: { s: reader.f32(), t: reader.f32() },
+                  bl: { s: reader.f32(), t: reader.f32() },
+                  br: { s: reader.f32(), t: reader.f32() },
+                });
+              }
+              if (vtxClr.length === 4) {
+                pane.vertexColors = vtxClr;
+              }
+              pane.materialIndex = matIdx;
+              pane.texCoords = texCrds;
+              reader.seek(savedOffset);
+            }
+
+            // Read frame materials.
+            pane.windowFrames = [];
+            if (frameCount > 0 && frameTableOffset > 0 && sectionStart + frameTableOffset < sectionEnd) {
+              reader.seek(sectionStart + frameTableOffset);
+              const frameOffsets = [];
+              for (let i = 0; i < frameCount; i += 1) {
+                if (reader.offset + 4 > sectionEnd) {
+                  break;
+                }
+                frameOffsets.push(reader.u32());
+              }
+              const tableBase = sectionStart + frameTableOffset;
+              for (const fOff of frameOffsets) {
+                const absPos = tableBase + fOff;
+                if (absPos + 3 <= sectionEnd) {
+                  reader.seek(absPos);
+                  pane.windowFrames.push({
+                    materialIndex: reader.u16(),
+                    textureFlip: reader.u8(),
+                  });
+                }
+              }
+            }
+          } else {
+            // Fallback: not enough data for window fields, treat as simple textured pane.
+            const texturedData = readTexturedPaneBlock(reader, sectionStart, sectionSize, true);
+            if (texturedData.vertexColors) {
+              pane.vertexColors = texturedData.vertexColors;
+            }
+            pane.materialIndex = texturedData.materialIndex;
+            pane.texCoords = texturedData.texCoords;
+          }
         } else if (sectionMagic === "txt1") {
           // txt1 extends pan1 with text metadata and UTF-16BE payload.
           // Field order (big-endian):
