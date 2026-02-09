@@ -374,6 +374,7 @@ export function getAnimValues(paneName, frame) {
     width: null,
     height: null,
     vertexColors: null,
+    textureIndex: null,
   };
 
   if (!this.anim) {
