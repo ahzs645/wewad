@@ -207,28 +207,56 @@ export function parseBRLYT(buffer, loggerInput) {
 
           reader.seek(materialStart);
           const name = reader.string(20).replace(/\0+$/, "");
+          // Fore Color, Back Color, Color Register 3: Int16[4] each
           const color1 = [];
           const color2 = [];
           const color3 = [];
           for (let colorIndex = 0; colorIndex < 4; colorIndex += 1) {
-            color1.push(reader.view.getUint16(materialStart + 20 + colorIndex * 2, false));
-            color2.push(reader.view.getUint16(materialStart + 28 + colorIndex * 2, false));
-            color3.push(reader.view.getUint16(materialStart + 36 + colorIndex * 2, false));
+            color1.push(reader.view.getInt16(materialStart + 20 + colorIndex * 2, false));
+            color2.push(reader.view.getInt16(materialStart + 28 + colorIndex * 2, false));
+            color3.push(reader.view.getInt16(materialStart + 36 + colorIndex * 2, false));
           }
-          const flagsOffset = materialStart + 60;
+          // TEV Colors 1-4: Byte[4] RGBA each
+          const tevColors = [];
+          for (let tevIdx = 0; tevIdx < 4; tevIdx += 1) {
+            const base = materialStart + 0x2c + tevIdx * 4;
+            if (base + 3 < materialEnd) {
+              tevColors.push({
+                r: reader.view.getUint8(base),
+                g: reader.view.getUint8(base + 1),
+                b: reader.view.getUint8(base + 2),
+                a: reader.view.getUint8(base + 3),
+              });
+            }
+          }
+          const flagsOffset = materialStart + 0x3c;
           const flags = flagsOffset + 4 <= materialEnd ? reader.view.getUint32(flagsOffset, false) : 0;
 
-          // BRLYT mat1 low nibbles encode texture-map/SRT/coord-gen counts.
+          // BRLYT mat1 flags bitfield: AAAA BCDE FGGG GGHH HIIJ KKKK LLLL MMMM
+          // M=texMapCount, L=texSrtCount, K=texCoordGenCount, J=hasTevSwap,
+          // I=indTexMatrixCount, H=indTexStageCount, G=tevStageCount,
+          // F=hasAlphaCompare, E=hasBlendMode, D=hasChanControl, B=hasMatColor
           const textureMapCount = flags & 0x0f;
           const textureSrtCount = (flags >> 4) & 0x0f;
           const texCoordGenCount = (flags >> 8) & 0x0f;
+          const hasTevSwapTable = (flags >> 12) & 0x01;
+          const indTexMatrixCount = (flags >> 13) & 0x03;
+          const indTexStageCount = (flags >> 15) & 0x07;
+          const tevStageCount = (flags >> 18) & 0x1f;
+          const hasAlphaCompare = (flags >> 23) & 0x01;
+          const hasBlendMode = (flags >> 24) & 0x01;
+          const hasChannelControl = (flags >> 25) & 0x01;
+          const hasMaterialColor = (flags >> 27) & 0x01;
 
           const textureMaps = [];
           let cursor = materialStart + 64;
           for (let mapIndex = 0; mapIndex < textureMapCount && cursor + 3 < materialEnd; mapIndex += 1) {
             const textureIndex = reader.view.getUint16(cursor, false);
-            const wrapS = reader.view.getUint8(cursor + 2);
-            const wrapT = reader.view.getUint8(cursor + 3);
+            // Texture setting bitfield: AAAB BBCC DDDD EEFF
+            // FF=wrapT, EE=magFilter, DDDD=unused, CC=wrapS, BBB=minFilter
+            const texSettings = reader.view.getUint16(cursor + 2, false);
+            const wrapS = (texSettings >> 8) & 0x03;
+            const wrapT = texSettings & 0x03;
 
             textureMaps.push({ textureIndex, wrapS, wrapT });
             cursor += 4;
@@ -246,8 +274,70 @@ export function parseBRLYT(buffer, loggerInput) {
             cursor += 20;
           }
 
-          // Skip texcoord-gen entries (4 bytes each). We do not consume them yet.
+          // Skip texcoord-gen entries (4 bytes each).
           cursor += texCoordGenCount * 4;
+
+          // Channel Control (4 bytes if present).
+          let channelControl = null;
+          if (hasChannelControl && cursor + 3 < materialEnd) {
+            channelControl = {
+              colorSource: reader.view.getUint8(cursor),
+              alphaSource: reader.view.getUint8(cursor + 1),
+            };
+            cursor += 4;
+          }
+
+          // Material Color (4 bytes RGBA if present).
+          let materialColor = null;
+          if (hasMaterialColor && cursor + 3 < materialEnd) {
+            materialColor = {
+              r: reader.view.getUint8(cursor),
+              g: reader.view.getUint8(cursor + 1),
+              b: reader.view.getUint8(cursor + 2),
+              a: reader.view.getUint8(cursor + 3),
+            };
+            cursor += 4;
+          }
+
+          // TEV Swap Table (4 bytes if present).
+          if (hasTevSwapTable && cursor + 3 < materialEnd) {
+            cursor += 4;
+          }
+
+          // Indirect Texture Matrix (20 bytes each).
+          cursor += indTexMatrixCount * 20;
+
+          // Indirect Texture Stage (4 bytes each).
+          cursor += indTexStageCount * 4;
+
+          // TEV Stage (16 bytes each).
+          cursor += tevStageCount * 16;
+
+          // Alpha Compare (4 bytes if present).
+          let alphaCompare = null;
+          if (hasAlphaCompare && cursor + 3 < materialEnd) {
+            const conditions = reader.view.getUint8(cursor);
+            alphaCompare = {
+              condition0: conditions & 0x0f,
+              condition1: (conditions >> 4) & 0x0f,
+              operation: reader.view.getUint8(cursor + 1),
+              value0: reader.view.getUint8(cursor + 2),
+              value1: reader.view.getUint8(cursor + 3),
+            };
+            cursor += 4;
+          }
+
+          // Blend Mode (4 bytes if present).
+          let blendMode = null;
+          if (hasBlendMode && cursor + 3 < materialEnd) {
+            blendMode = {
+              func: reader.view.getUint8(cursor),
+              srcFactor: reader.view.getUint8(cursor + 1),
+              dstFactor: reader.view.getUint8(cursor + 2),
+              logicOp: reader.view.getUint8(cursor + 3),
+            };
+            cursor += 4;
+          }
 
           const textureIndices = [];
           for (const textureMap of textureMaps) {
@@ -260,7 +350,11 @@ export function parseBRLYT(buffer, loggerInput) {
             }
           }
 
-          layout.materials.push({ name, index: i, flags, textureMaps, textureSRTs, textureIndices, color1, color2, color3 });
+          layout.materials.push({
+            name, index: i, flags, textureMaps, textureSRTs, textureIndices,
+            color1, color2, color3, tevColors,
+            channelControl, materialColor, alphaCompare, blendMode,
+          });
           logger.info(`  Material: ${name}`);
         }
         break;

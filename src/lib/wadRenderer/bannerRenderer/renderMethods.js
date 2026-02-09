@@ -370,6 +370,7 @@ export function getAnimValues(paneName, frame) {
     scaleX: null,
     scaleY: null,
     alpha: null,
+    materialAlpha: null,
     visible: null,
     width: null,
     height: null,
@@ -429,6 +430,9 @@ export function getAnimValues(paneName, frame) {
           case 0x0a:
             result.alpha = value;
             break;
+          case 0x0b:
+            result.materialAlpha = value;
+            break;
           default:
             break;
         }
@@ -463,6 +467,17 @@ export function getAnimValues(paneName, frame) {
           });
           if (visibilityValue != null) {
             result.visible = visibilityValue >= 0.5;
+          }
+        }
+      } else if (tagType === "RLTP") {
+        // Texture pattern animation: swap which texture map index is active.
+        if (entry.type === 0x00) {
+          const texIdx = sampleDiscreteAnimationEntry(entry, frame, this.anim.frameSize, {
+            wrapBeforeFirst: true,
+            returnNullBeforeFirst: false,
+          });
+          if (texIdx != null) {
+            result.textureIndex = Math.max(0, Math.floor(texIdx));
           }
         }
       }
@@ -541,7 +556,19 @@ export function getPaneTextureSRTAnimations(paneName, frame) {
 }
 
 export function getPaneMaterialAnimColor(paneName, frame) {
-  const result = { r: null, g: null, b: null, a: null };
+  // RLMC channel layout:
+  // 0x00-0x03: color1 (foreColor) RGBA
+  // 0x04-0x07: color2 (backColor) RGBA
+  // 0x08-0x0B: color3 RGBA
+  // 0x0C-0x0F: TEV color 1 RGBA
+  // 0x10-0x13: TEV color 2 RGBA
+  const result = {
+    color1: { r: null, g: null, b: null, a: null },
+    color2: { r: null, g: null, b: null, a: null },
+    color3: { r: null, g: null, b: null, a: null },
+    // Merged view for backward compat: first non-null wins across color1/2/3.
+    r: null, g: null, b: null, a: null,
+  };
   if (!this.anim) {
     return result;
   }
@@ -551,6 +578,7 @@ export function getPaneMaterialAnimColor(paneName, frame) {
     return result;
   }
 
+  const channelNames = ["r", "g", "b", "a"];
   for (const tag of paneAnimation.tags ?? []) {
     if (tag?.type !== "RLMC") {
       continue;
@@ -564,29 +592,26 @@ export function getPaneMaterialAnimColor(paneName, frame) {
         continue;
       }
 
-      switch (entry.type) {
-        case 0x08:
-          result.r = clampChannel(value);
-          break;
-        case 0x09:
-          result.g = clampChannel(value);
-          break;
-        case 0x0a:
-          result.b = clampChannel(value);
-          break;
-        case 0x0b:
-          if (result.a == null) {
-            result.a = clampChannel(value);
-          }
-          break;
-        case 0x13:
-          // When both alpha channels are authored, 0x13 wins.
-          result.a = clampChannel(value);
-          break;
-        default:
-          break;
+      const type = entry.type;
+      if (type >= 0x00 && type <= 0x03) {
+        result.color1[channelNames[type]] = clampChannel(value);
+      } else if (type >= 0x04 && type <= 0x07) {
+        result.color2[channelNames[type - 0x04]] = clampChannel(value);
+      } else if (type >= 0x08 && type <= 0x0b) {
+        result.color3[channelNames[type - 0x08]] = clampChannel(value);
+      } else if (type >= 0x10 && type <= 0x13) {
+        // TEV color channels mapped to color3 as a fallback.
+        const ch = channelNames[type - 0x10];
+        if (result.color3[ch] == null) {
+          result.color3[ch] = clampChannel(value);
+        }
       }
     }
+  }
+
+  // Build merged view: prefer color2 (backColor/tint), then color3, then color1.
+  for (const ch of channelNames) {
+    result[ch] = result.color2[ch] ?? result.color3[ch] ?? result.color1[ch];
   }
 
   return result;
@@ -662,7 +687,8 @@ export function getLocalPaneState(pane, frame) {
         : pane.visible !== false;
   const defaultAlpha = isVisible ? (pane.alpha ?? 255) / 255 : 0;
   const animatedAlpha = hasAnimatedAlpha ? animValues.alpha / 255 : defaultAlpha;
-  const alpha = isVisible ? animatedAlpha : 0;
+  const materialAlphaFactor = animValues.materialAlpha != null ? Math.max(0, Math.min(1, animValues.materialAlpha / 255)) : 1;
+  const alpha = isVisible ? animatedAlpha * materialAlphaFactor : 0;
   const propagatesAlpha = (pane.flags & 0x02) !== 0 || pane.type === "pic1" || pane.type === "txt1" || pane.type === "bnd1" || pane.type === "wnd1";
   const propagatesVisibility = true;
 
@@ -682,6 +708,7 @@ export function getLocalPaneState(pane, frame) {
     propagatesVisibility,
     vertexColors: mergeAnimatedVertexColors(pane, animValues.vertexColors),
     alpha: Math.max(0, Math.min(1, alpha)),
+    textureIndex: animValues.textureIndex,
   };
 }
 
@@ -1382,6 +1409,46 @@ export function drawTextPane(context, pane, width, height) {
   context.restore();
 }
 
+function resolveBlendCompositeOp(pane, materials) {
+  if (!Number.isInteger(pane?.materialIndex) || pane.materialIndex < 0 || pane.materialIndex >= materials.length) {
+    return null;
+  }
+
+  const blendMode = materials[pane.materialIndex]?.blendMode;
+  if (!blendMode || blendMode.func === 0) {
+    return null;
+  }
+
+  // Blend func 1 = blend calculation: (Pixel × srcFactor) + (eFB × dstFactor)
+  // Blend factor values: 0=zero, 1=one, 4=srcAlpha, 5=1-srcAlpha
+  if (blendMode.func === 1) {
+    const src = blendMode.srcFactor;
+    const dst = blendMode.dstFactor;
+
+    // Additive: src×1 + dst×1, or src×srcAlpha + dst×1
+    if ((src === 1 && dst === 1) || (src === 4 && dst === 1)) {
+      return "lighter";
+    }
+
+    // Standard alpha blend: src×srcAlpha + dst×(1-srcAlpha) → default
+    if (src === 4 && dst === 5) {
+      return null;
+    }
+
+    // src×one + dst×zero = replace (no blend, just overwrite)
+    if (src === 1 && dst === 0) {
+      return "copy";
+    }
+  }
+
+  // Blend func 3 = subtract from eFB
+  if (blendMode.func === 3) {
+    return "difference";
+  }
+
+  return null;
+}
+
 function drawPaneWithResolvedState(renderer, context, pane, paneState, localPaneStates, layoutWidth, layoutHeight) {
   let alpha = 1;
   let visible = true;
@@ -1419,8 +1486,14 @@ function drawPaneWithResolvedState(renderer, context, pane, paneState, localPane
   }
 
   context.globalAlpha = Math.max(0, Math.min(1, alpha));
+
+  const blendOp = resolveBlendCompositeOp(pane, renderer.layout?.materials ?? []);
+  if (blendOp) {
+    context.globalCompositeOperation = blendOp;
+  }
+
   if (pane.type === "pic1" || pane.type === "bnd1" || pane.type === "wnd1") {
-    const binding = renderer.getTextureBindingForPane(pane);
+    const binding = renderer.getTextureBindingForPane(pane, paneState);
     if (!binding) {
       context.restore();
       return;

@@ -436,8 +436,9 @@ function getLumaRemapColors(pane, material, textureName) {
   };
 }
 
-export function getTextureBindingForPane(pane) {
+export function getTextureBindingForPane(pane, paneState = null) {
   const animatedTextureSRTs = this.getPaneTextureSRTAnimations?.(pane?.name, this.frame) ?? null;
+  const animatedTextureIndex = paneState?.textureIndex ?? null;
 
   if (pane.materialIndex >= 0 && pane.materialIndex < this.layout.materials.length) {
     const material = this.layout.materials[pane.materialIndex];
@@ -446,7 +447,10 @@ export function getTextureBindingForPane(pane) {
     const bindings = [];
     for (let mapIndex = 0; mapIndex < textureMaps.length; mapIndex += 1) {
       const textureMap = textureMaps[mapIndex];
-      const textureIndex = textureMap.textureIndex;
+      // RLTP animation overrides the texture index on the first map.
+      const textureIndex = (animatedTextureIndex != null && mapIndex === 0)
+        ? animatedTextureIndex
+        : textureMap.textureIndex;
       if (textureIndex < 0 || textureIndex >= this.layout.textures.length) {
         continue;
       }
