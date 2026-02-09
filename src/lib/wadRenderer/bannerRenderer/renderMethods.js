@@ -76,14 +76,93 @@ function buildVertexColorCanvas(colors, mode) {
   return canvas;
 }
 
+function getModulationScratch(renderer, width, height) {
+  if (!renderer.modulationScratchSurface) {
+    renderer.modulationScratchSurface = document.createElement("canvas");
+    renderer.modulationScratchContext = renderer.modulationScratchSurface.getContext("2d");
+  }
+
+  if (
+    renderer.modulationScratchSurface.width !== width ||
+    renderer.modulationScratchSurface.height !== height
+  ) {
+    renderer.modulationScratchSurface.width = width;
+    renderer.modulationScratchSurface.height = height;
+  }
+
+  return {
+    surface: renderer.modulationScratchSurface,
+    context: renderer.modulationScratchContext,
+  };
+}
+
+function applyColorBlendPreservingAlpha(renderer, context, width, height, drawBlend) {
+  const scratch = getModulationScratch(renderer, width, height);
+  scratch.context.setTransform(1, 0, 0, 1, 0, 0);
+  scratch.context.clearRect(0, 0, width, height);
+  scratch.context.drawImage(context.canvas, 0, 0, width, height, 0, 0, width, height);
+
+  drawBlend();
+
+  context.save();
+  context.globalAlpha = 1;
+  context.globalCompositeOperation = "destination-in";
+  context.drawImage(scratch.surface, -width / 2, -height / 2, width, height);
+  context.restore();
+}
+
+function sampleAnimationEntry(entry, frame, frameSize, options = {}) {
+  const keyframes = entry?.keyframes ?? [];
+  if (keyframes.length === 0) {
+    return null;
+  }
+
+  const wrapBeforeFirst = options.wrapBeforeFirst !== false;
+  let sampleFrame = frame;
+  if (wrapBeforeFirst && frameSize > 0 && keyframes[0].frame >= 0 && frame < keyframes[0].frame) {
+    sampleFrame += frameSize;
+  }
+
+  return interpolateKeyframes(keyframes, sampleFrame);
+}
+
+function resolvePaneOrigin(originValue) {
+  if (!Number.isFinite(originValue)) {
+    return { x: 0.5, y: 0.5 };
+  }
+
+  const origin = Math.trunc(originValue);
+  if (origin < 0 || origin > 8) {
+    return { x: 0.5, y: 0.5 };
+  }
+
+  const col = origin % 3;
+  const row = Math.floor(origin / 3);
+  return {
+    x: col / 2,
+    y: row / 2,
+  };
+}
+
+export function getPaneOriginOffset(pane, width, height) {
+  const anchor = resolvePaneOrigin(pane?.origin);
+  return {
+    x: (0.5 - anchor.x) * width,
+    y: (0.5 - anchor.y) * height,
+  };
+}
+
 export function getAnimValues(paneName, frame) {
   const result = {
     transX: null,
     transY: null,
+    rotX: null,
+    rotY: null,
     rotZ: null,
     scaleX: null,
     scaleY: null,
     alpha: null,
+    visible: null,
     width: null,
     height: null,
   };
@@ -97,40 +176,103 @@ export function getAnimValues(paneName, frame) {
     return result;
   }
 
-  for (const tag of paneAnimation.tags) {
-    for (const entry of tag.entries) {
-      const keyframes = entry.keyframes ?? [];
-      let sampleFrame = frame;
-      if (this.anim.frameSize > 0 && keyframes.length > 0 && keyframes[0].frame >= 0 && frame < keyframes[0].frame) {
-        sampleFrame += this.anim.frameSize;
+  for (const tag of paneAnimation.tags ?? []) {
+    const tagType = String(tag?.type ?? "");
+    for (const entry of tag.entries ?? []) {
+      const value = sampleAnimationEntry(entry, frame, this.anim.frameSize);
+      if (value == null) {
+        continue;
       }
 
-      const value = interpolateKeyframes(keyframes, sampleFrame);
+      if (tagType === "RLPA" || !tagType) {
+        switch (entry.type) {
+          case 0x00:
+            result.transX = value;
+            break;
+          case 0x01:
+            result.transY = value;
+            break;
+          case 0x03:
+            result.rotX = value;
+            break;
+          case 0x04:
+            result.rotY = value;
+            break;
+          case 0x05:
+            result.rotZ = value;
+            break;
+          case 0x06:
+            result.scaleX = value;
+            break;
+          case 0x07:
+            result.scaleY = value;
+            break;
+          case 0x08:
+            result.width = value;
+            break;
+          case 0x09:
+            result.height = value;
+            break;
+          case 0x0a:
+            result.alpha = value;
+            break;
+          default:
+            break;
+        }
+      } else if (tagType === "RLVC") {
+        // RLVC alpha channels are commonly used for pane fade/visibility control.
+        if (entry.type === 0x10) {
+          result.alpha = value;
+        }
+      } else if (tagType === "RLVI") {
+        // Some channels use RLVI to hard-toggle pane visibility (0 = hidden, 1 = visible).
+        if (entry.type === 0x00) {
+          const visibilityValue = sampleAnimationEntry(entry, frame, this.anim.frameSize, { wrapBeforeFirst: false });
+          if (visibilityValue != null) {
+            result.visible = visibilityValue >= 0.5;
+          }
+        }
+      }
+    }
+  }
+
+  return result;
+}
+
+export function getPaneMaterialAnimColor(paneName, frame) {
+  const result = { r: null, g: null, b: null, a: null };
+  if (!this.anim) {
+    return result;
+  }
+
+  const paneAnimation = this.animByPaneName.get(paneName);
+  if (!paneAnimation) {
+    return result;
+  }
+
+  for (const tag of paneAnimation.tags ?? []) {
+    if (tag?.type !== "RLMC") {
+      continue;
+    }
+
+    for (const entry of tag.entries ?? []) {
+      const value = sampleAnimationEntry(entry, frame, this.anim.frameSize);
+      if (value == null) {
+        continue;
+      }
+
       switch (entry.type) {
-        case 0x00:
-          result.transX = value;
-          break;
-        case 0x01:
-          result.transY = value;
-          break;
-        case 0x05:
-          result.rotZ = value;
-          break;
-        case 0x06:
-          result.scaleX = value;
-          break;
-        case 0x07:
-          result.scaleY = value;
-          break;
         case 0x08:
-          result.width = value;
+          result.r = clampChannel(value);
           break;
         case 0x09:
-          result.height = value;
+          result.g = clampChannel(value);
           break;
         case 0x0a:
-        case 0x10:
-          result.alpha = value;
+          result.b = clampChannel(value);
+          break;
+        case 0x0b:
+          result.a = clampChannel(value);
           break;
         default:
           break;
@@ -140,6 +282,7 @@ export function getAnimValues(paneName, frame) {
 
   return result;
 }
+
 
 export function getPaneTransformChain(pane) {
   const cached = this.paneTransformChains.get(pane);
@@ -170,18 +313,23 @@ export function getLocalPaneState(pane, frame) {
   const animValues = this.getAnimValues(pane.name, frame);
   const tx = animValues.transX ?? pane.translate?.x ?? 0;
   const ty = animValues.transY ?? pane.translate?.y ?? 0;
+  const rotX = animValues.rotX ?? pane.rotate?.x ?? 0;
+  const rotY = animValues.rotY ?? pane.rotate?.y ?? 0;
   const sx = animValues.scaleX ?? pane.scale?.x ?? 1;
   const sy = animValues.scaleY ?? pane.scale?.y ?? 1;
   const rotation = animValues.rotZ ?? pane.rotate?.z ?? 0;
   const width = animValues.width ?? pane.size?.w ?? 0;
   const height = animValues.height ?? pane.size?.h ?? 0;
 
-  const defaultAlpha = pane.visible === false ? 0 : (pane.alpha ?? 255) / 255;
+  const isVisible = animValues.visible != null ? animValues.visible : pane.visible !== false;
+  const defaultAlpha = isVisible ? (pane.alpha ?? 255) / 255 : 0;
   const alpha = animValues.alpha != null ? animValues.alpha / 255 : defaultAlpha;
 
   return {
     tx,
     ty,
+    rotX,
+    rotY,
     sx,
     sy,
     rotation,
@@ -220,33 +368,36 @@ export function getPaneVertexColorModulation(pane) {
   return modulation;
 }
 
-export function getPaneMaterialColorModulation(pane) {
+export function getPaneMaterialColorModulation(pane, frame = this.frame) {
   const cached = this.materialColorModulationCache.get(pane);
-  if (cached !== undefined) {
-    return cached;
+  if (cached && cached.frame === frame) {
+    return cached.modulation;
   }
 
   if (!Number.isInteger(pane?.materialIndex) || pane.materialIndex < 0 || pane.materialIndex >= this.layout.materials.length) {
-    this.materialColorModulationCache.set(pane, null);
+    this.materialColorModulationCache.set(pane, { frame, modulation: null });
     return null;
   }
 
   const material = this.layout.materials[pane.materialIndex];
-  const color = normalizeMaterialColor(material?.color2);
-  if (!color) {
-    this.materialColorModulationCache.set(pane, null);
-    return null;
-  }
+  const staticColor = normalizeMaterialColor(material?.color2) ?? { r: 255, g: 255, b: 255, a: 255 };
+  const animatedColor = this.getPaneMaterialAnimColor(pane.name, frame);
+  const color = {
+    r: animatedColor.r ?? staticColor.r,
+    g: animatedColor.g ?? staticColor.g,
+    b: animatedColor.b ?? staticColor.b,
+    a: animatedColor.a ?? staticColor.a,
+  };
 
   const hasColorTint = color.r !== 255 || color.g !== 255 || color.b !== 255;
   const hasAlphaTint = color.a !== 255;
   if (!hasColorTint && !hasAlphaTint) {
-    this.materialColorModulationCache.set(pane, null);
+    this.materialColorModulationCache.set(pane, { frame, modulation: null });
     return null;
   }
 
   const modulation = { ...color, hasColorTint, hasAlphaTint };
-  this.materialColorModulationCache.set(pane, modulation);
+  this.materialColorModulationCache.set(pane, { frame, modulation });
   return modulation;
 }
 
@@ -260,12 +411,14 @@ export function applyPaneMaterialColorModulation(context, pane, width, height) {
   const y = -height / 2;
 
   if (modulation.hasColorTint) {
-    context.save();
-    context.globalAlpha = 1;
-    context.globalCompositeOperation = "multiply";
-    context.fillStyle = `rgba(${modulation.r}, ${modulation.g}, ${modulation.b}, 1)`;
-    context.fillRect(x, y, width, height);
-    context.restore();
+    applyColorBlendPreservingAlpha(this, context, width, height, () => {
+      context.save();
+      context.globalAlpha = 1;
+      context.globalCompositeOperation = "multiply";
+      context.fillStyle = `rgba(${modulation.r}, ${modulation.g}, ${modulation.b}, 1)`;
+      context.fillRect(x, y, width, height);
+      context.restore();
+    });
   }
 
   if (modulation.hasAlphaTint) {
@@ -278,6 +431,7 @@ export function applyPaneMaterialColorModulation(context, pane, width, height) {
   }
 }
 
+
 export function applyPaneVertexColorModulation(context, pane, width, height) {
   const modulation = this.getPaneVertexColorModulation(pane);
   if (!modulation) {
@@ -288,11 +442,13 @@ export function applyPaneVertexColorModulation(context, pane, width, height) {
   const y = -height / 2;
 
   if (modulation.hasColorTint && modulation.colorCanvas) {
-    context.save();
-    context.globalAlpha = 1;
-    context.globalCompositeOperation = "multiply";
-    context.drawImage(modulation.colorCanvas, x, y, width, height);
-    context.restore();
+    applyColorBlendPreservingAlpha(this, context, width, height, () => {
+      context.save();
+      context.globalAlpha = 1;
+      context.globalCompositeOperation = "multiply";
+      context.drawImage(modulation.colorCanvas, x, y, width, height);
+      context.restore();
+    });
   }
 
   if (modulation.hasAlphaTint && modulation.alphaCanvas) {
@@ -682,6 +838,12 @@ export function drawPaneTexture(context, binding, pane, width, height) {
 }
 
 export function drawPane(context, binding, pane, width, height) {
+  const paneName = String(pane?.name ?? "").toLowerCase();
+  const isBannerViewport = (this.layout?.width ?? 0) >= 500 && (this.layout?.height ?? 0) >= 400;
+  if (isBannerViewport && (paneName === "effects" || paneName === "mask_01" || paneName === "mask_02")) {
+    return;
+  }
+
   if (this.shouldTreatPaneAsLumaMask(pane, binding)) {
     if (this.drawPaneAsLumaMask(context, binding, pane, width, height)) {
       return;
@@ -831,6 +993,12 @@ export function renderFrame(frame) {
     if (!this.shouldRenderPaneForLocale(pane)) {
       continue;
     }
+    if (!this.shouldRenderPaneForState(pane)) {
+      continue;
+    }
+    if (!this.shouldRenderPaneForPaneState(pane)) {
+      continue;
+    }
 
     const paneState = localPaneStates.get(pane);
     if (!paneState) {
@@ -858,7 +1026,13 @@ export function renderFrame(frame) {
       if (chainState.rotation !== 0) {
         context.rotate((chainState.rotation * Math.PI) / 180);
       }
-      context.scale(chainState.sx, chainState.sy);
+
+      // Approximate NW4R pane X/Y rotations in 2D by orthographic projection scales.
+      const rotXRad = (chainState.rotX * Math.PI) / 180;
+      const rotYRad = (chainState.rotY * Math.PI) / 180;
+      const projectedScaleX = Math.max(1e-4, Math.abs(Math.cos(rotYRad))) * Math.sign(Math.cos(rotYRad) || 1);
+      const projectedScaleY = Math.max(1e-4, Math.abs(Math.cos(rotXRad))) * Math.sign(Math.cos(rotXRad) || 1);
+      context.scale(chainState.sx * projectedScaleX, chainState.sy * projectedScaleY);
     }
 
     if (alpha <= 0) {
@@ -867,6 +1041,10 @@ export function renderFrame(frame) {
     }
 
     context.globalAlpha = Math.max(0, Math.min(1, alpha));
+    const originOffset = this.getPaneOriginOffset(pane, paneState.width, paneState.height);
+    if (originOffset.x !== 0 || originOffset.y !== 0) {
+      context.translate(originOffset.x, originOffset.y);
+    }
 
     if (pane.type === "pic1") {
       const binding = this.getTextureBindingForPane(pane);
@@ -957,4 +1135,6 @@ export function dispose() {
   this.vertexColorModulationCache = new WeakMap();
   this.paneCompositeSurface = null;
   this.paneCompositeContext = null;
+  this.modulationScratchSurface = null;
+  this.modulationScratchContext = null;
 }

@@ -261,6 +261,161 @@ function formatDuration(seconds) {
   return `${seconds.toFixed(2)}s`;
 }
 
+const TITLE_LOCALE_LABELS = {
+  JP: "Japanese (JP)",
+  NE: "Dutch (NE)",
+  GE: "German (GE)",
+  SP: "Spanish (SP)",
+  IT: "Italian (IT)",
+  FR: "French (FR)",
+  US: "English (US)",
+  KR: "Korean (KR)",
+};
+
+const TITLE_LOCALE_ORDER = ["JP", "NE", "GE", "SP", "IT", "FR", "US", "KR"];
+
+function sortTitleLocales(codes = []) {
+  return [...codes].sort((left, right) => {
+    const leftOrder = TITLE_LOCALE_ORDER.indexOf(left);
+    const rightOrder = TITLE_LOCALE_ORDER.indexOf(right);
+    if (leftOrder !== rightOrder) {
+      const safeLeft = leftOrder >= 0 ? leftOrder : Number.MAX_SAFE_INTEGER;
+      const safeRight = rightOrder >= 0 ? rightOrder : Number.MAX_SAFE_INTEGER;
+      return safeLeft - safeRight;
+    }
+    return left.localeCompare(right);
+  });
+}
+
+function normalizeRenderState(value) {
+  if (!value || value === "auto") {
+    return null;
+  }
+  return String(value).trim().toUpperCase();
+}
+
+function compareRenderStates(left, right) {
+  const leftMatch = String(left).match(/^RSO(\d+)$/i);
+  const rightMatch = String(right).match(/^RSO(\d+)$/i);
+  if (leftMatch && rightMatch) {
+    return Number.parseInt(leftMatch[1], 10) - Number.parseInt(rightMatch[1], 10);
+  }
+  return String(left).localeCompare(String(right), undefined, { numeric: true });
+}
+
+function collectRenderStateOptions(targetResult) {
+  const states = new Set();
+
+  for (const group of targetResult?.renderLayout?.groups ?? []) {
+    const normalized = normalizeRenderState(group?.name);
+    if (normalized && /^RSO\d+$/.test(normalized)) {
+      states.add(normalized);
+    }
+  }
+
+  for (const animEntry of targetResult?.animEntries ?? []) {
+    const normalized = normalizeRenderState(animEntry?.state);
+    if (normalized && /^RSO\d+$/.test(normalized)) {
+      states.add(normalized);
+    }
+  }
+
+  return [...states].sort(compareRenderStates);
+}
+
+function resolveAnimationSelection(targetResult, selectedState) {
+  const activeState = normalizeRenderState(selectedState);
+  if (!targetResult) {
+    return { anim: null, startAnim: null, loopAnim: null, renderState: activeState };
+  }
+
+  if (!activeState) {
+    return {
+      anim: targetResult.anim ?? null,
+      startAnim: targetResult.animStart ?? null,
+      loopAnim: targetResult.animLoop ?? targetResult.anim ?? null,
+      renderState: null,
+    };
+  }
+
+  const stateAnimEntry = (targetResult.animEntries ?? []).find(
+    (entry) => normalizeRenderState(entry?.state) === activeState,
+  );
+  const selectedAnim =
+    stateAnimEntry?.anim ??
+    targetResult.animLoop ??
+    targetResult.animStart ??
+    targetResult.anim ??
+    null;
+
+  return {
+    anim: selectedAnim,
+    startAnim: null,
+    loopAnim: selectedAnim,
+    renderState: activeState,
+  };
+}
+
+function arePaneStateGroupsEqual(leftGroups = [], rightGroups = []) {
+  if (leftGroups.length !== rightGroups.length) {
+    return false;
+  }
+
+  for (let i = 0; i < leftGroups.length; i += 1) {
+    const left = leftGroups[i];
+    const right = rightGroups[i];
+    if (
+      left.id !== right.id ||
+      left.label !== right.label ||
+      left.options.length !== right.options.length
+    ) {
+      return false;
+    }
+
+    for (let optionIndex = 0; optionIndex < left.options.length; optionIndex += 1) {
+      const leftOption = left.options[optionIndex];
+      const rightOption = right.options[optionIndex];
+      if (leftOption.index !== rightOption.index || leftOption.paneName !== rightOption.paneName) {
+        return false;
+      }
+    }
+  }
+
+  return true;
+}
+
+function shallowEqualSelections(left = {}, right = {}) {
+  const leftEntries = Object.entries(left);
+  const rightEntries = Object.entries(right);
+  if (leftEntries.length !== rightEntries.length) {
+    return false;
+  }
+
+  for (const [key, value] of leftEntries) {
+    if (right[key] !== value) {
+      return false;
+    }
+  }
+  return true;
+}
+
+function normalizePaneStateSelections(currentSelections, groups) {
+  const nextSelections = {};
+  for (const group of groups) {
+    const currentValue = Number.parseInt(String(currentSelections?.[group.id]), 10);
+    const hasCurrent = Number.isFinite(currentValue) && group.options.some((option) => option.index === currentValue);
+    nextSelections[group.id] = hasCurrent ? currentValue : group.options[0]?.index ?? 0;
+  }
+  return nextSelections;
+}
+
+function normalizeDomId(value) {
+  return String(value ?? "")
+    .replace(/[^a-zA-Z0-9_-]+/g, "-")
+    .replace(/^-+/, "")
+    .replace(/-+$/, "");
+}
+
 export default function App() {
   const fileInputRef = useRef(null);
   const bannerCanvasRef = useRef(null);
@@ -280,19 +435,57 @@ export default function App() {
   const [parsed, setParsed] = useState(null);
   const [audioUrl, setAudioUrl] = useState(null);
   const [logEntries, setLogEntries] = useState([]);
+  const [bannerRenderState, setBannerRenderState] = useState("auto");
+  const [iconRenderState, setIconRenderState] = useState("auto");
+  const [titleLocale, setTitleLocale] = useState("auto");
+  const [availableTitleLocales, setAvailableTitleLocales] = useState([]);
+  const [bannerPaneStateGroups, setBannerPaneStateGroups] = useState([]);
+  const [iconPaneStateGroups, setIconPaneStateGroups] = useState([]);
+  const [bannerPaneStateSelections, setBannerPaneStateSelections] = useState({});
+  const [iconPaneStateSelections, setIconPaneStateSelections] = useState({});
+
+  const bannerRenderStateOptions = useMemo(
+    () => collectRenderStateOptions(parsed?.results?.banner),
+    [parsed],
+  );
+  const iconRenderStateOptions = useMemo(
+    () => collectRenderStateOptions(parsed?.results?.icon),
+    [parsed],
+  );
+
+  const bannerAnimSelection = useMemo(
+    () => resolveAnimationSelection(parsed?.results?.banner, bannerRenderState),
+    [parsed, bannerRenderState],
+  );
+  const iconAnimSelection = useMemo(
+    () => resolveAnimationSelection(parsed?.results?.icon, iconRenderState),
+    [parsed, iconRenderState],
+  );
 
   const maxStartFrame = useMemo(() => {
     if (!parsed) {
       return 959;
     }
-    const bannerStartFrames = parsed?.results.banner?.animStart?.frameSize ?? 0;
-    const bannerFrames = parsed?.results.banner?.anim?.frameSize ?? 0;
-    const iconFrames = parsed?.results.icon?.anim?.frameSize ?? 0;
+
+    const bannerStartFrames = bannerAnimSelection.startAnim?.frameSize ?? 0;
+    const bannerFrames =
+      bannerAnimSelection.anim?.frameSize ??
+      bannerAnimSelection.loopAnim?.frameSize ??
+      0;
+    const iconStartFrames = iconAnimSelection.startAnim?.frameSize ?? 0;
+    const iconFrames =
+      iconAnimSelection.anim?.frameSize ??
+      iconAnimSelection.loopAnim?.frameSize ??
+      0;
+
     if (bannerStartFrames > 0) {
       return Math.max(1, bannerStartFrames) - 1;
     }
+    if (iconStartFrames > 0) {
+      return Math.max(1, iconStartFrames) - 1;
+    }
     return Math.max(1, bannerFrames, iconFrames) - 1;
-  }, [parsed]);
+  }, [parsed, bannerAnimSelection, iconAnimSelection]);
 
   const normalizeStartFrame = useCallback(
     (rawValue) => {
@@ -329,6 +522,14 @@ export default function App() {
       setIsPlaying(false);
       setAnimStatus("Frame 0");
       setActiveTab("preview");
+      setBannerRenderState("auto");
+      setIconRenderState("auto");
+      setTitleLocale("auto");
+      setAvailableTitleLocales([]);
+      setBannerPaneStateGroups([]);
+      setIconPaneStateGroups([]);
+      setBannerPaneStateSelections({});
+      setIconPaneStateSelections({});
 
       stopRenderers();
 
@@ -361,6 +562,26 @@ export default function App() {
   );
 
   useEffect(() => {
+    if (bannerRenderState === "auto") {
+      return;
+    }
+    if (bannerRenderStateOptions.includes(bannerRenderState)) {
+      return;
+    }
+    setBannerRenderState("auto");
+  }, [bannerRenderState, bannerRenderStateOptions]);
+
+  useEffect(() => {
+    if (iconRenderState === "auto") {
+      return;
+    }
+    if (iconRenderStateOptions.includes(iconRenderState)) {
+      return;
+    }
+    setIconRenderState("auto");
+  }, [iconRenderState, iconRenderStateOptions]);
+
+  useEffect(() => {
     const audio = parsed?.results?.audio;
     if (!audio) {
       setAudioUrl(null);
@@ -384,6 +605,9 @@ export default function App() {
   useEffect(() => {
     stopRenderers();
     setIsPlaying(false);
+    setAvailableTitleLocales([]);
+    setBannerPaneStateGroups([]);
+    setIconPaneStateGroups([]);
 
     if (!parsed || activeTab !== "preview") {
       return () => {
@@ -393,17 +617,21 @@ export default function App() {
 
     const bannerResult = parsed.results.banner;
     const iconResult = parsed.results.icon;
+    const requestedLocale = titleLocale === "auto" ? undefined : titleLocale;
 
     if (bannerResult && bannerCanvasRef.current) {
       const bannerRenderer = new BannerRenderer(
         bannerCanvasRef.current,
         bannerResult.renderLayout,
-        bannerResult.anim,
+        bannerAnimSelection.anim,
         bannerResult.tplImages,
         {
           initialFrame: startFrame,
-          startAnim: bannerResult.animStart ?? null,
-          loopAnim: bannerResult.animLoop ?? bannerResult.anim ?? null,
+          startAnim: bannerAnimSelection.startAnim ?? null,
+          loopAnim: bannerAnimSelection.loopAnim ?? bannerAnimSelection.anim ?? null,
+          renderState: bannerAnimSelection.renderState,
+          paneStateSelections: bannerPaneStateSelections,
+          titleLocale: requestedLocale,
           onFrame: (frame, total, phase) => {
             const phaseLabel = phase === "start" ? "Start" : "Loop";
             setAnimStatus(`${phaseLabel} ${frame} / ${total}`);
@@ -424,20 +652,68 @@ export default function App() {
       const iconRenderer = new BannerRenderer(
         iconCanvasRef.current,
         iconLayout,
-        iconResult.anim,
+        iconAnimSelection.anim,
         iconResult.tplImages,
         {
           initialFrame: startFrame,
+          startAnim: iconAnimSelection.startAnim ?? null,
+          loopAnim: iconAnimSelection.loopAnim ?? iconAnimSelection.anim ?? null,
+          renderState: iconAnimSelection.renderState,
+          paneStateSelections: iconPaneStateSelections,
+          titleLocale: requestedLocale,
         },
       );
       iconRenderer.render();
       iconRendererRef.current = iconRenderer;
     }
 
+    const nextBannerPaneGroups = bannerRendererRef.current?.getAvailablePaneStateGroups?.() ?? [];
+    const nextIconPaneGroups = iconRendererRef.current?.getAvailablePaneStateGroups?.() ?? [];
+    setBannerPaneStateGroups((previous) =>
+      arePaneStateGroupsEqual(previous, nextBannerPaneGroups) ? previous : nextBannerPaneGroups,
+    );
+    setIconPaneStateGroups((previous) =>
+      arePaneStateGroupsEqual(previous, nextIconPaneGroups) ? previous : nextIconPaneGroups,
+    );
+    setBannerPaneStateSelections((previous) => {
+      const normalized = normalizePaneStateSelections(previous, nextBannerPaneGroups);
+      return shallowEqualSelections(previous, normalized) ? previous : normalized;
+    });
+    setIconPaneStateSelections((previous) => {
+      const normalized = normalizePaneStateSelections(previous, nextIconPaneGroups);
+      return shallowEqualSelections(previous, normalized) ? previous : normalized;
+    });
+
+    const localeSet = new Set();
+    const bannerLocales = bannerRendererRef.current?.getAvailableTitleLocales?.() ?? [];
+    const iconLocales = iconRendererRef.current?.getAvailableTitleLocales?.() ?? [];
+    for (const locale of bannerLocales) {
+      localeSet.add(locale);
+    }
+    for (const locale of iconLocales) {
+      localeSet.add(locale);
+    }
+
+    const sortedLocales = sortTitleLocales([...localeSet]);
+    setAvailableTitleLocales(sortedLocales);
+    if (titleLocale !== "auto" && !localeSet.has(titleLocale)) {
+      setTitleLocale("auto");
+    }
+
     return () => {
       stopRenderers();
     };
-  }, [activeTab, parsed, startFrame, stopRenderers]);
+  }, [
+    activeTab,
+    parsed,
+    startFrame,
+    stopRenderers,
+    bannerAnimSelection,
+    iconAnimSelection,
+    titleLocale,
+    bannerPaneStateSelections,
+    iconPaneStateSelections,
+  ]);
 
   useEffect(() => {
     const bannerRenderer = bannerRendererRef.current;
@@ -675,6 +951,115 @@ export default function App() {
                   </button>
                   <span className="frame-settings-range">0-{maxStartFrame}</span>
                 </div>
+                {(bannerRenderStateOptions.length > 0 ||
+                  iconRenderStateOptions.length > 0 ||
+                  bannerPaneStateGroups.length > 0 ||
+                  iconPaneStateGroups.length > 0 ||
+                  availableTitleLocales.length > 1) ? (
+                  <div className="state-settings">
+                    {bannerRenderStateOptions.length > 0 ? (
+                      <div className="state-control">
+                        <label htmlFor="banner-state">Banner State</label>
+                        <select
+                          id="banner-state"
+                          value={bannerRenderState}
+                          onChange={(event) => setBannerRenderState(event.target.value)}
+                        >
+                          <option value="auto">Auto</option>
+                          {bannerRenderStateOptions.map((state) => (
+                            <option key={state} value={state}>
+                              {state}
+                            </option>
+                          ))}
+                        </select>
+                      </div>
+                    ) : null}
+                    {bannerPaneStateGroups.map((group) => {
+                      const controlId = `banner-pane-state-${normalizeDomId(group.id)}`;
+                      const parsedValue = Number.parseInt(String(bannerPaneStateSelections[group.id]), 10);
+                      const fallbackValue = group.options[0]?.index ?? 0;
+                      const value = Number.isFinite(parsedValue) ? parsedValue : fallbackValue;
+                      return (
+                        <div className="state-control" key={`banner-pane-group-${group.id}`}>
+                          <label htmlFor={controlId}>Banner {group.label}</label>
+                          <select
+                            id={controlId}
+                            value={String(value)}
+                            onChange={(event) => {
+                              const next = Number.parseInt(event.target.value, 10);
+                              setBannerPaneStateSelections((previous) => ({ ...previous, [group.id]: next }));
+                            }}
+                          >
+                            {group.options.map((option) => (
+                              <option key={`${group.id}-${option.index}`} value={String(option.index)}>
+                                {option.paneName}
+                              </option>
+                            ))}
+                          </select>
+                        </div>
+                      );
+                    })}
+                    {iconRenderStateOptions.length > 0 ? (
+                      <div className="state-control">
+                        <label htmlFor="icon-state">Icon State</label>
+                        <select
+                          id="icon-state"
+                          value={iconRenderState}
+                          onChange={(event) => setIconRenderState(event.target.value)}
+                        >
+                          <option value="auto">Auto</option>
+                          {iconRenderStateOptions.map((state) => (
+                            <option key={state} value={state}>
+                              {state}
+                            </option>
+                          ))}
+                        </select>
+                      </div>
+                    ) : null}
+                    {iconPaneStateGroups.map((group) => {
+                      const controlId = `icon-pane-state-${normalizeDomId(group.id)}`;
+                      const parsedValue = Number.parseInt(String(iconPaneStateSelections[group.id]), 10);
+                      const fallbackValue = group.options[0]?.index ?? 0;
+                      const value = Number.isFinite(parsedValue) ? parsedValue : fallbackValue;
+                      return (
+                        <div className="state-control" key={`icon-pane-group-${group.id}`}>
+                          <label htmlFor={controlId}>Icon {group.label}</label>
+                          <select
+                            id={controlId}
+                            value={String(value)}
+                            onChange={(event) => {
+                              const next = Number.parseInt(event.target.value, 10);
+                              setIconPaneStateSelections((previous) => ({ ...previous, [group.id]: next }));
+                            }}
+                          >
+                            {group.options.map((option) => (
+                              <option key={`${group.id}-${option.index}`} value={String(option.index)}>
+                                {option.paneName}
+                              </option>
+                            ))}
+                          </select>
+                        </div>
+                      );
+                    })}
+                    {availableTitleLocales.length > 1 ? (
+                      <div className="state-control">
+                        <label htmlFor="title-locale">Locale</label>
+                        <select
+                          id="title-locale"
+                          value={titleLocale}
+                          onChange={(event) => setTitleLocale(event.target.value)}
+                        >
+                          <option value="auto">Auto</option>
+                          {availableTitleLocales.map((localeCode) => (
+                            <option key={localeCode} value={localeCode}>
+                              {TITLE_LOCALE_LABELS[localeCode] ?? localeCode}
+                            </option>
+                          ))}
+                        </select>
+                      </div>
+                    ) : null}
+                  </div>
+                ) : null}
                 <div className="anim-status">{animStatus}</div>
 
                 <div className="audio-section">

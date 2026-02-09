@@ -111,6 +111,25 @@ export function parseBRLYT(buffer, loggerInput) {
         break;
       }
 
+      case "grp1": {
+        const name = reader.string(16).replace(/\0+$/, "");
+        const numPanes = reader.u16();
+        reader.skip(2);
+
+        const paneNames = [];
+        const sectionEnd = sectionStart + sectionSize;
+        for (let i = 0; i < numPanes && reader.offset + 16 <= sectionEnd; i += 1) {
+          paneNames.push(reader.string(16).replace(/\0+$/, ""));
+        }
+
+        layout.groups.push({
+          name,
+          paneNames,
+        });
+        logger.info(`  Group: ${name} (${paneNames.length} pane(s))`);
+        break;
+      }
+
       case "mat1": {
         const numMaterials = reader.u16();
         reader.skip(2);

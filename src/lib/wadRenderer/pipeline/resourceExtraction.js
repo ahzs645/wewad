@@ -1,6 +1,25 @@
 import { parseBNS, parseBRLAN, parseBRLYT, parseTPL, parseU8 } from "../parsers/index";
 import { NOOP_LOGGER, withLogger } from "../shared/index";
 
+function inferAnimationRole(filePath) {
+  const lower = String(filePath ?? "").toLowerCase();
+  if (lower.includes("start")) {
+    return "start";
+  }
+  if (lower.includes("loop")) {
+    return "loop";
+  }
+  return "generic";
+}
+
+function inferAnimationState(filePath) {
+  const match = String(filePath ?? "").match(/(?:^|[_-])(rso\d+)(?:[_.-]|$)/i);
+  if (!match) {
+    return null;
+  }
+  return match[1].toUpperCase();
+}
+
 function parseResourceSet(files, loggerInput) {
   const logger = withLogger(loggerInput);
   const sourceFiles = { ...files };
@@ -34,6 +53,7 @@ function parseResourceSet(files, loggerInput) {
   let animation = null;
   let animationStart = null;
   let animationLoop = null;
+  const animationEntries = [];
 
   for (const [filePath, data] of Object.entries(sourceFiles)) {
     if (!filePath.toLowerCase().endsWith(".tpl")) {
@@ -79,35 +99,48 @@ function parseResourceSet(files, loggerInput) {
   const brlanEntries = Object.entries(sourceFiles).filter(([filePath]) => filePath.toLowerCase().endsWith(".brlan"));
   if (brlanEntries.length > 0) {
     const sortBySize = (left, right) => right[1].byteLength - left[1].byteLength;
-    const parseAnimEntry = (entry) => {
-      if (!entry) {
-        return null;
-      }
-      const [animPath, animData] = entry;
+    const parseAnimEntry = ([animPath, animData]) => {
       logger.info(`=== Parsing ${animPath} ===`);
       try {
-        return parseBRLAN(animData, logger);
+        const anim = parseBRLAN(animData, logger);
+        const role = inferAnimationRole(animPath);
+        animationEntries.push({
+          id: animPath,
+          path: animPath,
+          role,
+          state: inferAnimationState(animPath),
+          frameSize: anim.frameSize ?? 0,
+          paneCount: anim.panes?.length ?? 0,
+          anim,
+        });
       } catch (error) {
         logger.warn(`BRLAN parse warning: ${error.message}`);
-        return null;
       }
     };
 
-    const loopEntry = brlanEntries.filter(([filePath]) => filePath.toLowerCase().includes("loop")).sort(sortBySize)[0] ?? null;
-    const startEntry = brlanEntries.filter(([filePath]) => filePath.toLowerCase().includes("start")).sort(sortBySize)[0] ?? null;
+    brlanEntries.sort(sortBySize).forEach(parseAnimEntry);
 
-    animationLoop = parseAnimEntry(loopEntry);
-    animationStart = parseAnimEntry(startEntry);
+    const loopEntry = animationEntries.find((entry) => entry.role === "loop") ?? null;
+    const startEntry = animationEntries.find((entry) => entry.role === "start") ?? null;
+
+    animationLoop = loopEntry?.anim ?? null;
+    animationStart = startEntry?.anim ?? null;
 
     if (!animationLoop && !animationStart) {
-      const selectedAnimEntry = brlanEntries.sort(sortBySize)[0];
-      animation = parseAnimEntry(selectedAnimEntry);
+      animation = animationEntries[0]?.anim ?? null;
     } else {
       animation = animationLoop ?? animationStart;
     }
   }
 
-  return { tplImages, layout, anim: animation, animStart: animationStart, animLoop: animationLoop };
+  return {
+    tplImages,
+    layout,
+    anim: animation,
+    animStart: animationStart,
+    animLoop: animationLoop,
+    animEntries: animationEntries,
+  };
 }
 
 function hasDirectRenderableFiles(files) {

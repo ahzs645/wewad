@@ -1,13 +1,42 @@
 import { TITLE_LOCALE_CODES, extractTitleLocaleCode } from "./locale";
 
-export function collectTitleLocales() {
-  const locales = new Set();
-  for (const pane of this.layout?.panes ?? []) {
-    const locale = extractTitleLocaleCode(pane.name);
-    if (locale && TITLE_LOCALE_CODES.includes(locale)) {
-      locales.add(locale);
+const LOCALE_SORT_ORDER = new Map(TITLE_LOCALE_CODES.map((code, index) => [code, index]));
+
+function addLocale(locales, locale) {
+  if (!locale || !TITLE_LOCALE_CODES.includes(locale)) {
+    return;
+  }
+  locales.add(locale);
+}
+
+function getLocaleFromPaneGroups(renderer, paneName) {
+  const groups = renderer.getPaneGroupNames(paneName);
+  if (!groups || groups.size === 0) {
+    return null;
+  }
+
+  for (const groupName of groups) {
+    const locale = extractTitleLocaleCode(groupName);
+    if (locale) {
+      return locale;
     }
   }
+
+  return null;
+}
+
+export function collectTitleLocales() {
+  const locales = new Set();
+
+  for (const group of this.layout?.groups ?? []) {
+    addLocale(locales, extractTitleLocaleCode(group?.name));
+  }
+
+  for (const pane of this.layout?.panes ?? []) {
+    addLocale(locales, extractTitleLocaleCode(pane.name));
+    addLocale(locales, getLocaleFromPaneGroups(this, pane.name));
+  }
+
   return locales;
 }
 
@@ -16,8 +45,9 @@ export function resolveActiveTitleLocale(preferredLocale) {
     return null;
   }
 
-  if (preferredLocale && this.availableTitleLocales.has(preferredLocale)) {
-    return preferredLocale;
+  const normalizedPreferred = preferredLocale ? String(preferredLocale).toUpperCase() : null;
+  if (normalizedPreferred && this.availableTitleLocales.has(normalizedPreferred)) {
+    return normalizedPreferred;
   }
 
   if (this.availableTitleLocales.has("US")) {
@@ -33,11 +63,22 @@ export function getPaneTitleLocale(pane) {
     return directLocale;
   }
 
+  const directGroupLocale = getLocaleFromPaneGroups(this, pane?.name);
+  if (directGroupLocale) {
+    return directGroupLocale;
+  }
+
   const chain = this.getPaneTransformChain(pane);
   for (let i = chain.length - 1; i >= 0; i -= 1) {
-    const locale = extractTitleLocaleCode(chain[i].name);
-    if (locale) {
-      return locale;
+    const chainPane = chain[i];
+    const localeFromName = extractTitleLocaleCode(chainPane.name);
+    if (localeFromName) {
+      return localeFromName;
+    }
+
+    const localeFromGroups = getLocaleFromPaneGroups(this, chainPane.name);
+    if (localeFromGroups) {
+      return localeFromGroups;
     }
   }
 
@@ -55,4 +96,21 @@ export function shouldRenderPaneForLocale(pane) {
   }
 
   return paneLocale === this.activeTitleLocale;
+}
+
+export function setTitleLocale(localeCode) {
+  this.titleLocalePreference = localeCode ?? null;
+  this.activeTitleLocale = this.resolveActiveTitleLocale(localeCode);
+  this.render();
+}
+
+export function getAvailableTitleLocales() {
+  return [...this.availableTitleLocales].sort((left, right) => {
+    const leftOrder = LOCALE_SORT_ORDER.get(left) ?? Number.MAX_SAFE_INTEGER;
+    const rightOrder = LOCALE_SORT_ORDER.get(right) ?? Number.MAX_SAFE_INTEGER;
+    if (leftOrder !== rightOrder) {
+      return leftOrder - rightOrder;
+    }
+    return left.localeCompare(right);
+  });
 }

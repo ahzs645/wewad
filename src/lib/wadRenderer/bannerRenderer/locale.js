@@ -1,4 +1,4 @@
-export const TITLE_LOCALE_CODES = ["JP", "NE", "GE", "SP", "IT", "FR", "US"];
+export const TITLE_LOCALE_CODES = ["JP", "NE", "GE", "SP", "IT", "FR", "US", "KR"];
 
 const TITLE_LOCALE_ALIASES = new Map([
   ["JP", "JP"],
@@ -24,14 +24,31 @@ const TITLE_LOCALE_ALIASES = new Map([
   ["ENG", "US"],
   ["EN", "US"],
   ["USA", "US"],
+  ["KR", "KR"],
+  ["KOR", "KR"],
+  ["KO", "KR"],
 ]);
 
-function normalizeLocaleAlias(code) {
+export function normalizeTitleLocaleCode(code) {
   if (!code) {
     return null;
   }
 
   return TITLE_LOCALE_ALIASES.get(String(code).toUpperCase()) ?? null;
+}
+
+function tokenizeLocaleName(name) {
+  const normalized = String(name)
+    .replace(/([a-z0-9])([A-Z])/g, "$1_$2")
+    .replace(/([A-Z])([0-9])/g, "$1_$2")
+    .replace(/([0-9])([A-Z])/g, "$1_$2")
+    .replace(/([A-Z]+)([A-Z][a-z])/g, "$1_$2")
+    .toUpperCase();
+
+  return normalized
+    .split(/[^A-Z0-9]+/)
+    .map((token) => token.trim())
+    .filter(Boolean);
 }
 
 export function detectPreferredTitleLocale() {
@@ -59,6 +76,9 @@ export function detectPreferredTitleLocale() {
   if (lower.startsWith("fr")) {
     return "FR";
   }
+  if (lower.startsWith("ko")) {
+    return "KR";
+  }
   return "US";
 }
 
@@ -67,31 +87,32 @@ export function extractTitleLocaleCode(name) {
     return null;
   }
 
-  let match = name.match(/^N_title(JP|NE|GE|SP|IT|FR|US)_/);
+  let match = name.match(/^N_title(JP|NE|GE|SP|IT|FR|US|KR)_/);
   if (match) {
     return match[1];
   }
 
-  match = name.match(/^title_(JP|NE|GE|SP|IT|FR|US)_/);
+  match = name.match(/^title_(JP|NE|GE|SP|IT|FR|US|KR)_/);
   if (match) {
     return match[1];
   }
 
-  match = name.match(/^(JP|NE|GE|SP|IT|FR|US)_/);
+  match = name.match(/^(JP|NE|GE|SP|IT|FR|US|KR)_/);
   if (match) {
     return match[1];
   }
 
-  const normalized = String(name)
-    .replace(/([a-z])([A-Z])/g, "$1_$2")
-    .toUpperCase();
-  const tokens = normalized
-    .split(/[^A-Z0-9]+/)
-    .map((token) => token.trim())
-    .filter(Boolean);
+  match = String(name).match(
+    /(?:^|_)(JP|NE|GE|SP|IT|FR|US|KR|JPN|NED|DUT|NL|GER|DEU|DE|SPA|ES|ESP|ITA|FRA|ENG|EN|USA|KOR|KO)(?:_|[0-9]|$)/i,
+  );
+  if (match) {
+    return normalizeTitleLocaleCode(match[1]);
+  }
+
+  const tokens = tokenizeLocaleName(name);
 
   for (let i = tokens.length - 1; i >= 0; i -= 1) {
-    const canonical = normalizeLocaleAlias(tokens[i]);
+    const canonical = normalizeTitleLocaleCode(tokens[i]);
     if (canonical) {
       return canonical;
     }

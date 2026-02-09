@@ -83,8 +83,175 @@ export function getLumaAlphaTexture(textureName, options = {}) {
   return canvas;
 }
 
-export function getMaskedTexture(baseTextureName, maskTextureName) {
-  const key = `${baseTextureName}|${maskTextureName}`;
+function clampByte(value, fallback = 0) {
+  if (!Number.isFinite(value)) {
+    return fallback;
+  }
+  return Math.max(0, Math.min(255, Math.round(value)));
+}
+
+function parseKeyColor(color) {
+  if (!Array.isArray(color) || color.length < 3) {
+    return null;
+  }
+  return {
+    r: clampByte(color[0]),
+    g: clampByte(color[1]),
+    b: clampByte(color[2]),
+  };
+}
+
+function hasStandaloneAlphaMaskModulation(pane, material) {
+  const paneAlpha = clampByte(pane?.alpha ?? 255);
+  if (paneAlpha !== 255) {
+    return true;
+  }
+
+  const vertexColors = pane?.vertexColors;
+  if (Array.isArray(vertexColors) && vertexColors.length === 4) {
+    for (const color of vertexColors) {
+      if (
+        clampByte(color?.r, 255) !== 255 ||
+        clampByte(color?.g, 255) !== 255 ||
+        clampByte(color?.b, 255) !== 255 ||
+        clampByte(color?.a, 255) !== 255
+      ) {
+        return true;
+      }
+    }
+  }
+
+  const color2 = Array.isArray(material?.color2) ? material.color2 : null;
+  if (color2 && color2.length >= 4) {
+    if (
+      clampByte(color2[0]) !== 255 ||
+      clampByte(color2[1]) !== 255 ||
+      clampByte(color2[2]) !== 255 ||
+      clampByte(color2[3]) !== 255
+    ) {
+      return true;
+    }
+  }
+
+  return false;
+}
+
+function shouldSkipStandaloneAlphaMask(pane, material, textureName, format) {
+  if (format !== 0 || !isLikelyAlphaOnlyTitleMask(textureName)) {
+    return false;
+  }
+
+  // Keep alpha-only masks when the pane/material applies tint/alpha modulation,
+  // which is how locale title shadows are authored (e.g. N_ShaUS_00 letters).
+  return !hasStandaloneAlphaMaskModulation(pane, material);
+}
+
+function getCornerAverageColor(data, width, height) {
+  const points = [
+    [0, 0],
+    [Math.max(0, width - 1), 0],
+    [0, Math.max(0, height - 1)],
+    [Math.max(0, width - 1), Math.max(0, height - 1)],
+  ];
+
+  let sumR = 0;
+  let sumG = 0;
+  let sumB = 0;
+  for (const [x, y] of points) {
+    const offset = (y * width + x) * 4;
+    sumR += data[offset];
+    sumG += data[offset + 1];
+    sumB += data[offset + 2];
+  }
+
+  return {
+    r: clampByte(sumR / points.length),
+    g: clampByte(sumG / points.length),
+    b: clampByte(sumB / points.length),
+  };
+}
+
+export function getChromaKeyTexture(textureName, options = {}) {
+  const lowThreshold = Number.isFinite(options.lowThreshold) ? Math.max(0, options.lowThreshold) : 10;
+  const highThreshold = Number.isFinite(options.highThreshold) ? Math.max(lowThreshold + 1, options.highThreshold) : 42;
+  const maskTextureName = typeof options.maskTextureName === "string" && options.maskTextureName.length > 0 ? options.maskTextureName : null;
+  const outlineThreshold = Number.isFinite(options.outlineThreshold) ? Math.max(0, options.outlineThreshold) : 240;
+  const outlineStrength = Number.isFinite(options.outlineStrength) ? Math.max(0, options.outlineStrength) : 5;
+  const maxOutlineAlpha = Number.isFinite(options.maxOutlineAlpha) ? Math.max(0, options.maxOutlineAlpha) : 96;
+  const explicitKey = parseKeyColor(options.keyColor);
+  const keyColorPart = explicitKey ? `${explicitKey.r},${explicitKey.g},${explicitKey.b}` : "auto";
+  const key = [
+    textureName,
+    "chroma",
+    keyColorPart,
+    lowThreshold,
+    highThreshold,
+    maskTextureName ?? "no-mask",
+    outlineThreshold,
+    outlineStrength,
+    maxOutlineAlpha,
+  ].join("|");
+  const cached = this.textureMaskCache.get(key);
+  if (cached) {
+    return cached;
+  }
+
+  const source = this.textureCanvases[textureName];
+  if (!source) {
+    return null;
+  }
+
+  const width = source.width;
+  const height = source.height;
+  const canvas = document.createElement("canvas");
+  canvas.width = width;
+  canvas.height = height;
+  const context = canvas.getContext("2d");
+  context.drawImage(source, 0, 0);
+
+  const imageData = context.getImageData(0, 0, width, height);
+  const out = imageData.data;
+  const keyColor = explicitKey ?? getCornerAverageColor(out, width, height);
+  const thresholdRange = Math.max(1, highThreshold - lowThreshold);
+  let maskData = null;
+  if (maskTextureName) {
+    const maskSource = this.textureCanvases[maskTextureName];
+    if (maskSource && maskSource.width === width && maskSource.height === height) {
+      maskData = maskSource.getContext("2d").getImageData(0, 0, width, height).data;
+    }
+  }
+
+  for (let i = 0; i < out.length; i += 4) {
+    const dr = out[i] - keyColor.r;
+    const dg = out[i + 1] - keyColor.g;
+    const db = out[i + 2] - keyColor.b;
+    const distance = Math.sqrt(dr * dr + dg * dg + db * db);
+    let alpha = 0;
+    if (distance >= highThreshold) {
+      alpha = 255;
+    } else if (distance > lowThreshold) {
+      alpha = Math.round(((distance - lowThreshold) * 255) / thresholdRange);
+    }
+
+    if (maskData) {
+      const maskLuma = Math.max(maskData[i], maskData[i + 1], maskData[i + 2]);
+      const outlineAlpha = Math.min(maxOutlineAlpha, Math.max(0, Math.round((maskLuma - outlineThreshold) * outlineStrength)));
+      if (outlineAlpha > alpha) {
+        alpha = outlineAlpha;
+      }
+    }
+
+    out[i + 3] = alpha;
+  }
+
+  context.putImageData(imageData, 0, 0);
+  this.textureMaskCache.set(key, canvas);
+  return canvas;
+}
+
+export function getMaskedTexture(baseTextureName, maskTextureName, options = {}) {
+  const invertMask = options.invertMask === true;
+  const key = `${baseTextureName}|${maskTextureName}|inv:${invertMask ? 1 : 0}`;
   const cached = this.textureMaskCache.get(key);
   if (cached) {
     return cached;
@@ -109,7 +276,10 @@ export function getMaskedTexture(baseTextureName, maskTextureName) {
   const out = baseImageData.data;
 
   for (let i = 0; i < out.length; i += 4) {
-    const maskAlpha = Math.max(maskData[i], maskData[i + 1], maskData[i + 2]);
+    let maskAlpha = Math.max(maskData[i], maskData[i + 1], maskData[i + 2]);
+    if (invertMask) {
+      maskAlpha = 255 - maskAlpha;
+    }
     out[i + 3] = (out[i + 3] * maskAlpha) / 255;
   }
 
@@ -156,7 +326,48 @@ export function getTextureBindingForPane(pane) {
       );
 
       if (mask) {
-        const combined = this.getMaskedTexture(primary.textureName, mask.textureName);
+        const color1 = Array.isArray(material?.color1) ? material.color1 : null;
+        const paneName = String(pane?.name ?? "");
+        const primaryFormat = this.getTextureFormat(primary.textureName);
+        const maskFormat = this.getTextureFormat(mask.textureName);
+        const shouldUseLogoChromaKey =
+          /logo/i.test(paneName) &&
+          primaryFormat === 14 &&
+          maskFormat === 0 &&
+          Array.isArray(color1) &&
+          color1.length >= 4 &&
+          color1[3] === 0;
+        if (shouldUseLogoChromaKey) {
+          const keyed = this.getChromaKeyTexture(primary.textureName, {
+            lowThreshold: 10,
+            highThreshold: 42,
+            maskTextureName: mask.textureName,
+            outlineThreshold: 240,
+            outlineStrength: 5,
+            maxOutlineAlpha: 96,
+          });
+          if (keyed) {
+            return {
+              ...primary,
+              texture: keyed,
+              textureName: `${primary.textureName}|chroma`,
+            };
+          }
+        }
+
+        const shouldInvertMask =
+          /logo/i.test(paneName) &&
+          Array.isArray(color1) &&
+          color1.length >= 4 &&
+          color1[3] === 0 &&
+          color1[0] > 0 &&
+          color1[1] > 0 &&
+          color1[2] > 0 &&
+          (color1[0] < 245 || color1[1] < 245 || color1[2] < 245);
+
+        const combined = this.getMaskedTexture(primary.textureName, mask.textureName, {
+          invertMask: shouldInvertMask,
+        });
         if (combined) {
           return {
             ...primary,
@@ -168,8 +379,7 @@ export function getTextureBindingForPane(pane) {
 
       if (
         bindings.length === 1 &&
-        this.getTextureFormat(primary.textureName) === 0 &&
-        isLikelyAlphaOnlyTitleMask(primary.textureName)
+        shouldSkipStandaloneAlphaMask(pane, material, primary.textureName, this.getTextureFormat(primary.textureName))
       ) {
         return null;
       }
@@ -184,7 +394,7 @@ export function getTextureBindingForPane(pane) {
       }
       const textureName = this.layout.textures[textureIndex];
       if (this.textureCanvases[textureName]) {
-        if (this.getTextureFormat(textureName) === 0 && isLikelyAlphaOnlyTitleMask(textureName)) {
+        if (shouldSkipStandaloneAlphaMask(pane, material, textureName, this.getTextureFormat(textureName))) {
           return null;
         }
         return { texture: this.textureCanvases[textureName], textureName, material, wrapS: 0, wrapT: 0, textureSRT: null };

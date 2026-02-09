@@ -232,6 +232,45 @@ canvas {
   box-shadow: 0 0 0 2px rgb(74 158 255 / 20%);
 }
 
+.state-settings {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 10px;
+  margin-top: 12px;
+}
+
+.state-control {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.state-control label {
+  color: var(--text-secondary);
+  font-size: 0.78rem;
+  font-weight: 600;
+  letter-spacing: 0.8px;
+  text-transform: uppercase;
+}
+
+.state-control select {
+  min-width: 140px;
+  border: 1px solid var(--border-subtle);
+  border-radius: 8px;
+  padding: 8px 10px;
+  color: var(--text-primary);
+  background: rgb(8 8 15 / 70%);
+  font-family: "JetBrains Mono", monospace;
+  font-size: 0.8rem;
+}
+
+.state-control select:focus {
+  outline: none;
+  border-color: var(--accent-blue);
+  box-shadow: 0 0 0 2px rgb(74 158 255 / 20%);
+}
+
 .frame-settings-range {
   color: var(--text-secondary);
   font-family: "JetBrains Mono", monospace;
@@ -462,6 +501,20 @@ button.primary:hover {
   .frame-settings input,
   .frame-settings button {
     flex: 1 1 120px;
+  }
+
+  .state-settings {
+    align-items: stretch;
+  }
+
+  .state-control {
+    flex: 1 1 100%;
+    justify-content: space-between;
+  }
+
+  .state-control select {
+    min-width: 0;
+    flex: 1 1 auto;
   }
 
   .tab-bar {

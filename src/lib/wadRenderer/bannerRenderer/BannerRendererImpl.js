@@ -2,6 +2,7 @@ import { detectPreferredTitleLocale } from "./locale";
 import * as animationMethods from "./animationMethods";
 import * as localeMethods from "./localeMethods";
 import * as renderMethods from "./renderMethods";
+import * as stateMethods from "./stateMethods";
 import * as textureMethods from "./textureMethods";
 
 export class BannerRenderer {
@@ -42,16 +43,24 @@ export class BannerRenderer {
     this.materialColorModulationCache = new WeakMap();
     this.paneCompositeSurface = null;
     this.paneCompositeContext = null;
+    this.modulationScratchSurface = null;
+    this.modulationScratchContext = null;
 
     this.textureCanvases = {};
     this.textureFormats = {};
     this.panesByName = new Map();
     this.paneTransformChains = new Map();
+    this.paneGroupNames = new Map();
     this.animMapByAnim = new WeakMap();
     this.animByPaneName = new Map();
     this.titleLocalePreference = options.titleLocale ?? detectPreferredTitleLocale();
     this.availableTitleLocales = new Set();
     this.activeTitleLocale = null;
+    this.availableRenderStates = new Set();
+    this.activeRenderState = null;
+    this.availablePaneStateGroups = [];
+    this.activePaneStateSelections = {};
+    this.paneStateMembershipByPaneName = new Map();
 
     for (const pane of this.layout?.panes ?? []) {
       if (!this.panesByName.has(pane.name)) {
@@ -59,8 +68,40 @@ export class BannerRenderer {
       }
     }
 
+    for (const group of this.layout?.groups ?? []) {
+      for (const paneName of group?.paneNames ?? []) {
+        if (!paneName) {
+          continue;
+        }
+        let groups = this.paneGroupNames.get(paneName);
+        if (!groups) {
+          groups = new Set();
+          this.paneGroupNames.set(paneName, groups);
+        }
+        groups.add(group.name);
+      }
+    }
+
     this.availableTitleLocales = this.collectTitleLocales();
     this.activeTitleLocale = this.resolveActiveTitleLocale(this.titleLocalePreference);
+    this.availableRenderStates = this.collectRenderStates();
+    this.activeRenderState = this.resolveActiveRenderState(options.renderState ?? null);
+    this.availablePaneStateGroups = this.collectPaneStateGroups();
+    this.activePaneStateSelections = this.resolvePaneStateSelections(options.paneStateSelections ?? null);
+
+    for (const group of this.availablePaneStateGroups) {
+      for (const option of group.options) {
+        let memberships = this.paneStateMembershipByPaneName.get(option.paneName);
+        if (!memberships) {
+          memberships = [];
+          this.paneStateMembershipByPaneName.set(option.paneName, memberships);
+        }
+        memberships.push({
+          groupId: group.id,
+          index: option.index,
+        });
+      }
+    }
 
     const initialAnim = this.sequenceEnabled ? this.startAnim : (this.loopAnim ?? this.startAnim ?? this.anim);
     this.setActiveAnim(initialAnim, this.phase);
@@ -76,5 +117,6 @@ Object.assign(
   localeMethods,
   animationMethods,
   textureMethods,
+  stateMethods,
   renderMethods,
 );

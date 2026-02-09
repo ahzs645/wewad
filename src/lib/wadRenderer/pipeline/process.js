@@ -59,6 +59,7 @@ export async function processWAD(buffer, loggerInput) {
       anim: parsedTarget.anim,
       animStart: parsedTarget.animStart ?? null,
       animLoop: parsedTarget.animLoop ?? null,
+      animEntries: parsedTarget.animEntries ?? [],
       renderLayout: createRenderableLayout(
         parsedTarget.layout,
         parsedTarget.tplImages,

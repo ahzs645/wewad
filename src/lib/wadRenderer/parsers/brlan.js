@@ -97,6 +97,11 @@ export function parseBRLAN(buffer, loggerInput) {
             for (let keyframeIndex = 0; keyframeIndex < numKeyframes; keyframeIndex += 1) {
               if (dataType === 2) {
                 entry.keyframes.push({ frame: reader.f32(), value: reader.f32(), blend: reader.f32() });
+              } else if (dataType === 1) {
+                // BRLAN integer keyframes (e.g. RLVI visibility / RLTP indices):
+                // frame=f32, value=u16, reserved=u16.
+                entry.keyframes.push({ frame: reader.f32(), value: reader.u16(), blend: 0 });
+                reader.skip(2);
               } else {
                 entry.keyframes.push({ frame: reader.f32(), value: reader.f32(), blend: 0 });
               }
