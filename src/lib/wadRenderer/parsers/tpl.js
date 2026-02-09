@@ -18,16 +18,16 @@ function decodeTPLImage(src, width, height, format, palette, logger) {
 
   function decodeRGB5A3(value) {
     if (value & 0x8000) {
-      const red = (((value >> 10) & 0x1f) * 255) / 31;
-      const green = (((value >> 5) & 0x1f) * 255) / 31;
-      const blue = ((value & 0x1f) * 255) / 31;
+      const red = Math.trunc((((value >> 10) & 0x1f) * 255) / 31);
+      const green = Math.trunc((((value >> 5) & 0x1f) * 255) / 31);
+      const blue = Math.trunc(((value & 0x1f) * 255) / 31);
       return [red, green, blue, 255];
     }
 
-    const alpha = (((value >> 12) & 0x7) * 255) / 7;
-    const red = (((value >> 8) & 0xf) * 255) / 15;
-    const green = (((value >> 4) & 0xf) * 255) / 15;
-    const blue = ((value & 0xf) * 255) / 15;
+    const alpha = Math.trunc((((value >> 12) & 0x7) * 255) / 7);
+    const red = Math.trunc((((value >> 8) & 0xf) * 255) / 15);
+    const green = Math.trunc((((value >> 4) & 0xf) * 255) / 15);
+    const blue = Math.trunc(((value & 0xf) * 255) / 15);
     return [red, green, blue, alpha];
   }
 
@@ -45,9 +45,9 @@ function decodeTPLImage(src, width, height, format, palette, logger) {
     }
 
     if (activePalette.format === 1) {
-      const red = (((value >> 11) & 0x1f) * 255) / 31;
-      const green = (((value >> 5) & 0x3f) * 255) / 63;
-      const blue = ((value & 0x1f) * 255) / 31;
+      const red = ((value >> 11) & 0x1f) * 8;
+      const green = ((value >> 5) & 0x3f) * 4;
+      const blue = (value & 0x1f) * 8;
       return [red, green, blue, 255];
     }
 
@@ -151,9 +151,9 @@ function decodeTPLImage(src, width, height, format, palette, logger) {
               const value = (src[srcOffset] << 8) | src[srcOffset + 1];
               srcOffset += 2;
 
-              const red = (((value >> 11) & 0x1f) * 255) / 31;
-              const green = (((value >> 5) & 0x3f) * 255) / 63;
-              const blue = ((value & 0x1f) * 255) / 31;
+              const red = ((value >> 11) & 0x1f) * 8;
+              const green = ((value >> 5) & 0x3f) * 4;
+              const blue = (value & 0x1f) * 8;
               setPixel(blockX + x, blockY + y, red, green, blue, 255);
             }
           }
@@ -285,6 +285,23 @@ function decodeTPLImage(src, width, height, format, palette, logger) {
     }
 
     case 14: {
+      // Benzin-style weighted average in RGB565 space (Segher Boessenkool).
+      function avg565(w0, w1, c0, c1) {
+        const r = Math.trunc((w0 * (c0 >> 11) + w1 * (c1 >> 11)) / (w0 + w1));
+        const g = Math.trunc((w0 * ((c0 >> 5) & 63) + w1 * ((c1 >> 5) & 63)) / (w0 + w1));
+        const b = Math.trunc((w0 * (c0 & 31) + w1 * (c1 & 31)) / (w0 + w1));
+        return (r << 11) | (g << 5) | b;
+      }
+
+      // Benzin-style shift-and-mask extraction from RGB565 to 8-bit channels.
+      function rgb565ToArray(raw) {
+        return [
+          (raw >> 8) & 0xf8,
+          (raw >> 3) & 0xf8,
+          (raw << 3) & 0xf8,
+        ];
+      }
+
       function decodeDXT1Block(offset) {
         if (offset + 7 >= src.length) {
           return null;
@@ -293,26 +310,16 @@ function decodeTPLImage(src, width, height, format, palette, logger) {
         const c0 = (src[offset] << 8) | src[offset + 1];
         const c1 = (src[offset + 2] << 8) | src[offset + 3];
 
-        function rgb565ToArray(color) {
-          return [
-            (((color >> 11) & 0x1f) * 255) / 31,
-            (((color >> 5) & 0x3f) * 255) / 63,
-            ((color & 0x1f) * 255) / 31,
-          ];
-        }
-
-        const colors = [rgb565ToArray(c0), rgb565ToArray(c1)];
+        const rawColors = [c0, c1];
         if (c0 > c1) {
-          colors[2] = colors[0].map((value, i) => (2 * value + colors[1][i]) / 3);
-          colors[3] = colors[0].map((value, i) => (value + 2 * colors[1][i]) / 3);
+          rawColors[2] = avg565(2, 1, c0, c1);
+          rawColors[3] = avg565(1, 2, c0, c1);
         } else {
-          colors[2] = colors[0].map((value, i) => (value + colors[1][i]) / 2);
-          // DXT1 transparent mode defines color index 3 as fully transparent.
-          // Keeping RGB close to neighboring colors avoids dark fringes after
-          // linear filtering on the 2D canvas.
-          colors[3] = [...colors[2]];
+          rawColors[2] = avg565(1, 1, c0, c1);
+          rawColors[3] = rawColors[2];
         }
 
+        const colors = rawColors.map(rgb565ToArray);
         const indices = [];
         for (let i = 0; i < 4; i += 1) {
           const byte = src[offset + 4 + i];

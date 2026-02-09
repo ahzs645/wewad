@@ -84,4 +84,8 @@ export function dispose() {
   this.paneCompositeContext = null;
   this.modulationScratchSurface = null;
   this.modulationScratchContext = null;
+  this.tevResultSurface = null;
+  this.tevResultContext = null;
+  this.tevSampleSurface = null;
+  this.tevSampleContext = null;
 }

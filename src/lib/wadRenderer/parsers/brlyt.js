@@ -274,8 +274,18 @@ export function parseBRLYT(buffer, loggerInput) {
             cursor += 20;
           }
 
-          // Skip texcoord-gen entries (4 bytes each).
-          cursor += texCoordGenCount * 4;
+          // TexCoordGen entries (4 bytes each).
+          const texCoordGens = [];
+          for (let tcg = 0; tcg < texCoordGenCount; tcg += 1) {
+            if (cursor + 3 < materialEnd) {
+              texCoordGens.push({
+                texGenType: reader.view.getUint8(cursor),
+                texGenSrc: reader.view.getUint8(cursor + 1),
+                mtxSrc: reader.view.getUint8(cursor + 2),
+              });
+            }
+            cursor += 4;
+          }
 
           // Channel Control (4 bytes if present).
           let channelControl = null;
@@ -299,19 +309,118 @@ export function parseBRLYT(buffer, loggerInput) {
             cursor += 4;
           }
 
-          // TEV Swap Table (4 bytes if present).
+          // TEV Swap Table (4 bytes if present): 4 entries, 1 byte each.
+          // Each byte: R(1:0), G(3:2), B(5:4), A(7:6) channel selectors.
+          let tevSwapTable = null;
           if (hasTevSwapTable && cursor + 3 < materialEnd) {
+            tevSwapTable = [];
+            for (let sw = 0; sw < 4; sw += 1) {
+              const b = reader.view.getUint8(cursor + sw);
+              tevSwapTable.push({
+                r: b & 3,
+                g: (b >> 2) & 3,
+                b: (b >> 4) & 3,
+                a: (b >> 6) & 3,
+              });
+            }
             cursor += 4;
           }
 
-          // Indirect Texture Matrix (20 bytes each).
-          cursor += indTexMatrixCount * 20;
+          // Indirect Texture Matrix (20 bytes each): SRT transform.
+          const indTexMatrices = [];
+          for (let itm = 0; itm < indTexMatrixCount; itm += 1) {
+            if (cursor + 19 < materialEnd) {
+              indTexMatrices.push({
+                xTrans: reader.view.getFloat32(cursor, false),
+                yTrans: reader.view.getFloat32(cursor + 4, false),
+                rotation: reader.view.getFloat32(cursor + 8, false),
+                xScale: reader.view.getFloat32(cursor + 12, false),
+                yScale: reader.view.getFloat32(cursor + 16, false),
+              });
+            }
+            cursor += 20;
+          }
 
           // Indirect Texture Stage (4 bytes each).
-          cursor += indTexStageCount * 4;
+          const indTexStages = [];
+          for (let its = 0; its < indTexStageCount; its += 1) {
+            if (cursor + 3 < materialEnd) {
+              indTexStages.push({
+                texMap: reader.view.getUint8(cursor),
+                texCoord: reader.view.getUint8(cursor + 1),
+                scaleS: reader.view.getUint8(cursor + 2),
+                scaleT: reader.view.getUint8(cursor + 3),
+              });
+            }
+            cursor += 4;
+          }
 
-          // TEV Stage (16 bytes each).
-          cursor += tevStageCount * 16;
+          // TEV Stages (16 bytes each). Packed bitfields — big-endian MSB-first.
+          const tevStages = [];
+          for (let ts = 0; ts < tevStageCount; ts += 1) {
+            if (cursor + 15 >= materialEnd) {
+              cursor += 16;
+              continue;
+            }
+            const b0 = reader.view.getUint8(cursor);
+            const b1 = reader.view.getUint8(cursor + 1);
+            const b2 = reader.view.getUint8(cursor + 2);
+            const b3 = reader.view.getUint8(cursor + 3);
+            const b4 = reader.view.getUint8(cursor + 4);
+            const b5 = reader.view.getUint8(cursor + 5);
+            const b6 = reader.view.getUint8(cursor + 6);
+            const b7 = reader.view.getUint8(cursor + 7);
+            const b8 = reader.view.getUint8(cursor + 8);
+            const b9 = reader.view.getUint8(cursor + 9);
+            const b10 = reader.view.getUint8(cursor + 10);
+            const b11 = reader.view.getUint8(cursor + 11);
+            const b12 = reader.view.getUint8(cursor + 12);
+            const b13 = reader.view.getUint8(cursor + 13);
+            const b14 = reader.view.getUint8(cursor + 14);
+            const b15 = reader.view.getUint8(cursor + 15);
+
+            tevStages.push({
+              // Word 0: order & swap mode
+              texCoord: b0,
+              colorChan: b1,
+              texMap: b2 | (((b3 >> 7) & 1) << 8),
+              rasSel: (b3 >> 5) & 3,
+              texSel: (b3 >> 3) & 3,
+              // Word 1: color combiner
+              aC: (b4 >> 4) & 0xf,
+              bC: b4 & 0xf,
+              cC: (b5 >> 4) & 0xf,
+              dC: b5 & 0xf,
+              tevScaleC: (b6 >> 6) & 3,
+              tevBiasC: (b6 >> 4) & 3,
+              tevOpC: b6 & 0xf,
+              tevRegIdC: (b7 >> 7) & 1,
+              clampC: (b7 >> 5) & 3,
+              kColorSelC: b7 & 0x1f,
+              // Word 2: alpha combiner
+              aA: (b8 >> 4) & 0xf,
+              bA: b8 & 0xf,
+              cA: (b9 >> 4) & 0xf,
+              dA: b9 & 0xf,
+              tevScaleA: (b10 >> 6) & 3,
+              tevBiasA: (b10 >> 4) & 3,
+              tevOpA: b10 & 0xf,
+              tevRegIdA: (b11 >> 7) & 1,
+              clampA: (b11 >> 5) & 3,
+              kAlphaSelA: b11 & 0x1f,
+              // Word 3: indirect texture
+              indTexId: b12,
+              indBias: (b13 >> 5) & 7,
+              indMtxId: (b13 >> 1) & 0xf,
+              indWrapS: (b14 >> 5) & 7,
+              indWrapT: (b14 >> 2) & 7,
+              indFormat: (b15 >> 6) & 3,
+              indAddPrev: (b15 >> 5) & 1,
+              indUtcLod: (b15 >> 4) & 1,
+              indAlpha: (b15 >> 2) & 3,
+            });
+            cursor += 16;
+          }
 
           // Alpha Compare (4 bytes if present).
           let alphaCompare = null;
@@ -353,6 +462,7 @@ export function parseBRLYT(buffer, loggerInput) {
           layout.materials.push({
             name, index: i, flags, textureMaps, textureSRTs, textureIndices,
             color1, color2, color3, tevColors,
+            texCoordGens, tevSwapTable, indTexMatrices, indTexStages, tevStages,
             channelControl, materialColor, alphaCompare, blendMode,
           });
           logger.info(`  Material: ${name}`);

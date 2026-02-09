@@ -12,6 +12,7 @@ import * as paneDrawMethods from "./paneDrawMethods";
 import * as playbackMethods from "./playbackMethods";
 import * as stateMethods from "./stateMethods";
 import * as textureMethods from "./textureMethods";
+import * as tevMethods from "./tevMethods";
 
 const DEFAULT_REFERENCE_ASPECT = 4 / 3;
 
@@ -107,6 +108,10 @@ export class BannerRenderer {
     this.paneCompositeContext = null;
     this.modulationScratchSurface = null;
     this.modulationScratchContext = null;
+    this.tevResultSurface = null;
+    this.tevResultContext = null;
+    this.tevSampleSurface = null;
+    this.tevSampleContext = null;
 
     this.textureCanvases = {};
     this.textureFormats = {};
@@ -207,4 +212,5 @@ Object.assign(
   textureDrawMethods,
   paneDrawMethods,
   playbackMethods,
+  tevMethods,
 );

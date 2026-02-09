@@ -819,3 +819,10 @@ export function getSourceRectForPane(pane, texture, options = {}) {
 
   return { x: left, y: top, width: srcWidth, height: srcHeight };
 }
+
+export function getMaterialForPane(pane) {
+  if (!Number.isInteger(pane?.materialIndex) || pane.materialIndex < 0) {
+    return null;
+  }
+  return this.layout?.materials?.[pane.materialIndex] ?? null;
+}
