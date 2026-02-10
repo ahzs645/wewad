@@ -356,8 +356,20 @@ export function drawFillTextPane(context, pane, rawText, width, height) {
     return;
   }
 
-  let fontSize = Math.max(1, Number.isFinite(pane?.textSize?.y) ? pane.textSize.y : absHeight * 0.45);
   const lineSpacing = Number.isFinite(pane?.lineSpacing) ? pane.lineSpacing : 0;
+
+  // Wii bitmap fonts render at scale = textSize.y / fontHeight, producing glyphs
+  // smaller than textSize.y. Without the font file, estimate the effective rendering
+  // height as textSize.x² / textSize.y (derived from the cell aspect ratio).
+  // When textSize.x == textSize.y, this simplifies to textSize.y (no adjustment).
+  const textSizeX = pane?.textSize?.x;
+  const textSizeY = pane?.textSize?.y;
+  let fontSize;
+  if (Number.isFinite(textSizeX) && Number.isFinite(textSizeY) && textSizeY > 0 && textSizeX > 0) {
+    fontSize = Math.max(1, textSizeX < textSizeY ? (textSizeX * textSizeX) / textSizeY : textSizeY);
+  } else {
+    fontSize = Math.max(1, Number.isFinite(textSizeY) ? textSizeY : absHeight * 0.45);
+  }
 
   // Byte +8 in txt1 is the text origin/position (benzin: "alignment").
   // Encodes hAlign = value % 3: 0=left, 1=center, 2=right.
@@ -375,8 +387,6 @@ export function drawFillTextPane(context, pane, rawText, width, height) {
   // Horizontal compression: Wii bitmap fonts have a specific width-to-height ratio
   // encoded in textSize (x=cell width, y=cell height). Apply this ratio to compress
   // the fallback font horizontally so text proportions match the Wii layout.
-  const textSizeX = pane?.textSize?.x;
-  const textSizeY = pane?.textSize?.y;
   const xRatio = (Number.isFinite(textSizeX) && Number.isFinite(textSizeY) && textSizeY > 0 && textSizeX < textSizeY)
     ? textSizeX / textSizeY
     : 1;
@@ -573,6 +583,9 @@ export function renderFrame(frame) {
       continue;
     }
     if (!this.shouldRenderPaneForCustomWeather(pane)) {
+      continue;
+    }
+    if (!this.shouldRenderPaneForCustomNews?.(pane)) {
       continue;
     }
 
