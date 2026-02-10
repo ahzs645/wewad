@@ -1098,6 +1098,7 @@ export default function App() {
   const [customTemperature, setCustomTemperature] = useState("72");
   const [customTemperatureUnit, setCustomTemperatureUnit] = useState("F");
   const [previewDisplayAspect, setPreviewDisplayAspect] = useState("4:3");
+  const [tevQuality, setTevQuality] = useState("fast");
   const [recentWads, setRecentWads] = useState([]);
   const [isLoadingRecentId, setIsLoadingRecentId] = useState("");
 
@@ -1418,6 +1419,7 @@ export default function App() {
           titleLocale: requestedLocale,
           customWeather: customWeatherData,
           displayAspect: previewDisplayAspect,
+          tevQuality,
           fonts: bannerResult.fonts,
           onFrame: (frame, total, phase) => {
             const phaseLabel = phase === "start" ? "Start" : "Loop";
@@ -1451,6 +1453,7 @@ export default function App() {
           titleLocale: requestedLocale,
           customWeather: customWeatherData,
           displayAspect: previewDisplayAspect,
+          tevQuality,
           fonts: iconResult.fonts,
         },
       );
@@ -1508,6 +1511,7 @@ export default function App() {
     iconPaneStateSelections,
     customWeatherData,
     previewDisplayAspect,
+    tevQuality,
   ]);
 
   useEffect(() => {
@@ -1816,6 +1820,17 @@ export default function App() {
                           {option.label}
                         </option>
                       ))}
+                    </select>
+                  </div>
+                  <div className="state-control">
+                    <label htmlFor="tev-quality">TEV Quality</label>
+                    <select
+                      id="tev-quality"
+                      value={tevQuality}
+                      onChange={(event) => setTevQuality(event.target.value)}
+                    >
+                      <option value="fast">Fast</option>
+                      <option value="accurate">Accurate</option>
                     </select>
                   </div>
                   {bannerRenderStateOptions.length > 0 ? (

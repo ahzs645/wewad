@@ -203,6 +203,28 @@ function sampleTextureToBuffer(renderer, binding, pane, width, height) {
   return ctx.getImageData(0, 0, w, h);
 }
 
+// Build a cache key for the TEV result of a pane at its current visual state.
+function buildTevCacheKey(pane, paneState, bindings, w, h) {
+  let key = `${w}|${h}`;
+  const colors = paneState?.vertexColors ?? pane?.vertexColors;
+  if (colors) {
+    for (let i = 0; i < colors.length; i += 1) {
+      const c = colors[i];
+      key += `|${c.r},${c.g},${c.b},${c.a}`;
+    }
+  }
+  for (let i = 0; i < bindings.length; i += 1) {
+    const b = bindings[i];
+    if (!b) { key += "|null"; continue; }
+    key += `|${b.textureName}|${b.wrapS},${b.wrapT}`;
+    const srt = b.textureSRT;
+    if (srt) {
+      key += `|${srt.xTrans ?? 0},${srt.yTrans ?? 0},${srt.rotation ?? 0},${srt.xScale ?? 1},${srt.yScale ?? 1}`;
+    }
+  }
+  return key;
+}
+
 // Run the full TEV pipeline for a pane and return the result ImageData.
 export function runTevPipeline(pane, paneState, width, height) {
   if (width < 1 || height < 1) {
@@ -222,17 +244,39 @@ export function runTevPipeline(pane, paneState, width, height) {
   // Get all texture bindings.
   const bindings = this.getAllTextureBindingsForPane(pane, paneState);
 
-  // Sample each texture into a buffer.
-  const textureBuffers = [];
-  for (let i = 0; i < bindings.length; i += 1) {
-    textureBuffers.push(sampleTextureToBuffer(this, bindings[i], pane, w, h));
+  // In "fast" mode: check result cache and downscale evaluation resolution.
+  const useFastPath = this.tevQuality === "fast";
+  let cacheKey = null;
+  if (useFastPath) {
+    cacheKey = buildTevCacheKey(pane, paneState, bindings, w, h);
+    const cached = this.tevResultCache.get(pane.name);
+    if (cached && cached.key === cacheKey) {
+      return cached.result;
+    }
   }
 
-  // Build rasterized vertex color buffer.
-  const rasBuffer = buildRasterizedColorBuffer(pane, paneState, w, h);
+  // Compute evaluation dimensions (downscale in fast mode).
+  const maxRes = this.tevMaxResolution ?? Infinity;
+  const maxDim = Math.max(w, h);
+  const scale = maxDim > maxRes ? maxRes / maxDim : 1;
+  const evalW = Math.max(1, Math.round(w * scale));
+  const evalH = Math.max(1, Math.round(h * scale));
+
+  // Sample each texture into a buffer at evaluation resolution.
+  const textureBuffers = [];
+  for (let i = 0; i < bindings.length; i += 1) {
+    textureBuffers.push(sampleTextureToBuffer(this, bindings[i], pane, evalW, evalH));
+  }
+
+  // Build rasterized vertex color buffer at evaluation resolution.
+  const rasBuffer = buildRasterizedColorBuffer(pane, paneState, evalW, evalH);
 
   // Run per-pixel TEV evaluation with effective stages (may be default if none defined).
-  const result = evaluateTevPipeline(stages, material, textureBuffers, rasBuffer, w, h);
+  const result = evaluateTevPipeline(stages, material, textureBuffers, rasBuffer, evalW, evalH);
+
+  if (useFastPath && cacheKey) {
+    this.tevResultCache.set(pane.name, { key: cacheKey, result });
+  }
 
   return result;
 }

@@ -399,43 +399,47 @@ export function evaluateTevPipeline(stages, material, textureImageDatas, rasColo
   const swapTable = material?.tevSwapTable ?? null;
   const alphaCompare = material?.alphaCompare ?? null;
   const output = new Uint8ClampedArray(width * height * 4);
+  const texCount = textureImageDatas.length;
+
+  // Pre-allocate texture sample objects and raster color — reused per pixel.
+  const texSamples = new Array(texCount);
+  for (let t = 0; t < texCount; t += 1) {
+    texSamples[t] = { r: 0, g: 0, b: 0, a: 0 };
+  }
+  const rasColor = { r: 1, g: 1, b: 1, a: 1 };
 
   for (let y = 0; y < height; y += 1) {
     for (let x = 0; x < width; x += 1) {
       const pixelIdx = (y * width + x) * 4;
 
-      // Sample all texture inputs.
-      const texSamples = [];
-      for (let t = 0; t < textureImageDatas.length; t += 1) {
+      // Sample all texture inputs into pre-allocated objects.
+      for (let t = 0; t < texCount; t += 1) {
         const tex = textureImageDatas[t];
+        const s = texSamples[t];
         if (!tex) {
-          texSamples.push({ r: 0, g: 0, b: 0, a: 0 });
+          s.r = 0; s.g = 0; s.b = 0; s.a = 0;
           continue;
         }
-        // Nearest-neighbor sample (tex coordinates map 1:1 to output).
         const tx = Math.min(x, tex.width - 1);
         const ty = Math.min(y, tex.height - 1);
         const ti = (ty * tex.width + tx) * 4;
-        texSamples.push({
-          r: tex.data[ti] / 255,
-          g: tex.data[ti + 1] / 255,
-          b: tex.data[ti + 2] / 255,
-          a: tex.data[ti + 3] / 255,
-        });
+        s.r = tex.data[ti] / 255;
+        s.g = tex.data[ti + 1] / 255;
+        s.b = tex.data[ti + 2] / 255;
+        s.a = tex.data[ti + 3] / 255;
       }
 
-      // Sample rasterized color.
-      let rasColor = { r: 1, g: 1, b: 1, a: 1 };
+      // Sample rasterized color into pre-allocated object.
       if (rasColorData) {
         const rx = Math.min(x, rasColorData.width - 1);
         const ry = Math.min(y, rasColorData.height - 1);
         const ri = (ry * rasColorData.width + rx) * 4;
-        rasColor = {
-          r: rasColorData.data[ri] / 255,
-          g: rasColorData.data[ri + 1] / 255,
-          b: rasColorData.data[ri + 2] / 255,
-          a: rasColorData.data[ri + 3] / 255,
-        };
+        rasColor.r = rasColorData.data[ri] / 255;
+        rasColor.g = rasColorData.data[ri + 1] / 255;
+        rasColor.b = rasColorData.data[ri + 2] / 255;
+        rasColor.a = rasColorData.data[ri + 3] / 255;
+      } else {
+        rasColor.r = 1; rasColor.g = 1; rasColor.b = 1; rasColor.a = 1;
       }
 
       const result = evaluateTevStagesForPixel(stages, texSamples, rasColor, material, kColors, swapTable);

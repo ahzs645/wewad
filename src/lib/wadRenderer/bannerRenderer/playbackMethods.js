@@ -78,6 +78,7 @@ export function dispose() {
   this.textureMaskCache.clear();
   this.lumaAlphaTextureCache.clear();
   this.textureSrtAnimationCache.clear();
+  this.tevResultCache.clear();
   this.materialColorModulationCache = new WeakMap();
   this.vertexColorModulationCache = new WeakMap();
   this.paneCompositeSurface = null;
