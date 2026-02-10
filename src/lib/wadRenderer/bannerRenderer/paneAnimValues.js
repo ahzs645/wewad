@@ -53,10 +53,19 @@ function mergeFrozenMatColor(renderer, paneName, result) {
     return result;
   }
   const channels = ["r", "g", "b", "a"];
-  for (const slot of ["color1", "color2", "color3"]) {
+  for (const slot of ["color1", "color2", "color3", "colorReg2"]) {
     for (const ch of channels) {
       if (result[slot][ch] == null && frozen[slot]?.[ch] != null) {
         result[slot][ch] = frozen[slot][ch];
+      }
+    }
+  }
+  if (frozen.kColors) {
+    for (let ki = 0; ki < 4; ki += 1) {
+      for (const ch of channels) {
+        if (result.kColors[ki][ch] == null && frozen.kColors[ki]?.[ch] != null) {
+          result.kColors[ki][ch] = frozen.kColors[ki][ch];
+        }
       }
     }
   }
@@ -263,16 +272,24 @@ export function getPaneTextureSRTAnimations(paneName, frame) {
 }
 
 export function getPaneMaterialAnimColor(paneName, frame) {
-  // RLMC channel layout:
-  // 0x00-0x03: color1 (foreColor) RGBA
-  // 0x04-0x07: color2 (backColor) RGBA
-  // 0x08-0x0B: color3 RGBA
-  // 0x0C-0x0F: TEV color 1 RGBA
-  // 0x10-0x13: TEV color 2 RGBA
+  // RLMC channel layout (matches reference Material::ProcessHermiteKey):
+  // 0x00-0x03: material color RGBA (ref: separate `color` field, our: color1)
+  // 0x04-0x07: color_regs[0] RGBA → TEVREG0 (C0) (ref→our: color2→material.color1)
+  // 0x08-0x0B: color_regs[1] RGBA → TEVREG1 (C1) (ref→our: color3→material.color2)
+  // 0x0C-0x0F: color_regs[2] RGBA → TEVREG2 (C2) (ref→our: colorReg2→material.color3)
+  // 0x10-0x1F: color_constants[0..3] RGBA → kColors for KONST inputs
+  const channelNames = ["r", "g", "b", "a"];
   const result = {
     color1: { r: null, g: null, b: null, a: null },
     color2: { r: null, g: null, b: null, a: null },
     color3: { r: null, g: null, b: null, a: null },
+    colorReg2: { r: null, g: null, b: null, a: null },
+    kColors: [
+      { r: null, g: null, b: null, a: null },
+      { r: null, g: null, b: null, a: null },
+      { r: null, g: null, b: null, a: null },
+      { r: null, g: null, b: null, a: null },
+    ],
     // Merged view for backward compat: first non-null wins across color1/2/3.
     r: null, g: null, b: null, a: null,
   };
@@ -285,7 +302,6 @@ export function getPaneMaterialAnimColor(paneName, frame) {
     return mergeFrozenMatColor(this, paneName, result);
   }
 
-  const channelNames = ["r", "g", "b", "a"];
   for (const tag of paneAnimation.tags ?? []) {
     if (tag?.type !== "RLMC") {
       continue;
@@ -304,12 +320,11 @@ export function getPaneMaterialAnimColor(paneName, frame) {
         result.color2[channelNames[type - 0x04]] = clampChannel(value);
       } else if (type >= 0x08 && type <= 0x0b) {
         result.color3[channelNames[type - 0x08]] = clampChannel(value);
-      } else if (type >= 0x10 && type <= 0x13) {
-        // TEV color channels mapped to color3 as a fallback.
-        const ch = channelNames[type - 0x10];
-        if (result.color3[ch] == null) {
-          result.color3[ch] = clampChannel(value);
-        }
+      } else if (type >= 0x0c && type <= 0x0f) {
+        result.colorReg2[channelNames[type - 0x0c]] = clampChannel(value);
+      } else if (type >= 0x10 && type <= 0x1f) {
+        const kIdx = Math.floor((type - 0x10) / 4);
+        result.kColors[kIdx][channelNames[(type - 0x10) % 4]] = clampChannel(value);
       }
     }
   }
@@ -318,10 +333,19 @@ export function getPaneMaterialAnimColor(paneName, frame) {
   if (this.phase === "loop" && this.frozenStartState?.size > 0) {
     const frozen = this.frozenStartState.get(paneName)?.matColor;
     if (frozen) {
-      for (const slot of ["color1", "color2", "color3"]) {
+      for (const slot of ["color1", "color2", "color3", "colorReg2"]) {
         for (const ch of channelNames) {
           if (result[slot][ch] == null && frozen[slot]?.[ch] != null) {
             result[slot][ch] = frozen[slot][ch];
+          }
+        }
+      }
+      if (frozen.kColors) {
+        for (let ki = 0; ki < 4; ki += 1) {
+          for (const ch of channelNames) {
+            if (result.kColors[ki][ch] == null && frozen.kColors[ki]?.[ch] != null) {
+              result.kColors[ki][ch] = frozen.kColors[ki][ch];
+            }
           }
         }
       }

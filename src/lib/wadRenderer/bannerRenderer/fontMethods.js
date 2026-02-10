@@ -186,7 +186,10 @@ export function drawBitmapTextPane(context, pane, fontData, rawText, width, heig
 
   // Byte +8 in txt1 is the text origin/position (benzin: "alignment").
   // Encodes hAlign = value % 3: 0=left, 1=center, 2=right.
-  const textAlign = (pane?.textPositionFlags ?? 0) % 3;
+  // Encodes vAlign = floor(value / 3): 0=top, 1=center, 2=bottom.
+  const posFlags = pane?.textPositionFlags ?? 0;
+  const textAlign = posFlags % 3;
+  const vAlign = Math.floor(posFlags / 3);
 
   const topColor = pane?.textTopColor ?? { r: 32, g: 32, b: 32, a: 255 };
   const bottomColor = pane?.textBottomColor ?? topColor;
@@ -219,7 +222,15 @@ export function drawBitmapTextPane(context, pane, fontData, rawText, width, heig
   scratchCtx.save();
 
   // Draw in local coordinates (0,0 = top-left of pane).
-  const textY = Math.max(0, (absHeight - contentHeight) / 2);
+  // Vertical alignment within pane bounds.
+  let textY;
+  if (vAlign === 0) {
+    textY = 0;
+  } else if (vAlign === 2) {
+    textY = absHeight - contentHeight;
+  } else {
+    textY = Math.max(0, (absHeight - contentHeight) / 2);
+  }
 
   for (let lineIdx = 0; lineIdx < lines.length; lineIdx += 1) {
     const line = lines[lineIdx];

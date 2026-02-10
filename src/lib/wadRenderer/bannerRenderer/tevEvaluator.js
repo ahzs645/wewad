@@ -164,13 +164,17 @@ function writeAlphaReg(state, regId, a) {
   }
 }
 
-// Initialize TEV registers from material color data.
-// color1 = forecolor → c0, color2 = backcolor → c1, color3 → c2.
-// tevColors[0..3] correspond to CPREV/C0/C1/C2.
+// Initialize TEV output registers from material color register data.
+// Reference: Material::Apply sets GX_SetTevColorS10(GX_TEVREG0+i, color_regs[i])
+//   color_regs[0] → TEVREG0 (C0/A0), [1] → TEVREG1 (C1/A1), [2] → TEVREG2 (C2/A2)
+//   TEVPREV (cprev/aprev) is NOT initialized from material data — defaults to 0.
+// In our BRLYT parser: color1 = color_regs[0], color2 = color_regs[1], color3 = color_regs[2]
+//   each stored as s16[4] array [r, g, b, a].
+// NOTE: material.tevColors are color_constants (kColors for KONST inputs), NOT output registers.
 function initTevRegisters(material) {
-  const toFloat = (c) => (c ?? 0) / 255;
+  const toFloat = (v) => (v ?? 0) / 255;
 
-  // Default: all zeros.
+  // Default: all zeros (hardware default).
   const state = {
     cprev: { r: 0, g: 0, b: 0 }, aprev: 0,
     c0: { r: 0, g: 0, b: 0 }, a0: 0,
@@ -178,28 +182,25 @@ function initTevRegisters(material) {
     c2: { r: 0, g: 0, b: 0 }, a2: 0,
   };
 
-  // tevColors array from BRLYT: indices 0=cprev, 1=c0, 2=c1, 3=c2.
-  // These are s16 color registers stored as {r,g,b,a} with values 0-255 in parsed data.
-  const tc = material?.tevColors;
-  if (tc) {
-    if (tc[0]) { state.cprev = { r: toFloat(tc[0].r), g: toFloat(tc[0].g), b: toFloat(tc[0].b) }; state.aprev = toFloat(tc[0].a); }
-    if (tc[1]) { state.c0 = { r: toFloat(tc[1].r), g: toFloat(tc[1].g), b: toFloat(tc[1].b) }; state.a0 = toFloat(tc[1].a); }
-    if (tc[2]) { state.c1 = { r: toFloat(tc[2].r), g: toFloat(tc[2].g), b: toFloat(tc[2].b) }; state.a1 = toFloat(tc[2].a); }
-    if (tc[3]) { state.c2 = { r: toFloat(tc[3].r), g: toFloat(tc[3].g), b: toFloat(tc[3].b) }; state.a2 = toFloat(tc[3].a); }
+  // color1 = color_regs[0] → C0 (TEVREG0)
+  const c1 = material?.color1;
+  if (Array.isArray(c1) && c1.length >= 4) {
+    state.c0 = { r: toFloat(c1[0]), g: toFloat(c1[1]), b: toFloat(c1[2]) };
+    state.a0 = toFloat(c1[3]);
   }
 
-  // Also initialize from named material colors if tevColors is sparse.
-  if (!tc?.[1] && material?.color1) {
-    state.c0 = { r: toFloat(material.color1.r), g: toFloat(material.color1.g), b: toFloat(material.color1.b) };
-    state.a0 = toFloat(material.color1.a);
+  // color2 = color_regs[1] → C1 (TEVREG1)
+  const c2 = material?.color2;
+  if (Array.isArray(c2) && c2.length >= 4) {
+    state.c1 = { r: toFloat(c2[0]), g: toFloat(c2[1]), b: toFloat(c2[2]) };
+    state.a1 = toFloat(c2[3]);
   }
-  if (!tc?.[2] && material?.color2) {
-    state.c1 = { r: toFloat(material.color2.r), g: toFloat(material.color2.g), b: toFloat(material.color2.b) };
-    state.a1 = toFloat(material.color2.a);
-  }
-  if (!tc?.[3] && material?.color3) {
-    state.c2 = { r: toFloat(material.color3.r), g: toFloat(material.color3.g), b: toFloat(material.color3.b) };
-    state.a2 = toFloat(material.color3.a);
+
+  // color3 = color_regs[2] → C2 (TEVREG2)
+  const c3 = material?.color3;
+  if (Array.isArray(c3) && c3.length >= 4) {
+    state.c2 = { r: toFloat(c3[0]), g: toFloat(c3[1]), b: toFloat(c3[2]) };
+    state.a2 = toFloat(c3[3]);
   }
 
   return state;

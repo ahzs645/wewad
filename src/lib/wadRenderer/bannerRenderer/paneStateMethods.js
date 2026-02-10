@@ -49,7 +49,10 @@ export function getLocalPaneState(pane, frame) {
   const defaultAlpha = isVisible ? (pane.alpha ?? 255) / 255 : 0;
   const animatedAlpha = hasAnimatedAlpha ? animValues.alpha / 255 : defaultAlpha;
   const materialAlphaFactor = animValues.materialAlpha != null ? Math.max(0, Math.min(1, animValues.materialAlpha / 255)) : 1;
-  const alpha = isVisible ? animatedAlpha * materialAlphaFactor : 0;
+  // When custom weather forces a digit pane visible, override alpha to 1 — the BRLAN
+  // animation may have alpha=0 at the frozen frame since these panes were originally
+  // hidden and replaced by Canvas 2D text.
+  const alpha = digitVisibilityOverride === true ? 1 : (isVisible ? animatedAlpha * materialAlphaFactor : 0);
   const propagatesAlpha = (pane.flags & 0x02) !== 0 || pane.type === "pic1" || pane.type === "txt1" || pane.type === "bnd1" || pane.type === "wnd1";
   const propagatesVisibility = true;
 

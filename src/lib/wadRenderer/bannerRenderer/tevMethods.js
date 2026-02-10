@@ -204,7 +204,7 @@ function sampleTextureToBuffer(renderer, binding, pane, width, height) {
 }
 
 // Build a cache key for the TEV result of a pane at its current visual state.
-function buildTevCacheKey(pane, paneState, bindings, w, h) {
+function buildTevCacheKey(pane, paneState, bindings, w, h, material) {
   let key = `${w}|${h}`;
   const colors = paneState?.vertexColors ?? pane?.vertexColors;
   if (colors) {
@@ -222,7 +222,93 @@ function buildTevCacheKey(pane, paneState, bindings, w, h) {
       key += `|${srt.xTrans ?? 0},${srt.yTrans ?? 0},${srt.rotation ?? 0},${srt.xScale ?? 1},${srt.yScale ?? 1}`;
     }
   }
+  // Include animated color registers and constants in cache key.
+  const c1 = material?.color1;
+  const c2 = material?.color2;
+  const c3 = material?.color3;
+  if (Array.isArray(c1)) key += `|c1:${c1.join(",")}`;
+  if (Array.isArray(c2)) key += `|c2:${c2.join(",")}`;
+  if (Array.isArray(c3)) key += `|c3:${c3.join(",")}`;
+  const tc = material?.tevColors;
+  if (tc) {
+    for (let i = 0; i < tc.length; i += 1) {
+      const k = tc[i];
+      if (k) key += `|k${i}:${k.r},${k.g},${k.b},${k.a}`;
+    }
+  }
   return key;
+}
+
+// Build a material object with animated RLMC color values applied.
+// Reference: Material::ProcessHermiteKey directly mutates color_regs, color_constants,
+// and material color. We must do the same for the TEV evaluator to see animated values.
+function buildAnimatedMaterial(renderer, pane, material) {
+  const animColor = renderer.getPaneMaterialAnimColor?.(pane.name, renderer.frame);
+  if (!animColor) {
+    return material;
+  }
+
+  const clamp = (v) => Math.max(0, Math.min(255, Math.round(v)));
+
+  // Check if any RLMC animation produced values.
+  const hasColorRegAnim =
+    animColor.color1.r != null || animColor.color1.g != null || animColor.color1.b != null || animColor.color1.a != null ||
+    animColor.color2.r != null || animColor.color2.g != null || animColor.color2.b != null || animColor.color2.a != null ||
+    animColor.color3.r != null || animColor.color3.g != null || animColor.color3.b != null || animColor.color3.a != null ||
+    animColor.colorReg2.r != null || animColor.colorReg2.g != null || animColor.colorReg2.b != null || animColor.colorReg2.a != null;
+  const hasKColorAnim = animColor.kColors.some(
+    (kc) => kc.r != null || kc.g != null || kc.b != null || kc.a != null,
+  );
+
+  if (!hasColorRegAnim && !hasKColorAnim) {
+    return material;
+  }
+
+  const result = { ...material };
+
+  // RLMC target mapping (reference Material::ProcessHermiteKey):
+  //   targets 0x00-0x03 → material color (animColor.color1) — not a TEV register
+  //   targets 0x04-0x07 → color_regs[0] (animColor.color2) → our material.color1 → C0
+  //   targets 0x08-0x0B → color_regs[1] (animColor.color3) → our material.color2 → C1
+  //   targets 0x0C-0x0F → color_regs[2] (animColor.colorReg2) → our material.color3 → C2
+  if (hasColorRegAnim) {
+    const applyColorReg = (base, animated) => {
+      if (animated.r == null && animated.g == null && animated.b == null && animated.a == null) {
+        return base;
+      }
+      const b = Array.isArray(base) ? base : [255, 255, 255, 255];
+      return [
+        clamp(animated.r ?? b[0]),
+        clamp(animated.g ?? b[1]),
+        clamp(animated.b ?? b[2]),
+        clamp(animated.a ?? b[3]),
+      ];
+    };
+
+    result.color1 = applyColorReg(material.color1, animColor.color2);    // RLMC 4-7 → C0
+    result.color2 = applyColorReg(material.color2, animColor.color3);    // RLMC 8-11 → C1
+    result.color3 = applyColorReg(material.color3, animColor.colorReg2); // RLMC 12-15 → C2
+  }
+
+  // Apply animated color_constants (kColors) — RLMC targets 0x10-0x1F.
+  // material.tevColors = color_constants[0..3], used as kColors for KONST inputs.
+  if (hasKColorAnim) {
+    const baseTevColors = material.tevColors ?? [];
+    result.tevColors = baseTevColors.map((base, idx) => {
+      const animated = animColor.kColors[idx];
+      if (!animated || (animated.r == null && animated.g == null && animated.b == null && animated.a == null)) {
+        return base;
+      }
+      return {
+        r: clamp(animated.r ?? (base?.r ?? 255)),
+        g: clamp(animated.g ?? (base?.g ?? 255)),
+        b: clamp(animated.b ?? (base?.b ?? 255)),
+        a: clamp(animated.a ?? (base?.a ?? 255)),
+      };
+    });
+  }
+
+  return result;
 }
 
 // Run the full TEV pipeline for a pane and return the result ImageData.
@@ -231,10 +317,13 @@ export function runTevPipeline(pane, paneState, width, height) {
     return null;
   }
 
-  const material = this.layout?.materials?.[pane.materialIndex];
-  if (!material) {
+  const baseMaterial = this.layout?.materials?.[pane.materialIndex];
+  if (!baseMaterial) {
     return null;
   }
+
+  // Build material with animated color values applied (ref: ProcessHermiteKey mutates in-place).
+  const material = buildAnimatedMaterial(this, pane, baseMaterial);
 
   // Use explicit stages; modulate fallback (tex × ras) for materials routed here only for alpha compare.
   const stages = material.tevStages?.length > 0 ? material.tevStages : getModulateTevStages();
@@ -248,7 +337,7 @@ export function runTevPipeline(pane, paneState, width, height) {
   const useFastPath = this.tevQuality === "fast";
   let cacheKey = null;
   if (useFastPath) {
-    cacheKey = buildTevCacheKey(pane, paneState, bindings, w, h);
+    cacheKey = buildTevCacheKey(pane, paneState, bindings, w, h, material);
     const cached = this.tevResultCache.get(pane.name);
     if (cached && cached.key === cacheKey) {
       return cached.result;

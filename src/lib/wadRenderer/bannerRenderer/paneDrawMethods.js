@@ -361,8 +361,10 @@ export function drawFillTextPane(context, pane, rawText, width, height) {
 
   // Byte +8 in txt1 is the text origin/position (benzin: "alignment").
   // Encodes hAlign = value % 3: 0=left, 1=center, 2=right.
-  // Byte +9 (textAlignment) is per-line alignment within a multi-line block.
-  const hOrigin = (pane?.textPositionFlags ?? 0) % 3;
+  // Encodes vAlign = floor(value / 3): 0=top, 1=center, 2=bottom.
+  const posFlags = pane?.textPositionFlags ?? 0;
+  const hOrigin = posFlags % 3;
+  const vOrigin = Math.floor(posFlags / 3);
   let textAlign = "left";
   if (hOrigin === 1) {
     textAlign = "center";
@@ -378,6 +380,13 @@ export function drawFillTextPane(context, pane, rawText, width, height) {
   const bottomColor = pane?.textBottomColor ?? topColor;
 
   context.save();
+
+  // Clip text to pane bounds — on the Wii, text is rendered as textured quads
+  // within the pane geometry, so it never overflows the pane rectangle.
+  context.beginPath();
+  context.rect(boxLeft, boxTop, absWidth, absHeight);
+  context.clip();
+
   context.textBaseline = "top";
   context.textAlign = textAlign;
   context.font = `${fontSize}px sans-serif`;
@@ -390,7 +399,16 @@ export function drawFillTextPane(context, pane, rawText, width, height) {
     return;
   }
   const contentHeight = lineHeight * lines.length;
-  const textY = boxTop + Math.max(0, (height - contentHeight) / 2);
+
+  // Vertical alignment within pane bounds.
+  let textY;
+  if (vOrigin === 0) {
+    textY = boxTop;
+  } else if (vOrigin === 2) {
+    textY = boxTop + absHeight - contentHeight;
+  } else {
+    textY = boxTop + Math.max(0, (absHeight - contentHeight) / 2);
+  }
 
   const sameColor =
     topColor.r === bottomColor.r &&

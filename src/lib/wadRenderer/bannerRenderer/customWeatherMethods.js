@@ -161,15 +161,15 @@ export function isCustomWeatherEnabled() {
   return Boolean(this.customWeather && this.customWeather.enabled !== false);
 }
 
-function collectRltpTextureIndices(animData, nameFilter) {
-  const indices = new Set();
+function collectPerPaneRltpIndices(animData, paneNames) {
+  const result = new Map();
   if (!animData?.panes) {
-    return indices;
+    return result;
   }
 
   for (const paneAnim of animData.panes) {
     const name = String(paneAnim?.name ?? "");
-    if (!nameFilter(name)) {
+    if (!paneNames.has(name)) {
       continue;
     }
 
@@ -182,19 +182,25 @@ function collectRltpTextureIndices(animData, nameFilter) {
         for (const kf of entry.keyframes ?? []) {
           const idx = Math.floor(kf.value);
           if (Number.isFinite(idx) && idx >= 0) {
-            indices.add(idx);
+            let set = result.get(name);
+            if (!set) {
+              set = new Set();
+              result.set(name, set);
+            }
+            set.add(idx);
           }
         }
       }
     }
   }
 
-  return indices;
+  return result;
 }
 
 function tryNameBasedDigitDiscovery(textures, baseTextureName) {
-  // Try to find a varying digit in the texture name, e.g. "my_kion_num_7_00" → "my_kion_num_0_00".."9_00"
-  // Search from the end of the name for the last single digit that can be varied.
+  // Try to find a varying digit in the texture name.
+  // e.g. "my_kion_num_7_00" → "my_kion_num_0_00" .. "my_kion_num_9_00"
+  // Searches for the last single-digit position bounded by non-digit chars.
   const match = baseTextureName.match(/^(.*\D)(\d)(\D.*)$|^(.*\D)(\d)()$/);
   if (!match) {
     return null;
@@ -233,7 +239,6 @@ export function resolveCustomWeatherDigitTextureMap() {
     return;
   }
 
-  // Find digit pane materials (exclude kion_doF_F which is the unit pane)
   const numericDigitPaneNames = new Set(["kion_doF100", "kion_doF10", "kion_doF_do"]);
   const digitPanes = (this.layout?.panes ?? []).filter(
     (p) => numericDigitPaneNames.has(String(p?.name ?? "")),
@@ -243,43 +248,62 @@ export function resolveCustomWeatherDigitTextureMap() {
     return;
   }
 
-  // Collect base texture indices from digit pane materials
-  const baseMaterialIndices = new Set();
-  for (const pane of digitPanes) {
-    if (pane.materialIndex < 0 || pane.materialIndex >= materials.length) {
-      continue;
-    }
+  // Collect per-pane texture indices: both from material defaults and RLTP animations
+  const perPaneIndices = new Map();
 
-    const material = materials[pane.materialIndex];
-    const tMaps = material?.textureMaps ?? [];
-    if (tMaps.length > 0) {
-      const idx = tMaps[0].textureIndex;
-      if (Number.isFinite(idx) && idx >= 0 && idx < textures.length) {
-        baseMaterialIndices.add(idx);
+  for (const pane of digitPanes) {
+    const name = String(pane.name);
+    if (pane.materialIndex >= 0 && pane.materialIndex < materials.length) {
+      const material = materials[pane.materialIndex];
+      const tMaps = material?.textureMaps ?? [];
+      if (tMaps.length > 0) {
+        const idx = tMaps[0].textureIndex;
+        if (Number.isFinite(idx) && idx >= 0 && idx < textures.length) {
+          let set = perPaneIndices.get(name);
+          if (!set) {
+            set = new Set();
+            perPaneIndices.set(name, set);
+          }
+          set.add(idx);
+        }
       }
     }
   }
 
-  // Collect RLTP texture indices from all animations for numeric digit panes
-  const allRltpIndices = new Set();
-  const isNumericDigitPane = (name) => WEATHER_TEMP_PANE_PATTERN.test(name) && name !== "kion_doF_F";
   for (const animData of [this.startAnim, this.loopAnim, this.anim]) {
-    for (const idx of collectRltpTextureIndices(animData, isNumericDigitPane)) {
-      allRltpIndices.add(idx);
+    const rltp = collectPerPaneRltpIndices(animData, numericDigitPaneNames);
+    for (const [name, indices] of rltp) {
+      let set = perPaneIndices.get(name);
+      if (!set) {
+        set = new Set();
+        perPaneIndices.set(name, set);
+      }
+      for (const idx of indices) {
+        set.add(idx);
+      }
     }
   }
 
-  // Merge base material + RLTP indices
-  for (const idx of baseMaterialIndices) {
-    allRltpIndices.add(idx);
+  // Flatten all indices for logging and name-based discovery
+  const allIndices = new Set();
+  for (const [, indices] of perPaneIndices) {
+    for (const idx of indices) {
+      allIndices.add(idx);
+    }
   }
 
-  if (allRltpIndices.size === 0) {
+  if (allIndices.size === 0) {
     return;
   }
 
-  // Strategy A: Name-based discovery — look for varying digit in texture names
-  for (const candidateIdx of allRltpIndices) {
+  const perPaneLog = {};
+  for (const [name, indices] of perPaneIndices) {
+    perPaneLog[name] = [...indices].sort((a, b) => a - b).map((i) => `${i}=${textures[i] ?? "?"}`);
+  }
+  console.info("[WeWAD] Weather digit discovery — per-pane indices:", perPaneLog);
+
+  // Strategy A: Name-based — look for varying digit in texture names
+  for (const candidateIdx of allIndices) {
     const candidateName = textures[candidateIdx];
     if (!candidateName) {
       continue;
@@ -287,43 +311,73 @@ export function resolveCustomWeatherDigitTextureMap() {
 
     const nameDigitMap = tryNameBasedDigitDiscovery(textures, candidateName);
     if (nameDigitMap) {
-      this.customWeatherDigitMap = {
-        digits: nameDigitMap,
-        unitF: null,
-        unitC: null,
-      };
+      console.info("[WeWAD] Digit map (name-based):", Object.fromEntries(
+        Object.entries(nameDigitMap).map(([d, i]) => [d, `${i}=${textures[i] ?? "?"}`]),
+      ));
+      this.customWeatherDigitMap = { digits: nameDigitMap, unitF: null, unitC: null };
       resolveUnitTextureIndices(this, textures, materials);
       return;
     }
   }
 
-  // Strategy B: Sequential — minimum index is digit 0, check for 10 sequential textures
-  const sortedIndices = [...allRltpIndices].sort((a, b) => a - b);
-  const minIdx = sortedIndices[0];
+  // Strategy B: Sequential — find a base index where 10 consecutive textures exist
+  // and all per-pane RLTP indices fall within [base, base+9].
+  const sortedAll = [...allIndices].sort((a, b) => a - b);
+  const minIdx = sortedAll[0];
+  const maxIdx = sortedAll[sortedAll.length - 1];
 
-  let validRange = true;
-  for (let d = 0; d <= 9; d++) {
-    const idx = minIdx + d;
-    if (idx >= textures.length || !this.textureCanvases[textures[idx]]) {
-      validRange = false;
-      break;
+  // Scan a window around the known indices
+  const searchStart = Math.max(0, minIdx - 12);
+  const searchEnd = Math.min(textures.length - 10, maxIdx);
+
+  let bestBase = null;
+  for (let candidateBase = searchStart; candidateBase <= searchEnd; candidateBase++) {
+    // All 10 textures must exist
+    let allExist = true;
+    for (let d = 0; d <= 9; d++) {
+      if (!this.textureCanvases[textures[candidateBase + d]]) {
+        allExist = false;
+        break;
+      }
     }
+    if (!allExist) {
+      continue;
+    }
+
+    // Every known per-pane RLTP index must fall within [base, base+9]
+    let allFit = true;
+    for (const idx of allIndices) {
+      if (idx < candidateBase || idx > candidateBase + 9) {
+        allFit = false;
+        break;
+      }
+    }
+    if (!allFit) {
+      continue;
+    }
+
+    bestBase = candidateBase;
+    break;
   }
 
-  if (!validRange) {
+  if (bestBase == null) {
+    console.warn(
+      "[WeWAD] Could not find valid digit range.",
+      "All texture names:", textures.map((t, i) => `${i}=${t}`).join(", "),
+    );
     return;
   }
 
   const digitMap = {};
   for (let d = 0; d <= 9; d++) {
-    digitMap[d] = minIdx + d;
+    digitMap[d] = bestBase + d;
   }
 
-  this.customWeatherDigitMap = {
-    digits: digitMap,
-    unitF: null,
-    unitC: null,
-  };
+  console.info("[WeWAD] Digit map (sequential, base=" + bestBase + "):", Object.fromEntries(
+    Object.entries(digitMap).map(([d, i]) => [d, `${i}=${textures[i] ?? "?"}`]),
+  ));
+
+  this.customWeatherDigitMap = { digits: digitMap, unitF: null, unitC: null };
   resolveUnitTextureIndices(this, textures, materials);
 }
 
@@ -339,11 +393,14 @@ function resolveUnitTextureIndices(renderer, textures, materials) {
   }
 
   // Collect RLTP indices specifically for the unit pane
+  const unitPaneNames = new Set(["kion_doF_F"]);
   const unitRltpIndices = new Set();
-  const isUnitPane = (name) => name === "kion_doF_F";
   for (const animData of [renderer.startAnim, renderer.loopAnim, renderer.anim]) {
-    for (const idx of collectRltpTextureIndices(animData, isUnitPane)) {
-      unitRltpIndices.add(idx);
+    const rltp = collectPerPaneRltpIndices(animData, unitPaneNames);
+    for (const [, indices] of rltp) {
+      for (const idx of indices) {
+        unitRltpIndices.add(idx);
+      }
     }
   }
 
