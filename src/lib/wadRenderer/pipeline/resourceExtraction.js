@@ -1,5 +1,5 @@
 import { parseBNS, parseBRFNT, parseBRLAN, parseBRLYT, parseTPL, parseU8 } from "../parsers/index";
-import { NOOP_LOGGER, withLogger } from "../shared/index";
+import { decodeLz77, decodeLzRaw, NOOP_LOGGER, withLogger } from "../shared/index";
 
 function inferAnimationRole(filePath) {
   const lower = String(filePath ?? "").toLowerCase();
@@ -46,6 +46,48 @@ function parseResourceSet(files, loggerInput) {
     }
   }
 
+  // Decompress .tpl.lz / .tpl.l / .LZ files (LZ-compressed TPL) and split multi-image
+  // TPLs into individual entries so each sub-image gets its own texture name.
+  // Tries: raw Nintendo LZ (no tag), LZ77-tagged BE, LZ77-tagged LE.
+  for (const [filePath, data] of Object.entries(sourceFiles)) {
+    const lowerPath = filePath.toLowerCase();
+    if (!lowerPath.endsWith(".tpl.lz") && !lowerPath.endsWith(".tpl.l") && !(lowerPath.endsWith(".lz") && lowerPath.includes("tpl"))) {
+      continue;
+    }
+
+    const raw = new Uint8Array(data instanceof ArrayBuffer ? data : data.buffer ?? data);
+    const stem = filePath.split("/").pop().replace(/\.lz?$/i, "").replace(/\.tpl$/i, "");
+
+    const decoders = [
+      ["raw LZ", () => decodeLzRaw(raw)],
+      ["LZ77 BE", () => decodeLz77(raw, "be")],
+      ["LZ77 LE", () => decodeLz77(raw, "le")],
+    ];
+
+    let decoded = false;
+    for (const [label, decode] of decoders) {
+      try {
+        const decompressed = decode();
+        const buf = decompressed instanceof ArrayBuffer ? decompressed : decompressed.buffer;
+        const images = parseTPL(buf, NOOP_LOGGER);
+        for (let i = 0; i < images.length; i++) {
+          const syntheticName = `${stem}_${String(i).padStart(2, "0")}.tpl`;
+          sourceFiles[syntheticName] = "SYNTHETIC";
+          sourceFiles[`__tplImageOverride__${syntheticName}`] = [images[i]];
+        }
+        logger.info(`Decompressed ${filePath} (${label}) → ${images.length} image(s) as ${stem}_XX.tpl`);
+        decoded = true;
+        break;
+      } catch {
+        // Try next decoder
+      }
+    }
+
+    if (!decoded) {
+      logger.warn(`Failed to decompress ${filePath}`);
+    }
+  }
+
   const tplImages = {};
   let decodedTextureCount = 0;
   const maxDecodedTextures = 200;
@@ -69,6 +111,15 @@ function parseResourceSet(files, loggerInput) {
     let textureName = baseName;
     if (tplImages[textureName]) {
       textureName = filePath;
+    }
+
+    // Check for pre-parsed images from LZ-decompressed multi-image TPLs.
+    const overrideKey = `__tplImageOverride__${filePath}`;
+    if (sourceFiles[overrideKey]) {
+      tplImages[textureName] = sourceFiles[overrideKey];
+      logger.success(`Registered ${textureName} (from compressed TPL)`);
+      decodedTextureCount += 1;
+      continue;
     }
 
     try {

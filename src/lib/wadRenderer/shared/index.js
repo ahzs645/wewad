@@ -1,5 +1,5 @@
 export { BinaryReader, align } from "./binary";
-export { decodeLz77, decodeYaz0 } from "./compression";
+export { decodeLz77, decodeLzRaw, decodeYaz0 } from "./compression";
 export {
   WII_COMMON_KEYS,
   decryptAesCbcNoPadding,

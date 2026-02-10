@@ -1,9 +1,28 @@
+// Decompress raw Nintendo LZ (no "LZ77" tag). Used for .LZ files.
+// Header: type(u8) + decompressed_size(u24 LE).
+export function decodeLzRaw(data) {
+  if (data.byteLength < 4) {
+    throw new Error("LZ raw payload too small");
+  }
+
+  const type = data[0];
+  if (type !== 0x10 && type !== 0x11) {
+    throw new Error(`Unsupported LZ type 0x${type.toString(16)}`);
+  }
+
+  const outSize = data[1] | (data[2] << 8) | (data[3] << 16);
+  if (outSize <= 0) {
+    throw new Error("Invalid LZ output size");
+  }
+
+  return decodeLzCore(data, 4, outSize, type);
+}
+
 export function decodeLz77(data, sizeMode = "be") {
   if (data.byteLength < 8) {
     throw new Error("LZ77 payload too small");
   }
 
-  const view = new DataView(data.buffer, data.byteOffset, data.byteLength);
   const tag = String.fromCharCode(data[0], data[1], data[2], data[3]);
   if (tag !== "LZ77") {
     throw new Error(`Invalid LZ77 tag: ${tag}`);
@@ -18,13 +37,16 @@ export function decodeLz77(data, sizeMode = "be") {
     throw new Error("Invalid LZ77 output size");
   }
 
-  // Only type 0x10/0x11 are expected in Wii assets.
   if (type !== 0x10 && type !== 0x11) {
     throw new Error(`Unsupported LZ77 type 0x${type.toString(16)}`);
   }
 
+  return decodeLzCore(data, 8, outSize, type);
+}
+
+function decodeLzCore(data, startOffset, outSize, type) {
   const out = new Uint8Array(outSize);
-  let src = 8;
+  let src = startOffset;
   let dst = 0;
 
   while (dst < outSize && src < data.byteLength) {

@@ -249,6 +249,58 @@ function tryNameBasedDigitDiscovery(textures, baseTextureName) {
   return null;
 }
 
+function tryCommonTplDigitDiscovery(renderer, textures) {
+  // Look for digit textures extracted from a "common" TPL (e.g. TPLCommon.tpl.LZ).
+  // These are named {stem}_01.tpl (digit 0) through {stem}_10.tpl (digit 9),
+  // with {stem}_00.tpl being the minus sign.
+  const commonPrefixes = [];
+  for (const name of Object.keys(renderer.textureCanvases)) {
+    const match = name.match(/^(.+?)_(\d{2})\.tpl$/i);
+    if (match && match[2] === "01") {
+      commonPrefixes.push(match[1]);
+    }
+  }
+
+  for (const prefix of commonPrefixes) {
+    // Check if we have images 01-10 (digits 0-9)
+    let allFound = true;
+    const digits = {};
+    for (let d = 0; d <= 9; d++) {
+      const imgName = `${prefix}_${String(d + 1).padStart(2, "0")}.tpl`;
+      if (!renderer.textureCanvases[imgName]) {
+        allFound = false;
+        break;
+      }
+      // Append to layout textures if not already present, so textureIndex lookups work
+      let idx = textures.indexOf(imgName);
+      if (idx < 0) {
+        idx = textures.length;
+        textures.push(imgName);
+      }
+      digits[d] = idx;
+    }
+
+    if (!allFound) {
+      continue;
+    }
+
+    // Also check for minus sign (image 00) — optional
+    const minusName = `${prefix}_00.tpl`;
+    let minusIdx = null;
+    if (renderer.textureCanvases[minusName]) {
+      minusIdx = textures.indexOf(minusName);
+      if (minusIdx < 0) {
+        minusIdx = textures.length;
+        textures.push(minusName);
+      }
+    }
+
+    return { digits, unitF: null, unitC: null, minusIdx };
+  }
+
+  return null;
+}
+
 export function resolveCustomWeatherDigitTextureMap() {
   this.customWeatherDigitMap = null;
 
@@ -397,6 +449,17 @@ export function resolveCustomWeatherDigitTextureMap() {
         return;
       }
     }
+  }
+
+  // Strategy C: Look for digit textures from a decompressed common TPL (e.g. TPLCommon.tpl.LZ).
+  // These are registered as TPLCommon_00.tpl (minus), TPLCommon_01.tpl (0) .. TPLCommon_10.tpl (9).
+  const commonDigitMap = tryCommonTplDigitDiscovery(this, textures);
+  if (commonDigitMap) {
+    console.info("[WeWAD] Digit map (common TPL):", Object.fromEntries(
+      Object.entries(commonDigitMap.digits).map(([d, i]) => [d, `${i}=${textures[i] ?? "?"}`]),
+    ));
+    this.customWeatherDigitMap = commonDigitMap;
+    return;
   }
 
   // No digit textures found — Canvas 2D fallback will be used.
