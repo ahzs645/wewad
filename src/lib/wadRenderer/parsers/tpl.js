@@ -70,8 +70,8 @@ export function decodeTPLImage(src, width, height, format, palette, logger) {
 
               const i1 = ((byte >> 4) & 0xf) * 17;
               const i2 = (byte & 0xf) * 17;
-              setPixel(blockX + x, blockY + y, i1, i1, i1, 255);
-              setPixel(blockX + x + 1, blockY + y, i2, i2, i2, 255);
+              setPixel(blockX + x, blockY + y, i1, i1, i1, i1);
+              setPixel(blockX + x + 1, blockY + y, i2, i2, i2, i2);
             }
           }
         }
@@ -90,7 +90,7 @@ export function decodeTPLImage(src, width, height, format, palette, logger) {
 
               const intensity = src[srcOffset];
               srcOffset += 1;
-              setPixel(blockX + x, blockY + y, intensity, intensity, intensity, 255);
+              setPixel(blockX + x, blockY + y, intensity, intensity, intensity, intensity);
             }
           }
         }

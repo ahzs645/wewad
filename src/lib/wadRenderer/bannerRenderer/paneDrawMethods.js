@@ -110,13 +110,18 @@ function drawPaneWithResolvedState(renderer, context, pane, paneState, localPane
     }
 
     context.translate(chainState.tx, -chainState.ty);
-    const chainOriginOffset = renderer.getPaneOriginOffset(chainPane, chainState.width, chainState.height);
-    if (chainOriginOffset.x !== 0 || chainOriginOffset.y !== 0) {
-      context.translate(chainOriginOffset.x, chainOriginOffset.y);
-    }
 
     const projected = getProjectedTransform2D(renderer, chainState);
     context.transform(projected.a, projected.b, projected.c, projected.d, 0, 0);
+  }
+
+  // Apply origin offset ONLY for the pane being drawn, AFTER all transforms.
+  // Reference: origin is inside Quad::Draw() with its own push/pop matrix,
+  // so it does NOT propagate to children.  Origin must come after scale so
+  // the anchor point scales correctly with the pane.
+  const originOffset = renderer.getPaneOriginOffset(pane, paneState.width, paneState.height);
+  if (originOffset.x !== 0 || originOffset.y !== 0) {
+    context.translate(originOffset.x, originOffset.y);
   }
 
   if (!visible || alpha <= 0) {
@@ -144,16 +149,70 @@ function drawPaneWithResolvedState(renderer, context, pane, paneState, localPane
 
     // Fallback to Canvas 2D heuristic path.
     const binding = renderer.getTextureBindingForPane(pane, paneState);
-    if (!binding) {
-      context.restore();
-      return;
+    if (binding) {
+      renderer.drawPane(context, binding, pane, paneState, paneState.width, paneState.height);
+    } else {
+      // No texture — draw vertex-colored rectangle (reference always draws quad).
+      renderer.drawVertexColoredPane(context, pane, paneState, paneState.width, paneState.height);
     }
-    renderer.drawPane(context, binding, pane, paneState, paneState.width, paneState.height);
   } else if (pane.type === "txt1") {
     renderer.drawTextPane(context, pane, paneState.width, paneState.height);
   }
 
   context.restore();
+}
+
+// Draw a pane that has no texture binding — render as a vertex-colored rectangle.
+// Reference Quad::Draw always draws the quad even without textures.
+export function drawVertexColoredPane(context, pane, paneState, width, height) {
+  const colors = paneState?.vertexColors ?? pane?.vertexColors;
+  if (!colors || colors.length < 4) {
+    return;
+  }
+
+  // Check if all vertex colors are fully transparent — skip if so.
+  const allTransparent = colors.every((c) => (c.a ?? 255) === 0);
+  if (allTransparent) {
+    return;
+  }
+
+  const halfW = width / 2;
+  const halfH = height / 2;
+
+  // For uniform color, draw a simple filled rect.
+  const tl = colors[0];
+  const tr = colors[1];
+  const bl = colors[2];
+  const br = colors[3];
+  const sameColor =
+    tl.r === tr.r && tl.r === bl.r && tl.r === br.r &&
+    tl.g === tr.g && tl.g === bl.g && tl.g === br.g &&
+    tl.b === tr.b && tl.b === bl.b && tl.b === br.b &&
+    tl.a === tr.a && tl.a === bl.a && tl.a === br.a;
+
+  if (sameColor) {
+    context.fillStyle = buildCssColor(tl);
+    context.fillRect(-halfW, -halfH, width, height);
+  } else {
+    // Vertical gradient approximation (top to bottom).
+    const topAvg = {
+      r: (tl.r + tr.r) / 2,
+      g: (tl.g + tr.g) / 2,
+      b: (tl.b + tr.b) / 2,
+      a: (tl.a + tr.a) / 2,
+    };
+    const botAvg = {
+      r: (bl.r + br.r) / 2,
+      g: (bl.g + br.g) / 2,
+      b: (bl.b + br.b) / 2,
+      a: (bl.a + br.a) / 2,
+    };
+    const gradient = context.createLinearGradient(0, -halfH, 0, halfH);
+    gradient.addColorStop(0, buildCssColor(topAvg));
+    gradient.addColorStop(1, buildCssColor(botAvg));
+    context.fillStyle = gradient;
+    context.fillRect(-halfW, -halfH, width, height);
+  }
 }
 
 export function drawPane(context, binding, pane, paneState, width, height) {

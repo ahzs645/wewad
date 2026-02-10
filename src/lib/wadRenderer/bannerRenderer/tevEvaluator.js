@@ -221,9 +221,15 @@ export function evaluateTevStagesForPixel(stages, texSamples, rasColor, material
     const texSwapEntry = swapTable?.[stage.texSel] ?? null;
     state.texC = texSwapEntry ? applySwapTable(rawTex, texSwapEntry) : rawTex;
 
-    // Resolve rasterized color with swap table.
+    // Resolve rasterized color: respect colorChan (GX channel control per stage).
+    // colorChan=4 → GX_COLOR_ZERO (no rasterized color input).
+    // colorChan=0 → GX_COLOR0A0 (vertex/material color), 1 → GX_COLOR1A1.
+    // colorChan=0xFF → GX_COLOR_NULL (defaults to vertex/material color in hardware).
+    const stageRasColor = stage.colorChan === 4
+      ? { r: 0, g: 0, b: 0, a: 0 }
+      : rasColor;
     const rasSwapEntry = swapTable?.[stage.rasSel] ?? null;
-    state.rasC = rasSwapEntry ? applySwapTable(rasColor, rasSwapEntry) : rasColor;
+    state.rasC = rasSwapEntry ? applySwapTable(stageRasColor, rasSwapEntry) : stageRasColor;
 
     // Resolve KColor/KAlpha for this stage.
     state.konstC = resolveKColor(stage.kColorSelC, kColors);
