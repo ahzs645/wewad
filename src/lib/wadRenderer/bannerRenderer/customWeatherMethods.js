@@ -161,6 +161,287 @@ export function isCustomWeatherEnabled() {
   return Boolean(this.customWeather && this.customWeather.enabled !== false);
 }
 
+function collectRltpTextureIndices(animData, nameFilter) {
+  const indices = new Set();
+  if (!animData?.panes) {
+    return indices;
+  }
+
+  for (const paneAnim of animData.panes) {
+    const name = String(paneAnim?.name ?? "");
+    if (!nameFilter(name)) {
+      continue;
+    }
+
+    for (const tag of paneAnim.tags ?? []) {
+      if (tag.type !== "RLTP") {
+        continue;
+      }
+
+      for (const entry of tag.entries ?? []) {
+        for (const kf of entry.keyframes ?? []) {
+          const idx = Math.floor(kf.value);
+          if (Number.isFinite(idx) && idx >= 0) {
+            indices.add(idx);
+          }
+        }
+      }
+    }
+  }
+
+  return indices;
+}
+
+function tryNameBasedDigitDiscovery(textures, baseTextureName) {
+  // Try to find a varying digit in the texture name, e.g. "my_kion_num_7_00" → "my_kion_num_0_00".."9_00"
+  // Search from the end of the name for the last single digit that can be varied.
+  const match = baseTextureName.match(/^(.*\D)(\d)(\D.*)$|^(.*\D)(\d)()$/);
+  if (!match) {
+    return null;
+  }
+
+  const prefix = match[1] ?? match[4];
+  const suffix = match[3] ?? match[6] ?? "";
+  if (prefix == null) {
+    return null;
+  }
+
+  const digitMap = {};
+  let found = 0;
+  for (let d = 0; d <= 9; d++) {
+    const candidateName = `${prefix}${d}${suffix}`;
+    const idx = textures.indexOf(candidateName);
+    if (idx >= 0) {
+      digitMap[d] = idx;
+      found += 1;
+    }
+  }
+
+  return found >= 10 ? digitMap : null;
+}
+
+export function resolveCustomWeatherDigitTextureMap() {
+  this.customWeatherDigitMap = null;
+
+  if (!this.isCustomWeatherEnabled()) {
+    return;
+  }
+
+  const textures = this.layout?.textures ?? [];
+  const materials = this.layout?.materials ?? [];
+  if (textures.length === 0 || materials.length === 0) {
+    return;
+  }
+
+  // Find digit pane materials (exclude kion_doF_F which is the unit pane)
+  const numericDigitPaneNames = new Set(["kion_doF100", "kion_doF10", "kion_doF_do"]);
+  const digitPanes = (this.layout?.panes ?? []).filter(
+    (p) => numericDigitPaneNames.has(String(p?.name ?? "")),
+  );
+
+  if (digitPanes.length === 0) {
+    return;
+  }
+
+  // Collect base texture indices from digit pane materials
+  const baseMaterialIndices = new Set();
+  for (const pane of digitPanes) {
+    if (pane.materialIndex < 0 || pane.materialIndex >= materials.length) {
+      continue;
+    }
+
+    const material = materials[pane.materialIndex];
+    const tMaps = material?.textureMaps ?? [];
+    if (tMaps.length > 0) {
+      const idx = tMaps[0].textureIndex;
+      if (Number.isFinite(idx) && idx >= 0 && idx < textures.length) {
+        baseMaterialIndices.add(idx);
+      }
+    }
+  }
+
+  // Collect RLTP texture indices from all animations for numeric digit panes
+  const allRltpIndices = new Set();
+  const isNumericDigitPane = (name) => WEATHER_TEMP_PANE_PATTERN.test(name) && name !== "kion_doF_F";
+  for (const animData of [this.startAnim, this.loopAnim, this.anim]) {
+    for (const idx of collectRltpTextureIndices(animData, isNumericDigitPane)) {
+      allRltpIndices.add(idx);
+    }
+  }
+
+  // Merge base material + RLTP indices
+  for (const idx of baseMaterialIndices) {
+    allRltpIndices.add(idx);
+  }
+
+  if (allRltpIndices.size === 0) {
+    return;
+  }
+
+  // Strategy A: Name-based discovery — look for varying digit in texture names
+  for (const candidateIdx of allRltpIndices) {
+    const candidateName = textures[candidateIdx];
+    if (!candidateName) {
+      continue;
+    }
+
+    const nameDigitMap = tryNameBasedDigitDiscovery(textures, candidateName);
+    if (nameDigitMap) {
+      this.customWeatherDigitMap = {
+        digits: nameDigitMap,
+        unitF: null,
+        unitC: null,
+      };
+      resolveUnitTextureIndices(this, textures, materials);
+      return;
+    }
+  }
+
+  // Strategy B: Sequential — minimum index is digit 0, check for 10 sequential textures
+  const sortedIndices = [...allRltpIndices].sort((a, b) => a - b);
+  const minIdx = sortedIndices[0];
+
+  let validRange = true;
+  for (let d = 0; d <= 9; d++) {
+    const idx = minIdx + d;
+    if (idx >= textures.length || !this.textureCanvases[textures[idx]]) {
+      validRange = false;
+      break;
+    }
+  }
+
+  if (!validRange) {
+    return;
+  }
+
+  const digitMap = {};
+  for (let d = 0; d <= 9; d++) {
+    digitMap[d] = minIdx + d;
+  }
+
+  this.customWeatherDigitMap = {
+    digits: digitMap,
+    unitF: null,
+    unitC: null,
+  };
+  resolveUnitTextureIndices(this, textures, materials);
+}
+
+function resolveUnitTextureIndices(renderer, textures, materials) {
+  const map = renderer.customWeatherDigitMap;
+  if (!map) {
+    return;
+  }
+
+  const unitPane = (renderer.layout?.panes ?? []).find((p) => String(p?.name ?? "") === "kion_doF_F");
+  if (!unitPane || unitPane.materialIndex < 0 || unitPane.materialIndex >= materials.length) {
+    return;
+  }
+
+  // Collect RLTP indices specifically for the unit pane
+  const unitRltpIndices = new Set();
+  const isUnitPane = (name) => name === "kion_doF_F";
+  for (const animData of [renderer.startAnim, renderer.loopAnim, renderer.anim]) {
+    for (const idx of collectRltpTextureIndices(animData, isUnitPane)) {
+      unitRltpIndices.add(idx);
+    }
+  }
+
+  // Also add the unit pane material's base texture index
+  const unitMaterial = materials[unitPane.materialIndex];
+  const unitTMaps = unitMaterial?.textureMaps ?? [];
+  if (unitTMaps.length > 0) {
+    const baseIdx = unitTMaps[0].textureIndex;
+    if (Number.isFinite(baseIdx) && baseIdx >= 0 && baseIdx < textures.length) {
+      unitRltpIndices.add(baseIdx);
+    }
+  }
+
+  if (unitRltpIndices.size >= 2) {
+    const sorted = [...unitRltpIndices].sort((a, b) => a - b);
+    map.unitF = sorted[0];
+    map.unitC = sorted.length > 1 ? sorted[1] : null;
+  } else if (unitRltpIndices.size === 1) {
+    const idx = [...unitRltpIndices][0];
+    map.unitF = idx;
+    // Check if next texture exists as a potential °C variant
+    if (idx + 1 < textures.length && renderer.textureCanvases[textures[idx + 1]]) {
+      map.unitC = idx + 1;
+    }
+  }
+}
+
+export function getCustomWeatherPaneTextureIndex(paneName) {
+  if (!this.customWeatherDigitMap || !this.isCustomWeatherEnabled()) {
+    return null;
+  }
+
+  const temp = Number.parseInt(String(this.customWeather?.temperature), 10);
+  if (!Number.isFinite(temp)) {
+    return null;
+  }
+
+  const absTemp = Math.abs(temp);
+  const { digits, unitF, unitC } = this.customWeatherDigitMap;
+
+  if (paneName === "kion_doF100") {
+    if (absTemp < 100) {
+      return null;
+    }
+    const digit = Math.floor(absTemp / 100) % 10;
+    return digits[digit] ?? null;
+  }
+
+  if (paneName === "kion_doF10") {
+    if (absTemp < 10) {
+      return null;
+    }
+    const digit = Math.floor(absTemp / 10) % 10;
+    return digits[digit] ?? null;
+  }
+
+  if (paneName === "kion_doF_do") {
+    const digit = absTemp % 10;
+    return digits[digit] ?? null;
+  }
+
+  if (paneName === "kion_doF_F") {
+    const unit = String(this.customWeather?.temperatureUnit ?? "F").trim().toUpperCase();
+    if (unit === "C" && unitC != null) {
+      return unitC;
+    }
+    return unitF ?? null;
+  }
+
+  return null;
+}
+
+export function getCustomWeatherDigitVisibility(pane) {
+  if (!this.customWeatherDigitMap || !this.isCustomWeatherEnabled() || !pane) {
+    return null;
+  }
+
+  const paneName = String(pane?.name ?? "");
+  if (!WEATHER_TEMP_DIGIT_PANE_NAMES.has(paneName)) {
+    return null;
+  }
+
+  const temp = Number.parseInt(String(this.customWeather?.temperature), 10);
+  if (!Number.isFinite(temp)) {
+    return null;
+  }
+
+  const absTemp = Math.abs(temp);
+  if (paneName === "kion_doF100") {
+    return absTemp >= 100;
+  }
+  if (paneName === "kion_doF10") {
+    return absTemp >= 10;
+  }
+
+  return true;
+}
+
 export function resolveCustomWeatherIconPaneSet() {
   if (!this.isCustomWeatherEnabled()) {
     return null;
@@ -245,6 +526,11 @@ export function shouldRenderPaneForCustomWeather(pane) {
 
   const customTemperature = Number.parseInt(String(this.customWeather.temperature), 10);
   if (Number.isFinite(customTemperature) && WEATHER_TEMP_DIGIT_PANE_NAMES.has(paneName)) {
+    // When we have a digit texture map, keep digit panes visible — their texture
+    // indices are overridden by getCustomWeatherPaneTextureIndex instead.
+    if (this.customWeatherDigitMap) {
+      return true;
+    }
     return false;
   }
 
@@ -253,6 +539,11 @@ export function shouldRenderPaneForCustomWeather(pane) {
 
 export function shouldDrawCustomTemperatureForPane(pane) {
   if (!this.isCustomWeatherEnabled() || !pane) {
+    return false;
+  }
+
+  // When native digit textures are available, skip the Canvas 2D fallback.
+  if (this.customWeatherDigitMap) {
     return false;
   }
 

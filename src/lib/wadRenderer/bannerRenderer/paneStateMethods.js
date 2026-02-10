@@ -33,7 +33,11 @@ export function getLocalPaneState(pane, frame) {
   const width = animValues.width ?? pane.size?.w ?? 0;
   const height = animValues.height ?? pane.size?.h ?? 0;
 
-  const visibilityOverride = this.getCustomWeatherVisibilityOverride?.(pane);
+  // Custom weather digit visibility takes priority over icon visibility.
+  const digitVisibilityOverride = this.getCustomWeatherDigitVisibility?.(pane) ?? null;
+  const visibilityOverride = digitVisibilityOverride != null
+    ? digitVisibilityOverride
+    : (this.getCustomWeatherVisibilityOverride?.(pane) ?? null);
   const hasAnimatedAlpha = animValues.alpha != null;
   const isVisible = visibilityOverride != null
     ? visibilityOverride
@@ -48,6 +52,13 @@ export function getLocalPaneState(pane, frame) {
   const alpha = isVisible ? animatedAlpha * materialAlphaFactor : 0;
   const propagatesAlpha = (pane.flags & 0x02) !== 0 || pane.type === "pic1" || pane.type === "txt1" || pane.type === "bnd1" || pane.type === "wnd1";
   const propagatesVisibility = true;
+
+  // Custom weather overrides the texture index for digit panes to show the correct digit.
+  let textureIndex = animValues.textureIndex;
+  const customTexIdx = this.getCustomWeatherPaneTextureIndex?.(String(pane?.name ?? ""));
+  if (customTexIdx != null) {
+    textureIndex = customTexIdx;
+  }
 
   return {
     tx,
@@ -65,6 +76,6 @@ export function getLocalPaneState(pane, frame) {
     propagatesVisibility,
     vertexColors: mergeAnimatedVertexColors(pane, animValues.vertexColors),
     alpha: Math.max(0, Math.min(1, alpha)),
-    textureIndex: animValues.textureIndex,
+    textureIndex,
   };
 }
