@@ -788,6 +788,12 @@ function hasWeatherScene(layout) {
   return paneNames.has("weather") && paneNames.has("code") && paneNames.has("city") && paneNames.has("telop");
 }
 
+function hasNewsScene(layout) {
+  const panes = layout?.panes ?? [];
+  const paneNames = new Set(panes.map((pane) => String(pane.name ?? "")));
+  return paneNames.has("telop0") && paneNames.has("telop1") && paneNames.has("line");
+}
+
 function sortTitleLocales(codes = []) {
   return [...codes].sort((left, right) => {
     const leftOrder = TITLE_LOCALE_ORDER.indexOf(left);
@@ -1093,6 +1099,8 @@ export default function App() {
   const [customTimeLabel, setCustomTimeLabel] = useState("Updated 9:41 AM");
   const [customTemperature, setCustomTemperature] = useState("72");
   const [customTemperatureUnit, setCustomTemperatureUnit] = useState("F");
+  const [useCustomNews, setUseCustomNews] = useState(false);
+  const [customHeadlines, setCustomHeadlines] = useState("Breaking: Wii Channel banners now render in the browser\nNintendo announces new system update\nLocal weather: sunny skies expected all week");
   const [previewDisplayAspect, setPreviewDisplayAspect] = useState("4:3");
   const [tevQuality, setTevQuality] = useState("fast");
   const [recentWads, setRecentWads] = useState([]);
@@ -1153,6 +1161,25 @@ export default function App() {
     customTemperature,
     customTemperatureUnit,
   ]);
+
+  const canCustomizeNews = useMemo(
+    () => hasNewsScene(parsed?.results?.icon?.renderLayout),
+    [parsed],
+  );
+
+  const customNewsData = useMemo(() => {
+    if (!useCustomNews || !canCustomizeNews) {
+      return null;
+    }
+    const headlines = customHeadlines
+      .split("\n")
+      .map((line) => line.trim())
+      .filter((line) => line.length > 0);
+    if (headlines.length === 0) {
+      return null;
+    }
+    return { enabled: true, headlines };
+  }, [useCustomNews, canCustomizeNews, customHeadlines]);
 
   const effectiveBannerStartFrame = useMemo(() => {
     if (!customWeatherData || !canCustomizeWeather) {
@@ -1447,6 +1474,7 @@ export default function App() {
           paneStateSelections: customWeatherData ? null : iconPaneStateSelections,
           titleLocale: requestedLocale,
           customWeather: customWeatherData,
+          customNews: customNewsData,
           displayAspect: previewDisplayAspect,
           tevQuality,
           fonts: iconResult.fonts,
@@ -1505,6 +1533,7 @@ export default function App() {
     bannerPaneStateSelections,
     iconPaneStateSelections,
     customWeatherData,
+    customNewsData,
     previewDisplayAspect,
     tevQuality,
   ]);
@@ -1994,6 +2023,31 @@ export default function App() {
                             type="text"
                             value={customTimeLabel}
                             onChange={(event) => setCustomTimeLabel(event.target.value)}
+                          />
+                        </div>
+                      </div>
+                    ) : null}
+                  </div>
+                ) : null}
+                {canCustomizeNews ? (
+                  <div className="custom-weather-settings">
+                    <label className="custom-weather-toggle">
+                      <input
+                        type="checkbox"
+                        checked={useCustomNews}
+                        onChange={(event) => setUseCustomNews(event.target.checked)}
+                      />
+                      <span>Use Custom News Headlines</span>
+                    </label>
+                    {useCustomNews ? (
+                      <div className="custom-weather-grid">
+                        <div className="state-control">
+                          <label htmlFor="custom-news-headlines">Headlines (one per line)</label>
+                          <textarea
+                            id="custom-news-headlines"
+                            rows={4}
+                            value={customHeadlines}
+                            onChange={(event) => setCustomHeadlines(event.target.value)}
                           />
                         </div>
                       </div>

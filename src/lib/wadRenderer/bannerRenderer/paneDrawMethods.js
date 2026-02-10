@@ -321,7 +321,7 @@ function resolveTextPaneColors(renderer, pane) {
 }
 
 export function drawTextPane(context, pane, width, height) {
-  const customText = this.getCustomWeatherTextForPane(pane);
+  const customText = this.getCustomWeatherTextForPane(pane) ?? this.getCustomNewsTextForPane?.(pane);
   const rawText = typeof customText === "string" ? customText : typeof pane?.text === "string" ? pane.text : "";
   if (rawText.length === 0) {
     return;

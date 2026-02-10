@@ -1,5 +1,6 @@
 import { detectPreferredTitleLocale } from "./locale";
 import * as animationMethods from "./animationMethods";
+import * as customNewsMethods from "./customNewsMethods";
 import * as customWeatherMethods from "./customWeatherMethods";
 import * as localeMethods from "./localeMethods";
 import * as transformMethods from "./transformMethods";
@@ -141,6 +142,7 @@ export class BannerRenderer {
     this.customWeather = options.customWeather ?? null;
     this.customWeatherIconPaneSet = null;
     this.customWeatherDigitMap = null;
+    this.customNews = options.customNews ?? null;
     this.referenceAspectRatio = normalizePositiveAspect(
       parseAspectRatio(options.referenceAspectRatio),
       DEFAULT_REFERENCE_ASPECT,
@@ -216,6 +218,7 @@ Object.assign(
   animationMethods,
   textureMethods,
   stateMethods,
+  customNewsMethods,
   customWeatherMethods,
   transformMethods,
   paneAnimValues,
