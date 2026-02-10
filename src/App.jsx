@@ -344,21 +344,6 @@ function scoreStartFrame(layout, startAnim, frame, paneAnimationMap, getPaneChai
 
 function suggestInitialFrame(result) {
   const bannerResult = result?.results?.banner;
-  const preferredRenderState = resolveAutoRenderState(bannerResult);
-  const preferredStateAnim = findStateAnimationEntry(bannerResult, preferredRenderState)?.anim ?? null;
-
-  // Some channels (e.g. News) ship Start + Rso* animations without an explicit Loop;
-  // previewing those state animations at their reveal frame gives a stable default.
-  if (bannerResult?.animStart && preferredStateAnim && !bannerResult?.animLoop) {
-    const maxFrame = Math.max(0, (preferredStateAnim.frameSize ?? 1) - 1);
-    const prioritizedReveal =
-      findAlphaRevealFrame(preferredStateAnim, /^(?:all|news|text|line)$/i) ??
-      findAlphaRevealFrame(preferredStateAnim);
-    if (prioritizedReveal != null) {
-      return clampFrame(prioritizedReveal, maxFrame);
-    }
-    return maxFrame;
-  }
 
   const startAnim = bannerResult?.animStart;
   const layout = bannerResult?.renderLayout;
@@ -904,6 +889,17 @@ function resolveAnimationSelection(targetResult, selectedState) {
   const stateAnim = stateAnimEntry?.anim ?? null;
 
   if (stateAnim) {
+    const startAnim = targetResult?.animStart ?? null;
+    if (startAnim) {
+      // Start + RSO state: play start first, then loop the state animation.
+      return {
+        anim: startAnim,
+        startAnim,
+        loopAnim: stateAnim,
+        renderState: activeState ?? null,
+        playbackMode: "loop",
+      };
+    }
     const playbackMode = shouldHoldStateAnimation(targetResult, stateAnim) ? "hold" : "loop";
     return {
       anim: stateAnim,

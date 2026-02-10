@@ -356,7 +356,7 @@ export function drawFillTextPane(context, pane, rawText, width, height) {
     return;
   }
 
-  const fontSize = Math.max(1, Number.isFinite(pane?.textSize?.y) ? pane.textSize.y : absHeight * 0.45);
+  let fontSize = Math.max(1, Number.isFinite(pane?.textSize?.y) ? pane.textSize.y : absHeight * 0.45);
   const lineSpacing = Number.isFinite(pane?.lineSpacing) ? pane.lineSpacing : 0;
 
   // Byte +8 in txt1 is the text origin/position (benzin: "alignment").
@@ -387,9 +387,35 @@ export function drawFillTextPane(context, pane, rawText, width, height) {
   context.rect(boxLeft, boxTop, absWidth, absHeight);
   context.clip();
 
+  // Auto-scale font so text fits within the pane bounds.
+  // The fallback sans-serif is wider than Wii bitmap fonts, so without this
+  // text overflows and overlaps adjacent panes.
+  // Scale to fit both horizontally (widest line) and vertically (all lines).
   context.textBaseline = "top";
   context.textAlign = textAlign;
   context.font = `${fontSize}px sans-serif`;
+
+  // Vertical fit: ensure all lines fit within the pane height.
+  const rawLineHeight = Math.max(1, fontSize + lineSpacing);
+  const rawContentHeight = rawLineHeight * paragraphs.length;
+  if (rawContentHeight > absHeight && rawContentHeight > 0) {
+    fontSize = Math.max(1, fontSize * (absHeight / rawContentHeight));
+    context.font = `${fontSize}px sans-serif`;
+  }
+
+  // Horizontal fit: ensure widest line fits within the pane width.
+  let maxLineWidth = 0;
+  for (let i = 0; i < paragraphs.length; i += 1) {
+    const measured = context.measureText(paragraphs[i]);
+    if (measured.width > maxLineWidth) {
+      maxLineWidth = measured.width;
+    }
+  }
+  if (maxLineWidth > absWidth && maxLineWidth > 0) {
+    fontSize = Math.max(1, fontSize * (absWidth / maxLineWidth));
+    context.font = `${fontSize}px sans-serif`;
+  }
+
   const lineHeight = Math.max(1, fontSize + lineSpacing);
 
   // Wii does NOT word-wrap text — only explicit \n causes line breaks.

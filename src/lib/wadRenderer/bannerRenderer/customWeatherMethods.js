@@ -198,32 +198,55 @@ function collectPerPaneRltpIndices(animData, paneNames) {
 }
 
 function tryNameBasedDigitDiscovery(textures, baseTextureName) {
-  // Try to find a varying digit in the texture name.
-  // e.g. "my_kion_num_7_00" → "my_kion_num_0_00" .. "my_kion_num_9_00"
-  // Searches for the last single-digit position bounded by non-digit chars.
-  const match = baseTextureName.match(/^(.*\D)(\d)(\D.*)$|^(.*\D)(\d)()$/);
-  if (!match) {
+  // Find all numeric segments in the texture name and try varying each one 0-9.
+  // Handles single digits ("num_7"), zero-padded ("num_07"), and multi-segment names.
+  const segmentRegex = /(\d+)/g;
+  const segments = [];
+  let segMatch;
+  while ((segMatch = segmentRegex.exec(baseTextureName)) !== null) {
+    segments.push({
+      start: segMatch.index,
+      end: segMatch.index + segMatch[0].length,
+      value: segMatch[0],
+      numericValue: parseInt(segMatch[0], 10),
+    });
+  }
+
+  if (segments.length === 0) {
     return null;
   }
 
-  const prefix = match[1] ?? match[4];
-  const suffix = match[3] ?? match[6] ?? "";
-  if (prefix == null) {
-    return null;
-  }
+  // Try each numeric segment as the potential digit position.
+  // Prefer segments whose numeric value is 0-9 (more likely to be a digit).
+  const sortedSegments = [...segments].sort((a, b) => {
+    const aInRange = a.numericValue >= 0 && a.numericValue <= 9 ? 0 : 1;
+    const bInRange = b.numericValue >= 0 && b.numericValue <= 9 ? 0 : 1;
+    return aInRange - bInRange;
+  });
 
-  const digitMap = {};
-  let found = 0;
-  for (let d = 0; d <= 9; d++) {
-    const candidateName = `${prefix}${d}${suffix}`;
-    const idx = textures.indexOf(candidateName);
-    if (idx >= 0) {
-      digitMap[d] = idx;
-      found += 1;
+  for (const seg of sortedSegments) {
+    const prefix = baseTextureName.substring(0, seg.start);
+    const suffix = baseTextureName.substring(seg.end);
+    const padLen = seg.value.length;
+
+    const digitMap = {};
+    let found = 0;
+    for (let d = 0; d <= 9; d++) {
+      const numStr = padLen > 1 ? String(d).padStart(padLen, "0") : String(d);
+      const candidateName = `${prefix}${numStr}${suffix}`;
+      const idx = textures.indexOf(candidateName);
+      if (idx >= 0) {
+        digitMap[d] = idx;
+        found += 1;
+      }
+    }
+
+    if (found >= 10) {
+      return digitMap;
     }
   }
 
-  return found >= 10 ? digitMap : null;
+  return null;
 }
 
 export function resolveCustomWeatherDigitTextureMap() {
@@ -302,7 +325,8 @@ export function resolveCustomWeatherDigitTextureMap() {
   }
   console.info("[WeWAD] Weather digit discovery — per-pane indices:", perPaneLog);
 
-  // Strategy A: Name-based — look for varying digit in texture names
+  // Strategy A: Name-based — look for varying digit in texture names.
+  // Try each known RLTP texture as a seed for name-based discovery.
   for (const candidateIdx of allIndices) {
     const candidateName = textures[candidateIdx];
     if (!candidateName) {
@@ -310,29 +334,42 @@ export function resolveCustomWeatherDigitTextureMap() {
     }
 
     const nameDigitMap = tryNameBasedDigitDiscovery(textures, candidateName);
-    if (nameDigitMap) {
-      console.info("[WeWAD] Digit map (name-based):", Object.fromEntries(
-        Object.entries(nameDigitMap).map(([d, i]) => [d, `${i}=${textures[i] ?? "?"}`]),
-      ));
-      this.customWeatherDigitMap = { digits: nameDigitMap, unitF: null, unitC: null };
-      resolveUnitTextureIndices(this, textures, materials);
-      return;
+    if (!nameDigitMap) {
+      continue;
     }
+
+    // Validate all mapped textures have decoded canvases.
+    let allDecoded = true;
+    for (let d = 0; d <= 9; d++) {
+      const idx = nameDigitMap[d];
+      if (idx == null || !this.textureCanvases[textures[idx]]) {
+        allDecoded = false;
+        break;
+      }
+    }
+    if (!allDecoded) {
+      continue;
+    }
+
+    console.info("[WeWAD] Digit map (name-based):", Object.fromEntries(
+      Object.entries(nameDigitMap).map(([d, i]) => [d, `${i}=${textures[i] ?? "?"}`]),
+    ));
+    this.customWeatherDigitMap = { digits: nameDigitMap, unitF: null, unitC: null };
+    resolveUnitTextureIndices(this, textures, materials);
+    return;
   }
 
-  // Strategy B: Sequential — find a base index where 10 consecutive textures exist
-  // and all per-pane RLTP indices fall within [base, base+9].
+  // Strategy B: Find 10 consecutive decoded textures near the known indices
+  // and validate via name-based discovery (texture names must contain a digit pattern).
+  // No blind sequential fallback — we only accept ranges where names confirm digit ordering.
   const sortedAll = [...allIndices].sort((a, b) => a - b);
   const minIdx = sortedAll[0];
   const maxIdx = sortedAll[sortedAll.length - 1];
 
-  // Scan a window around the known indices
   const searchStart = Math.max(0, minIdx - 12);
   const searchEnd = Math.min(textures.length - 10, maxIdx);
 
-  let bestBase = null;
   for (let candidateBase = searchStart; candidateBase <= searchEnd; candidateBase++) {
-    // All 10 textures must exist
     let allExist = true;
     for (let d = 0; d <= 9; d++) {
       if (!this.textureCanvases[textures[candidateBase + d]]) {
@@ -344,41 +381,26 @@ export function resolveCustomWeatherDigitTextureMap() {
       continue;
     }
 
-    // Every known per-pane RLTP index must fall within [base, base+9]
-    let allFit = true;
-    for (const idx of allIndices) {
-      if (idx < candidateBase || idx > candidateBase + 9) {
-        allFit = false;
-        break;
+    // Must validate via name-based discovery — no blind sequential.
+    for (let d = 0; d <= 9; d++) {
+      const candidateName = textures[candidateBase + d];
+      if (!candidateName) {
+        continue;
+      }
+      const validatedMap = tryNameBasedDigitDiscovery(textures, candidateName);
+      if (validatedMap) {
+        console.info("[WeWAD] Digit map (sequential+name validated):", Object.fromEntries(
+          Object.entries(validatedMap).map(([d, i]) => [d, `${i}=${textures[i] ?? "?"}`]),
+        ));
+        this.customWeatherDigitMap = { digits: validatedMap, unitF: null, unitC: null };
+        resolveUnitTextureIndices(this, textures, materials);
+        return;
       }
     }
-    if (!allFit) {
-      continue;
-    }
-
-    bestBase = candidateBase;
-    break;
   }
 
-  if (bestBase == null) {
-    console.warn(
-      "[WeWAD] Could not find valid digit range.",
-      "All texture names:", textures.map((t, i) => `${i}=${t}`).join(", "),
-    );
-    return;
-  }
-
-  const digitMap = {};
-  for (let d = 0; d <= 9; d++) {
-    digitMap[d] = bestBase + d;
-  }
-
-  console.info("[WeWAD] Digit map (sequential, base=" + bestBase + "):", Object.fromEntries(
-    Object.entries(digitMap).map(([d, i]) => [d, `${i}=${textures[i] ?? "?"}`]),
-  ));
-
-  this.customWeatherDigitMap = { digits: digitMap, unitF: null, unitC: null };
-  resolveUnitTextureIndices(this, textures, materials);
+  // No digit textures found — Canvas 2D fallback will be used.
+  console.info("[WeWAD] No digit textures found in WAD — using Canvas 2D temperature text.");
 }
 
 function resolveUnitTextureIndices(renderer, textures, materials) {
@@ -428,6 +450,8 @@ function resolveUnitTextureIndices(renderer, textures, materials) {
   }
 }
 
+let _digitDebugLogged = false;
+
 export function getCustomWeatherPaneTextureIndex(paneName) {
   if (!this.customWeatherDigitMap || !this.isCustomWeatherEnabled()) {
     return null;
@@ -440,37 +464,47 @@ export function getCustomWeatherPaneTextureIndex(paneName) {
 
   const absTemp = Math.abs(temp);
   const { digits, unitF, unitC } = this.customWeatherDigitMap;
+  const textures = this.layout?.textures ?? [];
+
+  let result = null;
+  let debugDigit = null;
 
   if (paneName === "kion_doF100") {
-    if (absTemp < 100) {
-      return null;
+    if (absTemp >= 100) {
+      debugDigit = Math.floor(absTemp / 100) % 10;
+      result = digits[debugDigit] ?? null;
     }
-    const digit = Math.floor(absTemp / 100) % 10;
-    return digits[digit] ?? null;
-  }
-
-  if (paneName === "kion_doF10") {
-    if (absTemp < 10) {
-      return null;
+  } else if (paneName === "kion_doF10") {
+    if (absTemp >= 10) {
+      debugDigit = Math.floor(absTemp / 10) % 10;
+      result = digits[debugDigit] ?? null;
     }
-    const digit = Math.floor(absTemp / 10) % 10;
-    return digits[digit] ?? null;
-  }
-
-  if (paneName === "kion_doF_do") {
-    const digit = absTemp % 10;
-    return digits[digit] ?? null;
-  }
-
-  if (paneName === "kion_doF_F") {
+  } else if (paneName === "kion_doF_do") {
+    debugDigit = absTemp % 10;
+    result = digits[debugDigit] ?? null;
+  } else if (paneName === "kion_doF_F") {
     const unit = String(this.customWeather?.temperatureUnit ?? "F").trim().toUpperCase();
     if (unit === "C" && unitC != null) {
-      return unitC;
+      result = unitC;
+    } else {
+      result = unitF ?? null;
     }
-    return unitF ?? null;
   }
 
-  return null;
+  // One-shot debug: log the first complete set of digit overrides
+  if (!_digitDebugLogged && paneName === "kion_doF_F") {
+    _digitDebugLogged = true;
+    const onesDigit = absTemp % 10;
+    const tensDigit = Math.floor(absTemp / 10) % 10;
+    console.warn(
+      `[WeWAD] Custom weather digit override — temp=${temp}:`,
+      `ones(${onesDigit})→tex[${digits[onesDigit]}]="${textures[digits[onesDigit]] ?? "?"}",`,
+      `tens(${tensDigit})→tex[${digits[tensDigit]}]="${textures[digits[tensDigit]] ?? "?"}",`,
+      `unit→tex[${result}]="${textures[result] ?? "?"}"`,
+    );
+  }
+
+  return result;
 }
 
 export function getCustomWeatherDigitVisibility(pane) {
