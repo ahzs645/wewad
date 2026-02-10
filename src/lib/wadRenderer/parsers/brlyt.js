@@ -355,7 +355,8 @@ export function parseBRLYT(buffer, loggerInput) {
             cursor += 4;
           }
 
-          // TEV Stages (16 bytes each). Packed bitfields — big-endian MSB-first.
+          // TEV Stages (16 bytes each). Bitfields are LSB-first within bytes,
+          // matching the GX hardware register layout and wii-banner-player Material.h.
           const tevStages = [];
           for (let ts = 0; ts < tevStageCount; ts += 1) {
             if (cursor + 15 >= materialEnd) {
@@ -380,44 +381,49 @@ export function parseBRLYT(buffer, loggerInput) {
             const b15 = reader.view.getUint8(cursor + 15);
 
             tevStages.push({
-              // Word 0: order & swap mode
+              // Bytes 0-1: order
               texCoord: b0,
               colorChan: b1,
-              texMap: b2 | (((b3 >> 7) & 1) << 8),
-              rasSel: (b3 >> 5) & 3,
+              // Bytes 2-3: texMap(9 bits), rasSel(2), texSel(2), pad(3) — LSB-first
+              texMap: b2 | ((b3 & 1) << 8),
+              rasSel: (b3 >> 1) & 3,
               texSel: (b3 >> 3) & 3,
-              // Word 1: color combiner
-              aC: (b4 >> 4) & 0xf,
-              bC: b4 & 0xf,
-              cC: (b5 >> 4) & 0xf,
-              dC: b5 & 0xf,
-              tevScaleC: (b6 >> 6) & 3,
-              tevBiasC: (b6 >> 4) & 3,
+              // Bytes 4-5: color combiner inputs — a,b,c,d are LSB-first nibbles
+              aC: b4 & 0xf,
+              bC: (b4 >> 4) & 0xf,
+              cC: b5 & 0xf,
+              dC: (b5 >> 4) & 0xf,
+              // Byte 6: op(4), bias(2), scale(2) — LSB-first
               tevOpC: b6 & 0xf,
-              tevRegIdC: (b7 >> 7) & 1,
-              clampC: (b7 >> 5) & 3,
-              kColorSelC: b7 & 0x1f,
-              // Word 2: alpha combiner
-              aA: (b8 >> 4) & 0xf,
-              bA: b8 & 0xf,
-              cA: (b9 >> 4) & 0xf,
-              dA: b9 & 0xf,
-              tevScaleA: (b10 >> 6) & 3,
-              tevBiasA: (b10 >> 4) & 3,
+              tevBiasC: (b6 >> 4) & 3,
+              tevScaleC: (b6 >> 6) & 3,
+              // Byte 7: clamp(1), regId(2), kColorSel(5) — LSB-first
+              clampC: b7 & 1,
+              tevRegIdC: (b7 >> 1) & 3,
+              kColorSelC: (b7 >> 3) & 0x1f,
+              // Bytes 8-9: alpha combiner inputs — same LSB-first layout
+              aA: b8 & 0xf,
+              bA: (b8 >> 4) & 0xf,
+              cA: b9 & 0xf,
+              dA: (b9 >> 4) & 0xf,
+              // Byte 10: op(4), bias(2), scale(2)
               tevOpA: b10 & 0xf,
-              tevRegIdA: (b11 >> 7) & 1,
-              clampA: (b11 >> 5) & 3,
-              kAlphaSelA: b11 & 0x1f,
-              // Word 3: indirect texture
-              indTexId: b12,
-              indBias: (b13 >> 5) & 7,
-              indMtxId: (b13 >> 1) & 0xf,
-              indWrapS: (b14 >> 5) & 7,
-              indWrapT: (b14 >> 2) & 7,
-              indFormat: (b15 >> 6) & 3,
-              indAddPrev: (b15 >> 5) & 1,
-              indUtcLod: (b15 >> 4) & 1,
-              indAlpha: (b15 >> 2) & 3,
+              tevBiasA: (b10 >> 4) & 3,
+              tevScaleA: (b10 >> 6) & 3,
+              // Byte 11: clamp(1), regId(2), kAlphaSel(5)
+              clampA: b11 & 1,
+              tevRegIdA: (b11 >> 1) & 3,
+              kAlphaSelA: (b11 >> 3) & 0x1f,
+              // Bytes 12-15: indirect texture — LSB-first
+              indTexId: b12 & 3,
+              indBias: b13 & 7,
+              indMtxId: (b13 >> 3) & 0xf,
+              indWrapS: b14 & 7,
+              indWrapT: (b14 >> 3) & 7,
+              indFormat: b15 & 3,
+              indAddPrev: (b15 >> 2) & 1,
+              indUtcLod: (b15 >> 3) & 1,
+              indAlpha: (b15 >> 4) & 3,
             });
             cursor += 16;
           }

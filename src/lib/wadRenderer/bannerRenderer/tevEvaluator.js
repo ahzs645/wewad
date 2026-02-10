@@ -143,8 +143,7 @@ function tevCombine(a, b, c, d, op, bias, scale, clamp) {
 }
 
 // Write combiner output to the appropriate register.
-// regId: 0 = cprev/aprev, 1 = c0/a0 (but GX only uses 0-3 for output, mapped via tevRegId).
-// In BRLYT, tevRegIdC/A is 1-bit: 0=PREV, 1=REG0. Some sources say 2-bit for 0-3.
+// regId 2-bit: 0=PREV, 1=REG0, 2=REG1, 3=REG2.
 function writeColorReg(state, regId, r, g, b) {
   switch (regId) {
     case 0: state.cprev.r = r; state.cprev.g = g; state.cprev.b = b; break;
@@ -222,10 +221,9 @@ export function evaluateTevStagesForPixel(stages, texSamples, rasColor, material
     state.texC = texSwapEntry ? applySwapTable(rawTex, texSwapEntry) : rawTex;
 
     // Resolve rasterized color: respect colorChan (GX channel control per stage).
-    // colorChan=4 → GX_COLOR_ZERO (no rasterized color input).
-    // colorChan=0 → GX_COLOR0A0 (vertex/material color), 1 → GX_COLOR1A1.
-    // colorChan=0xFF → GX_COLOR_NULL (defaults to vertex/material color in hardware).
-    const stageRasColor = stage.colorChan === 4
+    // 0=COLOR0, 1=COLOR1, 2=ALPHA0, 3=ALPHA1, 4=COLOR0A0, 5=COLOR1A1,
+    // 6=GX_COLORZERO (no rasterized color), 7=BUMP, 8=BUMPN, 0xFF=COLORNULL.
+    const stageRasColor = stage.colorChan === 6
       ? { r: 0, g: 0, b: 0, a: 0 }
       : rasColor;
     const rasSwapEntry = swapTable?.[stage.rasSel] ?? null;

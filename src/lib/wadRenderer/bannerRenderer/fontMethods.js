@@ -184,12 +184,9 @@ export function drawBitmapTextPane(context, pane, fontData, rawText, width, heig
   }
   const scale = fontSize / fontHeight;
 
-  let textAlign = 0; // 0=left, 1=center, 2=right
-  if (pane?.textAlignment === 1) {
-    textAlign = 1;
-  } else if (pane?.textAlignment === 2) {
-    textAlign = 2;
-  }
+  // Byte +8 in txt1 is the text origin/position (benzin: "alignment").
+  // Encodes hAlign = value % 3: 0=left, 1=center, 2=right.
+  const textAlign = (pane?.textPositionFlags ?? 0) % 3;
 
   const topColor = pane?.textTopColor ?? { r: 32, g: 32, b: 32, a: 255 };
   const bottomColor = pane?.textBottomColor ?? topColor;

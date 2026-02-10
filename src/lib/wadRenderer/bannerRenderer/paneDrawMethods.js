@@ -274,6 +274,52 @@ export function drawPane(context, binding, pane, paneState, width, height) {
   context.drawImage(this.paneCompositeSurface, -width / 2, -height / 2, width, height);
 }
 
+// Resolve effective text colors by multiplying textTopColor/textBottomColor with material color2.
+// On the real Wii, txt1 text is rendered through the full material pipeline — material colors
+// modulate the per-vertex text colors. Without this, white textTopColor + black material = white text.
+function resolveTextPaneColors(renderer, pane) {
+  const material = renderer.getMaterialForPane?.(pane);
+  if (!material) {
+    return pane;
+  }
+
+  const color2 = material.color2;
+  if (!Array.isArray(color2) || color2.length < 4) {
+    return pane;
+  }
+
+  const clamp = (v) => Math.max(0, Math.min(255, Math.round(Number.isFinite(v) ? v : 255)));
+  const staticColor = { r: clamp(color2[0]), g: clamp(color2[1]), b: clamp(color2[2]), a: clamp(color2[3]) };
+  const animatedColor = renderer.getPaneMaterialAnimColor?.(pane.name, renderer.frame) ?? {};
+
+  const matR = animatedColor.r ?? staticColor.r;
+  const matG = animatedColor.g ?? staticColor.g;
+  const matB = animatedColor.b ?? staticColor.b;
+  const matA = animatedColor.a ?? staticColor.a;
+
+  if (matR === 255 && matG === 255 && matB === 255 && matA === 255) {
+    return pane;
+  }
+
+  const modulateColor = (base) => {
+    if (!base) {
+      return base;
+    }
+    return {
+      r: Math.round((base.r * matR) / 255),
+      g: Math.round((base.g * matG) / 255),
+      b: Math.round((base.b * matB) / 255),
+      a: Math.round((base.a * matA) / 255),
+    };
+  };
+
+  return {
+    ...pane,
+    textTopColor: modulateColor(pane.textTopColor),
+    textBottomColor: modulateColor(pane.textBottomColor),
+  };
+}
+
 export function drawTextPane(context, pane, width, height) {
   const customText = this.getCustomWeatherTextForPane(pane);
   const rawText = typeof customText === "string" ? customText : typeof pane?.text === "string" ? pane.text : "";
@@ -287,15 +333,18 @@ export function drawTextPane(context, pane, width, height) {
     return;
   }
 
+  // Apply material color modulation to text colors before rendering.
+  const effectivePane = resolveTextPaneColors(this, pane);
+
   // Try bitmap font rendering if a font file is available.
   const fontData = this.getFontForPane?.(pane);
   if (fontData && fontData.sheets.length > 0) {
-    this.drawBitmapTextPane(context, pane, fontData, rawText, width, height);
+    this.drawBitmapTextPane(context, effectivePane, fontData, rawText, width, height);
     return;
   }
 
   // Fallback: Canvas 2D fillText.
-  this.drawFillTextPane(context, pane, rawText, width, height);
+  this.drawFillTextPane(context, effectivePane, rawText, width, height);
 }
 
 export function drawFillTextPane(context, pane, rawText, width, height) {
@@ -310,10 +359,14 @@ export function drawFillTextPane(context, pane, rawText, width, height) {
   const fontSize = Math.max(1, Number.isFinite(pane?.textSize?.y) ? pane.textSize.y : absHeight * 0.45);
   const lineSpacing = Number.isFinite(pane?.lineSpacing) ? pane.lineSpacing : 0;
 
+  // Byte +8 in txt1 is the text origin/position (benzin: "alignment").
+  // Encodes hAlign = value % 3: 0=left, 1=center, 2=right.
+  // Byte +9 (textAlignment) is per-line alignment within a multi-line block.
+  const hOrigin = (pane?.textPositionFlags ?? 0) % 3;
   let textAlign = "left";
-  if (pane?.textAlignment === 1) {
+  if (hOrigin === 1) {
     textAlign = "center";
-  } else if (pane?.textAlignment === 2) {
+  } else if (hOrigin === 2) {
     textAlign = "right";
   }
 
