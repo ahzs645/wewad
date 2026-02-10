@@ -142,6 +142,68 @@ function tevCombine(a, b, c, d, op, bias, scale, clamp) {
   return Math.max(-1024, Math.min(1023, result));
 }
 
+// TEV compare mode for color combiner (bias=3).
+// Switches to: D + (compare(A,B) ? C : 0).
+// tevOp: 0=GT, 1=EQ. scale selects comparison granularity:
+//   0=R8 (R channel only), 1=GR16 (packed), 2=BGR24 (packed), 3=RGB8 (per-component).
+function tevCompareColor(inA, inB, inC, inD, op, scale, clamp) {
+  const useEq = op === TEV_SUB;
+  const i = (v) => Math.round(v * 255);
+
+  let condR, condG, condB;
+  switch (scale) {
+    case 0: { // COMP_R8: compare R only, scalar result
+      const cond = useEq ? (i(inA.r) === i(inB.r)) : (i(inA.r) > i(inB.r));
+      condR = condG = condB = cond;
+      break;
+    }
+    case 1: { // COMP_GR16: compare packed G*256+R
+      const vA = i(inA.g) * 256 + i(inA.r);
+      const vB = i(inB.g) * 256 + i(inB.r);
+      const cond = useEq ? (vA === vB) : (vA > vB);
+      condR = condG = condB = cond;
+      break;
+    }
+    case 2: { // COMP_BGR24: compare packed B*65536+G*256+R
+      const vA = i(inA.b) * 65536 + i(inA.g) * 256 + i(inA.r);
+      const vB = i(inB.b) * 65536 + i(inB.g) * 256 + i(inB.r);
+      const cond = useEq ? (vA === vB) : (vA > vB);
+      condR = condG = condB = cond;
+      break;
+    }
+    case 3: { // COMP_RGB8: per-component comparison
+      condR = useEq ? (i(inA.r) === i(inB.r)) : (i(inA.r) > i(inB.r));
+      condG = useEq ? (i(inA.g) === i(inB.g)) : (i(inA.g) > i(inB.g));
+      condB = useEq ? (i(inA.b) === i(inB.b)) : (i(inA.b) > i(inB.b));
+      break;
+    }
+    default:
+      condR = condG = condB = false;
+  }
+
+  let r = inD.r + (condR ? inC.r : 0);
+  let g = inD.g + (condG ? inC.g : 0);
+  let b = inD.b + (condB ? inC.b : 0);
+  if (clamp) {
+    return { r: Math.max(0, Math.min(1, r)), g: Math.max(0, Math.min(1, g)), b: Math.max(0, Math.min(1, b)) };
+  }
+  return { r, g, b };
+}
+
+// TEV compare mode for alpha combiner (bias=3).
+// Always A8 comparison: D + (compare(A,B) ? C : 0).
+function tevCompareAlpha(a, b, c, d, op, clamp) {
+  const useEq = op === TEV_SUB;
+  const iA = Math.round(a * 255);
+  const iB = Math.round(b * 255);
+  const cond = useEq ? (iA === iB) : (iA > iB);
+  let result = d + (cond ? c : 0);
+  if (clamp) {
+    return Math.max(0, Math.min(1, result));
+  }
+  return Math.max(-1024, Math.min(1023, result));
+}
+
 // Write combiner output to the appropriate register.
 // regId 2-bit: 0=PREV, 1=REG0, 2=REG1, 3=REG2.
 function writeColorReg(state, regId, r, g, b) {
@@ -239,12 +301,18 @@ export function evaluateTevStagesForPixel(stages, texSamples, rasColor, material
     const inBC = resolveColorInput(stage.bC, state);
     const inCC = resolveColorInput(stage.cC, state);
     const inDC = resolveColorInput(stage.dC, state);
-    const biasC = BIAS_VALUES[stage.tevBiasC];
-    const scaleC = SCALE_VALUES[stage.tevScaleC];
     const doClampC = stage.clampC !== 0;
-    const outR = tevCombine(inAC.r, inBC.r, inCC.r, inDC.r, stage.tevOpC, biasC, scaleC, doClampC);
-    const outG = tevCombine(inAC.g, inBC.g, inCC.g, inDC.g, stage.tevOpC, biasC, scaleC, doClampC);
-    const outB = tevCombine(inAC.b, inBC.b, inCC.b, inDC.b, stage.tevOpC, biasC, scaleC, doClampC);
+    let outR, outG, outB;
+    if (stage.tevBiasC === 3) {
+      const cmp = tevCompareColor(inAC, inBC, inCC, inDC, stage.tevOpC, stage.tevScaleC, doClampC);
+      outR = cmp.r; outG = cmp.g; outB = cmp.b;
+    } else {
+      const biasC = BIAS_VALUES[stage.tevBiasC];
+      const scaleC = SCALE_VALUES[stage.tevScaleC];
+      outR = tevCombine(inAC.r, inBC.r, inCC.r, inDC.r, stage.tevOpC, biasC, scaleC, doClampC);
+      outG = tevCombine(inAC.g, inBC.g, inCC.g, inDC.g, stage.tevOpC, biasC, scaleC, doClampC);
+      outB = tevCombine(inAC.b, inBC.b, inCC.b, inDC.b, stage.tevOpC, biasC, scaleC, doClampC);
+    }
     writeColorReg(state, stage.tevRegIdC, outR, outG, outB);
 
     // Alpha combiner.
@@ -252,10 +320,15 @@ export function evaluateTevStagesForPixel(stages, texSamples, rasColor, material
     const inBA = resolveAlphaInput(stage.bA, state);
     const inCA = resolveAlphaInput(stage.cA, state);
     const inDA = resolveAlphaInput(stage.dA, state);
-    const biasA = BIAS_VALUES[stage.tevBiasA];
-    const scaleA = SCALE_VALUES[stage.tevScaleA];
     const doClampA = stage.clampA !== 0;
-    const outA = tevCombine(inAA, inBA, inCA, inDA, stage.tevOpA, biasA, scaleA, doClampA);
+    let outA;
+    if (stage.tevBiasA === 3) {
+      outA = tevCompareAlpha(inAA, inBA, inCA, inDA, stage.tevOpA, doClampA);
+    } else {
+      const biasA = BIAS_VALUES[stage.tevBiasA];
+      const scaleA = SCALE_VALUES[stage.tevScaleA];
+      outA = tevCombine(inAA, inBA, inCA, inDA, stage.tevOpA, biasA, scaleA, doClampA);
+    }
     writeAlphaReg(state, stage.tevRegIdA, outA);
   }
 
