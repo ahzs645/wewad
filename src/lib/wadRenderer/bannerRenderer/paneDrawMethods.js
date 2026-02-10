@@ -372,9 +372,17 @@ export function drawFillTextPane(context, pane, rawText, width, height) {
     textAlign = "right";
   }
 
+  // Horizontal compression: Wii bitmap fonts have a specific width-to-height ratio
+  // encoded in textSize (x=cell width, y=cell height). Apply this ratio to compress
+  // the fallback font horizontally so text proportions match the Wii layout.
+  const textSizeX = pane?.textSize?.x;
+  const textSizeY = pane?.textSize?.y;
+  const xRatio = (Number.isFinite(textSizeX) && Number.isFinite(textSizeY) && textSizeY > 0 && textSizeX < textSizeY)
+    ? textSizeX / textSizeY
+    : 1;
+
   const boxLeft = -width / 2;
   const boxTop = -height / 2;
-  const textX = textAlign === "center" ? 0 : textAlign === "right" ? width / 2 : boxLeft;
 
   const topColor = pane?.textTopColor ?? { r: 32, g: 32, b: 32, a: 255 };
   const bottomColor = pane?.textBottomColor ?? topColor;
@@ -387,10 +395,14 @@ export function drawFillTextPane(context, pane, rawText, width, height) {
   context.rect(boxLeft, boxTop, absWidth, absHeight);
   context.clip();
 
-  // Auto-scale font so text fits within the pane bounds.
-  // The fallback sans-serif is wider than Wii bitmap fonts, so without this
-  // text overflows and overlaps adjacent panes.
-  // Scale to fit both horizontally (widest line) and vertically (all lines).
+  // Apply horizontal compression to match Wii font proportions.
+  // Scale X axis, then adjust all X coordinates by dividing by xRatio.
+  if (xRatio < 1) {
+    context.scale(xRatio, 1);
+  }
+  const effectiveWidth = absWidth / xRatio;
+  const textX = textAlign === "center" ? 0 : textAlign === "right" ? effectiveWidth / 2 : -effectiveWidth / 2;
+
   context.textBaseline = "top";
   context.textAlign = textAlign;
   context.font = `${fontSize}px sans-serif`;
@@ -403,7 +415,7 @@ export function drawFillTextPane(context, pane, rawText, width, height) {
     context.font = `${fontSize}px sans-serif`;
   }
 
-  // Horizontal fit: ensure widest line fits within the pane width.
+  // Horizontal fit: ensure widest line fits within the effective (compressed) width.
   let maxLineWidth = 0;
   for (let i = 0; i < paragraphs.length; i += 1) {
     const measured = context.measureText(paragraphs[i]);
@@ -411,8 +423,8 @@ export function drawFillTextPane(context, pane, rawText, width, height) {
       maxLineWidth = measured.width;
     }
   }
-  if (maxLineWidth > absWidth && maxLineWidth > 0) {
-    fontSize = Math.max(1, fontSize * (absWidth / maxLineWidth));
+  if (maxLineWidth > effectiveWidth && maxLineWidth > 0) {
+    fontSize = Math.max(1, fontSize * (effectiveWidth / maxLineWidth));
     context.font = `${fontSize}px sans-serif`;
   }
 
@@ -452,7 +464,7 @@ export function drawFillTextPane(context, pane, rawText, width, height) {
   }
 
   for (let i = 0; i < lines.length; i += 1) {
-    context.fillText(lines[i], textX, textY + i * lineHeight, absWidth);
+    context.fillText(lines[i], textX, textY + i * lineHeight, effectiveWidth);
   }
   context.restore();
 }

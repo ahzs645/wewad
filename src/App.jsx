@@ -1139,7 +1139,7 @@ export default function App() {
       enabled: true,
       condition: customCondition,
       city: customCity,
-      telop: customTelop,
+      telop: WEATHER_CONDITION_OPTIONS.find((o) => o.value === customCondition)?.label ?? customCondition,
       timeLabel: customTimeLabel,
       temperature: Number.isFinite(parsedTemperature) ? parsedTemperature : null,
       temperatureUnit: customTemperatureUnit,
@@ -1149,7 +1149,6 @@ export default function App() {
     canCustomizeWeather,
     customCondition,
     customCity,
-    customTelop,
     customTimeLabel,
     customTemperature,
     customTemperatureUnit,
@@ -1995,15 +1994,6 @@ export default function App() {
                             type="text"
                             value={customTimeLabel}
                             onChange={(event) => setCustomTimeLabel(event.target.value)}
-                          />
-                        </div>
-                        <div className="state-control custom-weather-wide">
-                          <label htmlFor="custom-weather-telop">Description</label>
-                          <textarea
-                            id="custom-weather-telop"
-                            value={customTelop}
-                            onChange={(event) => setCustomTelop(event.target.value)}
-                            rows={3}
                           />
                         </div>
                       </div>

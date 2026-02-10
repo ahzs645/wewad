@@ -667,12 +667,13 @@ export function drawCustomTemperaturePane(context, pane, width, height) {
   context.textAlign = "left";
   context.textBaseline = "middle";
   context.font = `700 ${fontSize}px sans-serif`;
-  context.lineJoin = "round";
-  context.strokeStyle = "rgba(0, 54, 120, 0.65)";
-  context.lineWidth = Math.max(2, fontSize * 0.12);
-  context.fillStyle = "rgba(180, 225, 255, 0.98)";
   const x = bounds.minX + Math.max(2, absWidth * 0.03);
-  context.strokeText(text, x, baselineY, absWidth);
+  const shadowOffset = Math.max(1, Math.round(fontSize * 0.06));
+  // Black offset copy (shadow)
+  context.fillStyle = "rgba(0, 0, 0, 0.85)";
+  context.fillText(text, x + shadowOffset, baselineY + shadowOffset, absWidth);
+  // White foreground
+  context.fillStyle = "#ffffff";
   context.fillText(text, x, baselineY, absWidth);
   context.restore();
   return true;
