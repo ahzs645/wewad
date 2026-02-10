@@ -204,6 +204,16 @@ export class BannerRenderer {
     const initialAnim = this.sequenceEnabled ? this.startAnim : (this.loopAnim ?? this.startAnim ?? this.anim);
     this.setActiveAnim(initialAnim, this.phase);
 
+    // Register timg-referenced textures from all animations into the layout's
+    // texture list so that RLTP texture pattern animation can resolve them.
+    for (const anim of [this.startAnim, this.loopAnim, this.anim]) {
+      for (const timgName of anim?.timgNames ?? []) {
+        if (timgName && !this.layout.textures.includes(timgName)) {
+          this.layout.textures.push(timgName);
+        }
+      }
+    }
+
     this.startFrame = this.normalizeFrameForPlayback(this.startFrame);
     this.frame = this.startFrame;
     this.prepareTextures();

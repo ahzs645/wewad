@@ -29,11 +29,31 @@ export function parseBRLAN(buffer, loggerInput) {
       animation.frameSize = reader.u16();
       animation.flags = reader.u8();
       reader.skip(1);
-      reader.u16(); // num timelines
+      const numTimgs = reader.u16();
       const numEntries = reader.u16();
       const paneOffsetTableOffset = reader.u32();
 
-      logger.info(`  Animation: ${animation.frameSize} frames, ${numEntries} pane(s)`);
+      // Parse timg (texture image reference) names.
+      // RLTP texture pattern animation indices reference this array by index.
+      const timgTableStart = reader.offset;
+      const timgNames = [];
+      if (numTimgs > 0) {
+        const timgOffsets = [];
+        for (let i = 0; i < numTimgs; i += 1) {
+          timgOffsets.push(reader.u32());
+        }
+        for (let i = 0; i < numTimgs; i += 1) {
+          reader.seek(timgTableStart + timgOffsets[i]);
+          let name = "";
+          for (let ch = reader.u8(); ch !== 0; ch = reader.u8()) {
+            name += String.fromCharCode(ch);
+          }
+          timgNames.push(name);
+        }
+      }
+      animation.timgNames = timgNames;
+
+      logger.info(`  Animation: ${animation.frameSize} frames, ${numEntries} pane(s), ${numTimgs} timg(s)`);
 
       const paneEntryOffsets = [];
       reader.seek(sectionStart + paneOffsetTableOffset);

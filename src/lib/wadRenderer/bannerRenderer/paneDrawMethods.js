@@ -562,7 +562,7 @@ export function renderFrame(frame) {
     const maskPaneState = maskPane ? localPaneStates.get(maskPane) : null;
     if (maskPane && maskPaneState) {
       backdropContext.save();
-      backdropContext.globalCompositeOperation = "destination-in";
+      backdropContext.globalCompositeOperation = "destination-out";
       drawPaneWithResolvedState(this, backdropContext, maskPane, maskPaneState, localPaneStates, layoutWidth, layoutHeight);
       backdropContext.restore();
     }

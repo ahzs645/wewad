@@ -181,10 +181,21 @@ export function getAnimValues(paneName, frame) {
         }
       } else if (tagType === "RLTP") {
         // Texture pattern animation: swap which texture map index is active.
+        // The step value is an index into the BRLAN's timg name array, NOT a direct
+        // layout texture index. We resolve it by looking up the timg name in the
+        // layout's texture list (NW4R AnimTransformBasic::Animate behavior).
         if (entry.type === 0x00) {
           const texIdx = sampleDiscreteAnimationEntry(entry, frame, this.anim.frameSize);
           if (texIdx != null) {
-            result.textureIndex = Math.max(0, Math.floor(texIdx));
+            const rawTimgIdx = Math.max(0, Math.floor(texIdx));
+            const timgNames = this.anim?.timgNames;
+            if (timgNames && rawTimgIdx < timgNames.length) {
+              const timgName = timgNames[rawTimgIdx];
+              const layoutIdx = this.layout?.textures?.indexOf(timgName);
+              result.textureIndex = (layoutIdx != null && layoutIdx >= 0) ? layoutIdx : rawTimgIdx;
+            } else {
+              result.textureIndex = rawTimgIdx;
+            }
           }
         }
       }
