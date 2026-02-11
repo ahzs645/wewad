@@ -98,6 +98,23 @@ export function shouldRenderPaneForLocale(pane) {
   return paneLocale === this.activeTitleLocale;
 }
 
+// Returns true if this pane should be forced visible because it matches the
+// active locale. On real Wii, the system menu firmware sets the correct
+// language pane visible — we simulate this by overriding visibility for
+// locale-tagged panes that match the user's language preference.
+export function getLocaleVisibilityOverride(pane) {
+  if (!this.activeTitleLocale || this.availableTitleLocales.size <= 1) {
+    return null;
+  }
+
+  const paneLocale = this.getPaneTitleLocale(pane);
+  if (!paneLocale) {
+    return null;
+  }
+
+  return paneLocale === this.activeTitleLocale ? true : null;
+}
+
 export function setTitleLocale(localeCode) {
   this.titleLocalePreference = localeCode ?? null;
   this.activeTitleLocale = this.resolveActiveTitleLocale(localeCode);

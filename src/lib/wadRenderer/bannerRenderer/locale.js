@@ -97,6 +97,18 @@ export function extractTitleLocaleCode(name) {
     return match[1];
   }
 
+  // Single-letter language codes used by some WADs (e.g. Wii Shop Channel:
+  // P_title_E_00, P_title_J_00). Only match after "title_" to avoid false
+  // positives on pane name prefixes like N_ (null/container panes).
+  match = name.match(/title_([EJFGISN])_/i);
+  if (match) {
+    const SINGLE_LETTER_MAP = { J: "JP", E: "US", F: "FR", G: "GE", I: "IT", S: "SP", N: "NE" };
+    const mapped = SINGLE_LETTER_MAP[match[1].toUpperCase()];
+    if (mapped) {
+      return mapped;
+    }
+  }
+
   match = name.match(/^(JP|NE|GE|SP|IT|FR|US|KR)_/);
   if (match) {
     return match[1];

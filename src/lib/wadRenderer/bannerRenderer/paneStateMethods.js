@@ -39,13 +39,18 @@ export function getLocalPaneState(pane, frame) {
     ? digitVisibilityOverride
     : (this.getCustomWeatherVisibilityOverride?.(pane) ?? null);
   const hasAnimatedAlpha = animValues.alpha != null;
+  // On real Wii, the system menu sets locale-matching panes visible (they're
+  // visible=false in the BRLYT since the layout doesn't know the console language).
+  const localeVisOverride = this.getLocaleVisibilityOverride?.(pane) ?? null;
   const isVisible = visibilityOverride != null
     ? visibilityOverride
     : animValues.visible != null
       ? animValues.visible
       : hasAnimatedAlpha
         ? true
-        : pane.visible !== false;
+        : localeVisOverride != null
+          ? localeVisOverride
+          : pane.visible !== false;
   const defaultAlpha = isVisible ? (pane.alpha ?? 255) / 255 : 0;
   const animatedAlpha = hasAnimatedAlpha ? animValues.alpha / 255 : defaultAlpha;
   const materialAlphaFactor = animValues.materialAlpha != null ? Math.max(0, Math.min(1, animValues.materialAlpha / 255)) : 1;

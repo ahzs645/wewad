@@ -30,6 +30,23 @@ function isAlphaCompareAlwaysPass(alphaCompare) {
   return false;
 }
 
+// Detect single-stage TEV where alpha combine is guaranteed to produce zero
+// regardless of input.  Pattern: compare mode (biasA=3) with d=ZERO and
+// c=APREV — since APREV starts at 0 and no prior stage writes to it,
+// even a passing compare yields 0 + 0 = 0.  This pattern appears in icon
+// layouts (e.g. Wii Shop Channel) where the system menu ignores TEV for
+// these panes and draws the texture directly.  Falling through to the
+// heuristic Canvas 2D path preserves texture alpha.
+function isTevAlphaAlwaysZero(stages) {
+  if (!stages || stages.length !== 1) {
+    return false;
+  }
+  const s = stages[0];
+  // Alpha compare mode: D + (compare(A,B) ? C : 0).
+  // When D=ZERO(7) and C=APREV(5): result is always 0.
+  return s.tevBiasA === 3 && s.dA === 7 && s.cA === 5;
+}
+
 // Check whether a pane's material should use the per-pixel TEV pipeline.
 // Activates for:
 //   - Materials with explicit non-trivial TEV stages (any texture count)
@@ -56,6 +73,11 @@ export function shouldUseTevPipeline(pane) {
     }
     // Skip common modulate pattern for single-texture — Canvas 2D handles it well (unless alpha compare is needed).
     if (textureMaps.length <= 1 && isTevModulatePattern(explicitStages) && !needsAlphaCompare) {
+      return false;
+    }
+    // Skip single-stage materials where alpha compare always produces zero.
+    // The heuristic path draws the texture directly, preserving its alpha.
+    if (isTevAlphaAlwaysZero(explicitStages) && !needsAlphaCompare) {
       return false;
     }
     return true;

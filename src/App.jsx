@@ -491,9 +491,12 @@ function resolveIconViewport(layout) {
 
   const picturePanes = (layout.panes ?? []).filter((pane) => pane.type === "pic1");
 
+  // Normalize camelCase to snake_case before matching so that names like
+  // "iconBg" are split into "icon_Bg" and the keyword "icon" is recognised.
+  const camelToSnake = (name) => name.replace(/([a-z])([A-Z])/g, "$1_$2");
   const explicitViewportPane =
     picturePanes.find((pane) => /^ch\d+$/i.test(pane.name)) ??
-    picturePanes.find((pane) => /(?:^|_)(?:tv|icon|cork|frame|bg|back|base|board)(?:_|$)/i.test(pane.name));
+    picturePanes.find((pane) => /(?:^|_)(?:tv|icon|cork|frame|bg|back|base|board)(?:_|$)/i.test(camelToSnake(pane.name)));
 
   const fallbackViewportPane = picturePanes
     .filter((pane) => pane.visible !== false)
@@ -1145,6 +1148,7 @@ export default function App() {
   const [customTemperatureUnit, setCustomTemperatureUnit] = useState("F");
   const [useCustomNews, setUseCustomNews] = useState(false);
   const [customHeadlines, setCustomHeadlines] = useState("Breaking: Wii Channel banners now render in the browser\nNintendo announces new system update\nLocal weather: sunny skies expected all week");
+  const [previewDisplay, setPreviewDisplay] = useState("both");
   const [previewDisplayAspect, setPreviewDisplayAspect] = useState("4:3");
   const [tevQuality, setTevQuality] = useState("fast");
   const [recentWads, setRecentWads] = useState([]);
@@ -1747,8 +1751,113 @@ export default function App() {
 
   return (
     <div className="app">
-      <header>
-        <div className="header-row">
+      <aside className="sidebar">
+        <header>
+          <h1>Wii Channel Banner Renderer</h1>
+          <p>Drop a .WAD file to extract and render its channel banner and icon</p>
+        </header>
+
+        <div
+          className={`drop-zone ${isDragOver ? "dragover" : ""}`}
+          onClick={() => fileInputRef.current?.click()}
+          onDragOver={(event) => {
+            event.preventDefault();
+            setIsDragOver(true);
+          }}
+          onDragLeave={() => setIsDragOver(false)}
+          onDrop={(event) => {
+            event.preventDefault();
+            setIsDragOver(false);
+            const file = event.dataTransfer.files?.[0];
+            if (file) {
+              void handleFile(file);
+            }
+          }}
+        >
+          <div className="drop-title">
+            {isProcessing
+              ? `Processing ${selectedFileName || "file"}...`
+              : selectedFileName
+                ? `Loaded: ${selectedFileName}`
+                : "Drop .WAD file here"}
+          </div>
+          <span>or click to browse</span>
+          <input
+            ref={fileInputRef}
+            type="file"
+            accept=".wad"
+            onChange={(event) => {
+              const file = event.target.files?.[0];
+              if (file) {
+                void handleFile(file);
+              }
+              event.target.value = "";
+            }}
+          />
+        </div>
+
+        {recentWads.length > 0 ? (
+          <div className="recent-wads">
+            <div className="recent-wads-header">
+              <div className="recent-wads-title">Recent WADs</div>
+              <button
+                className="clear-recent-button"
+                onClick={() => void clearRecentWadsList()}
+                type="button"
+                disabled={isProcessing || Boolean(isLoadingRecentId)}
+              >
+                Clear
+              </button>
+            </div>
+            <div className="recent-wads-list">
+              {recentWads.map((entry) => {
+                const isLoadingThis = isLoadingRecentId === entry.id;
+                return (
+                  <button
+                    className="recent-wad-item"
+                    key={entry.id}
+                    onClick={() => void loadRecentWad(entry.id)}
+                    type="button"
+                    disabled={isProcessing || isLoadingThis}
+                  >
+                    <span className="recent-wad-preview" aria-hidden="true">
+                      {entry.iconPreviewUrl ? (
+                        <img src={entry.iconPreviewUrl} alt="" />
+                      ) : (
+                        <span className="recent-wad-preview-empty">No preview</span>
+                      )}
+                    </span>
+                    <span className="recent-wad-info">
+                      <span className="recent-wad-name">
+                        {isLoadingThis ? `Loading ${entry.name}...` : entry.name}
+                      </span>
+                      <span className="recent-wad-meta">
+                        {formatByteSize(entry.size)}
+                      </span>
+                    </span>
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+        ) : null}
+
+        {showRenderArea ? (
+          <nav className="tab-bar">
+            {TABS.map((tab) => (
+              <button
+                key={tab.id}
+                className={`tab ${activeTab === tab.id ? "active" : ""}`}
+                onClick={() => setActiveTab(tab.id)}
+                type="button"
+              >
+                {tab.label}
+              </button>
+            ))}
+          </nav>
+        ) : null}
+
+        <div className="sidebar-footer">
           <button
             className="theme-toggle"
             onClick={() =>
@@ -1765,118 +1874,33 @@ export default function App() {
             </span>
           </button>
         </div>
-        <h1>Wii Channel Banner Renderer</h1>
-        <p>Drop a .WAD file to extract and render its channel banner and icon</p>
-      </header>
+      </aside>
 
-      <div
-        className={`drop-zone ${isDragOver ? "dragover" : ""}`}
-        onClick={() => fileInputRef.current?.click()}
-        onDragOver={(event) => {
-          event.preventDefault();
-          setIsDragOver(true);
-        }}
-        onDragLeave={() => setIsDragOver(false)}
-        onDrop={(event) => {
-          event.preventDefault();
-          setIsDragOver(false);
-          const file = event.dataTransfer.files?.[0];
-          if (file) {
-            void handleFile(file);
-          }
-        }}
-      >
-        <div className="drop-title">
-          {isProcessing
-            ? `Processing ${selectedFileName || "file"}...`
-            : selectedFileName
-              ? `Loaded: ${selectedFileName}`
-              : "Drop .WAD file here"}
-        </div>
-        <span>or click to browse</span>
-        <input
-          ref={fileInputRef}
-          type="file"
-          accept=".wad"
-          onChange={(event) => {
-            const file = event.target.files?.[0];
-            if (file) {
-              void handleFile(file);
-            }
-            event.target.value = "";
-          }}
-        />
-      </div>
-
-      {recentWads.length > 0 ? (
-        <div className="recent-wads">
-          <div className="recent-wads-header">
-            <div className="recent-wads-title">Recent WADs</div>
-            <button
-              className="clear-recent-button"
-              onClick={() => void clearRecentWadsList()}
-              type="button"
-              disabled={isProcessing || Boolean(isLoadingRecentId)}
-            >
-              Clear
-            </button>
-          </div>
-          <div className="recent-wads-list">
-            {recentWads.map((entry) => {
-              const isLoadingThis = isLoadingRecentId === entry.id;
-              return (
-                <button
-                  className="recent-wad-item"
-                  key={entry.id}
-                  onClick={() => void loadRecentWad(entry.id)}
-                  type="button"
-                  disabled={isProcessing || isLoadingThis}
-                >
-                  <span className="recent-wad-preview" aria-hidden="true">
-                    {entry.iconPreviewUrl ? (
-                      <img src={entry.iconPreviewUrl} alt="" />
-                    ) : (
-                      <span className="recent-wad-preview-empty">No preview</span>
-                    )}
-                  </span>
-                  <span className="recent-wad-name">
-                    {isLoadingThis ? `Loading ${entry.name}...` : entry.name}
-                  </span>
-                  <span className="recent-wad-meta">
-                    {formatByteSize(entry.size)} • {formatRecentTimestamp(entry.loadedAt)}
-                  </span>
-                </button>
-              );
-            })}
-          </div>
-        </div>
-      ) : null}
-
-      {showRenderArea ? (
-        <div className="render-area visible">
-          <div className="tab-bar">
-            {TABS.map((tab) => (
-              <button
-                key={tab.id}
-                className={`tab ${activeTab === tab.id ? "active" : ""}`}
-                onClick={() => setActiveTab(tab.id)}
-                type="button"
-              >
-                {tab.label}
-              </button>
-            ))}
-          </div>
-
+      <main className="main-content">
+        {showRenderArea ? (
+          <div className="render-area">
           {activeTab === "preview" ? (
             <div className="tab-content active">
               <div className="banner-display">
                 <div className="section-title">Channel Banner</div>
+                <div className="preview-display-toggle">
+                  {["both", "banner", "icon"].map((mode) => (
+                    <button
+                      key={mode}
+                      type="button"
+                      className={`preview-display-option ${previewDisplay === mode ? "active" : ""}`}
+                      onClick={() => setPreviewDisplay(mode)}
+                    >
+                      {mode === "both" ? "Both" : mode === "banner" ? "Banner" : "Icon"}
+                    </button>
+                  ))}
+                </div>
                 <div className="canvas-wrapper">
-                  <div className="canvas-container">
+                  <div className={`canvas-container ${previewDisplay === "icon" ? "hidden" : ""}`}>
                     <label>Banner</label>
                     <canvas ref={bannerCanvasRef} width="608" height="456" />
                   </div>
-                  <div className="canvas-container">
+                  <div className={`canvas-container ${previewDisplay === "banner" ? "hidden" : ""}`}>
                     <label>Icon</label>
                     <canvas ref={iconCanvasRef} width="128" height="128" />
                   </div>
@@ -2268,8 +2292,13 @@ export default function App() {
               </div>
             </div>
           ) : null}
-        </div>
-      ) : null}
+          </div>
+        ) : (
+          <div className="main-content-empty">
+            Load a WAD file to get started
+          </div>
+        )}
+      </main>
     </div>
   );
 }
