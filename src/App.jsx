@@ -1149,6 +1149,10 @@ export default function App() {
   const [tevQuality, setTevQuality] = useState("fast");
   const [recentWads, setRecentWads] = useState([]);
   const [isLoadingRecentId, setIsLoadingRecentId] = useState("");
+  const [themePreference, setThemePreference] = useState(() => {
+    try { return localStorage.getItem("wewad-theme") || "system"; }
+    catch { return "system"; }
+  });
 
   const bannerRenderStateOptions = useMemo(
     () => collectRenderStateOptions(parsed?.results?.banner),
@@ -1346,6 +1350,23 @@ export default function App() {
     },
     [stopRenderers],
   );
+
+  useEffect(() => {
+    const mediaQuery = window.matchMedia("(prefers-color-scheme: dark)");
+    const applyTheme = () => {
+      let resolved;
+      if (themePreference === "light" || themePreference === "dark") {
+        resolved = themePreference;
+      } else {
+        resolved = mediaQuery.matches ? "dark" : "light";
+      }
+      document.documentElement.dataset.theme = resolved;
+    };
+    applyTheme();
+    mediaQuery.addEventListener("change", applyTheme);
+    try { localStorage.setItem("wewad-theme", themePreference); } catch {}
+    return () => mediaQuery.removeEventListener("change", applyTheme);
+  }, [themePreference]);
 
   useEffect(() => {
     let cancelled = false;
@@ -1727,6 +1748,23 @@ export default function App() {
   return (
     <div className="app">
       <header>
+        <div className="header-row">
+          <button
+            className="theme-toggle"
+            onClick={() =>
+              setThemePreference((prev) =>
+                prev === "system" ? "light" : prev === "light" ? "dark" : "system",
+              )
+            }
+            type="button"
+            title={`Theme: ${themePreference}`}
+          >
+            {themePreference === "light" ? "\u2600" : themePreference === "dark" ? "\u263E" : "\u25D1"}
+            <span className="theme-label">
+              {themePreference === "system" ? "Auto" : themePreference === "light" ? "Light" : "Dark"}
+            </span>
+          </button>
+        </div>
         <h1>Wii Channel Banner Renderer</h1>
         <p>Drop a .WAD file to extract and render its channel banner and icon</p>
       </header>

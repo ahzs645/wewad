@@ -201,11 +201,14 @@ function tevCompareColor(inA, inB, inC, inD, op, scale, clamp) {
 
 // TEV compare mode for alpha combiner (bias=3).
 // Always A8 comparison: D + (compare(A,B) ? C : 0).
+// GT uses >= (not strict >) to match observed GX hardware behavior:
+// CMPR textures with 1-bit alpha (0 or 255) need 255 >= KONST(255) = true
+// so that opaque pixels pass the compare and transparent pixels don't.
 function tevCompareAlpha(a, b, c, d, op, clamp) {
   const useEq = op === TEV_SUB;
   const iA = Math.round(a * 255);
   const iB = Math.round(b * 255);
-  const cond = useEq ? (iA === iB) : (iA > iB);
+  const cond = useEq ? (iA === iB) : (iA >= iB);
   let result = d + (cond ? c : 0);
   if (clamp) {
     return Math.max(0, Math.min(1, result));
@@ -332,12 +335,7 @@ export function evaluateTevStagesForPixel(stages, texSamples, rasColor, material
     const doClampA = stage.clampA !== 0;
     let outA;
     if (stage.tevBiasA === 3) {
-      // Alpha compare mode: fall back to standard ADD with no bias and scale=×1.
-      // The reference player never properly implements alpha compare (KAlphaSel is
-      // TODO, and op=14/15 fall to default→0 in the shader). In practice, channels
-      // that use alpha compare mode (like Wii Shop P_ShopLogo) expect standard
-      // blending behavior rather than the always-false threshold comparison.
-      outA = tevCombine(inAA, inBA, inCA, inDA, TEV_ADD, 0, 1, doClampA);
+      outA = tevCompareAlpha(inAA, inBA, inCA, inDA, stage.tevOpA, doClampA);
     } else {
       const biasA = BIAS_VALUES[stage.tevBiasA];
       const scaleA = SCALE_VALUES[stage.tevScaleA];
