@@ -58,18 +58,26 @@ function applySwapTable(color, swapEntry) {
 
 // Resolve KColor color (RGB) from the KColor selector.
 // Selectors 0-7 = fixed fraction applied to all channels.
-// 12-15 = kColor0 R/G/B/A, 16-19 = kColor1 R/G/B/A, etc.
+// 12-15 = K0-K3 full RGB, 16-19 = K0-K3 R replicated,
+// 20-23 = K0-K3 G replicated, 24-27 = K0-K3 B replicated.
 function resolveKColor(sel, kColors) {
   if (sel <= 7) {
     const f = KCOLOR_FRACTIONS[sel];
     return { r: f, g: f, b: f };
   }
-  if (sel >= 12 && sel <= 27) {
-    const kIdx = Math.floor((sel - 12) / 4);
-    const chan = (sel - 12) % 4;
+  if (sel >= 12 && sel <= 15) {
+    const kc = kColors?.[sel - 12];
+    if (kc) {
+      return { r: kc.r / 255, g: kc.g / 255, b: kc.b / 255 };
+    }
+    return { r: 0, g: 0, b: 0 };
+  }
+  if (sel >= 16 && sel <= 27) {
+    const kIdx = (sel - 16) % 4;
+    const chanGroup = Math.floor((sel - 16) / 4); // 0=R, 1=G, 2=B
     const kc = kColors?.[kIdx];
     if (kc) {
-      const val = [kc.r / 255, kc.g / 255, kc.b / 255, kc.a / 255][chan];
+      const val = [kc.r / 255, kc.g / 255, kc.b / 255][chanGroup] ?? 0;
       return { r: val, g: val, b: val };
     }
   }
@@ -77,17 +85,18 @@ function resolveKColor(sel, kColors) {
 }
 
 // Resolve KAlpha from the KAlpha selector.
-// 0-7 = fixed fraction, 16-19 = kColor0..3 alpha, 20-23 = kColor0..3 R, etc.
+// 0-7 = fixed fraction, 16-19 = K0-K3 R, 20-23 = K0-K3 G,
+// 24-27 = K0-K3 B, 28-31 = K0-K3 A.
 function resolveKAlpha(sel, kColors) {
   if (sel <= 7) {
     return KCOLOR_FRACTIONS[sel];
   }
   if (sel >= 16 && sel <= 31) {
-    const kIdx = Math.floor((sel - 16) / 4);
-    const chan = (sel - 16) % 4;
+    const kIdx = (sel - 16) % 4;
+    const chanGroup = Math.floor((sel - 16) / 4); // 0=R, 1=G, 2=B, 3=A
     const kc = kColors?.[kIdx];
     if (kc) {
-      return [kc.r / 255, kc.g / 255, kc.b / 255, kc.a / 255][chan];
+      return [kc.r / 255, kc.g / 255, kc.b / 255, kc.a / 255][chanGroup] ?? 0;
     }
   }
   return 0;
@@ -323,7 +332,12 @@ export function evaluateTevStagesForPixel(stages, texSamples, rasColor, material
     const doClampA = stage.clampA !== 0;
     let outA;
     if (stage.tevBiasA === 3) {
-      outA = tevCompareAlpha(inAA, inBA, inCA, inDA, stage.tevOpA, doClampA);
+      // Alpha compare mode: fall back to standard ADD with no bias and scale=×1.
+      // The reference player never properly implements alpha compare (KAlphaSel is
+      // TODO, and op=14/15 fall to default→0 in the shader). In practice, channels
+      // that use alpha compare mode (like Wii Shop P_ShopLogo) expect standard
+      // blending behavior rather than the always-false threshold comparison.
+      outA = tevCombine(inAA, inBA, inCA, inDA, TEV_ADD, 0, 1, doClampA);
     } else {
       const biasA = BIAS_VALUES[stage.tevBiasA];
       const scaleA = SCALE_VALUES[stage.tevScaleA];

@@ -109,9 +109,53 @@ function TextureCard({ entry }) {
 const TABS = [
   { id: "preview", label: "Preview" },
   { id: "textures", label: "Textures" },
+  { id: "debug", label: "Debug" },
   { id: "layout", label: "Layout Info" },
   { id: "log", label: "Parse Log" },
 ];
+
+function getUsedTextureNames(layout) {
+  if (!layout) return new Set();
+  const used = new Set();
+  for (const pane of layout.panes ?? []) {
+    if (pane.materialIndex < 0) continue;
+    const material = layout.materials?.[pane.materialIndex];
+    if (!material) continue;
+    for (const tm of material.textureMaps ?? []) {
+      const idx = tm.textureIndex;
+      if (idx !== 0xffff && idx < (layout.textures?.length ?? 0)) {
+        used.add(layout.textures[idx]);
+      }
+    }
+  }
+  return used;
+}
+
+function DebugTextureCard({ entry, isUsed }) {
+  const canvasRef = useRef(null);
+
+  useEffect(() => {
+    const canvas = canvasRef.current;
+    if (!canvas) return;
+    canvas.width = entry.image.width;
+    canvas.height = entry.image.height;
+    const context = canvas.getContext("2d");
+    context.putImageData(new ImageData(entry.image.imageData, entry.image.width, entry.image.height), 0, 0);
+  }, [entry]);
+
+  return (
+    <div className={`texture-card debug-texture-card ${isUsed ? "in-use" : "unused"}`}>
+      <canvas ref={canvasRef} />
+      <div className="name">{entry.name}</div>
+      <div className="dims">
+        {entry.image.width}x{entry.image.height} {TPL_FORMATS[entry.image.format] ?? "?"}
+      </div>
+      <div className={`debug-usage-badge ${isUsed ? "used" : "not-used"}`}>
+        {isUsed ? "IN USE" : "UNUSED"}
+      </div>
+    </div>
+  );
+}
 
 const DISPLAY_ASPECT_OPTIONS = [
   { value: "4:3", label: "4:3 (Wii Standard)" },
@@ -1564,6 +1608,15 @@ export default function App() {
     [parsed],
   );
 
+  const bannerUsedTextures = useMemo(
+    () => getUsedTextureNames(parsed?.results.banner?.renderLayout),
+    [parsed],
+  );
+  const iconUsedTextures = useMemo(
+    () => getUsedTextureNames(parsed?.results.icon?.renderLayout),
+    [parsed],
+  );
+
   const layoutInfo = useMemo(() => formatLayoutInfo(parsed?.results.banner?.layout), [parsed]);
   const animationInfo = useMemo(() => formatAnimationInfo(parsed?.results.banner?.anim), [parsed]);
   const audioInfo = useMemo(() => {
@@ -2111,6 +2164,46 @@ export default function App() {
                   <div className="empty-state">No icon textures decoded.</div>
                 ) : (
                   iconTextureEntries.map((entry) => <TextureCard key={entry.key} entry={entry} />)
+                )}
+              </div>
+            </div>
+          ) : null}
+
+          {activeTab === "debug" ? (
+            <div className="tab-content active">
+              <div className="section-title">Banner Textures</div>
+              <div className="debug-texture-stats">
+                {bannerTextureEntries.length} total, {bannerTextureEntries.filter((e) => bannerUsedTextures.has(e.name)).length} in use by panes
+              </div>
+              <div className="textures-grid">
+                {bannerTextureEntries.length === 0 ? (
+                  <div className="empty-state">No banner textures.</div>
+                ) : (
+                  bannerTextureEntries.map((entry) => (
+                    <DebugTextureCard
+                      key={entry.key}
+                      entry={entry}
+                      isUsed={bannerUsedTextures.has(entry.name)}
+                    />
+                  ))
+                )}
+              </div>
+
+              <div className="section-title icon-title">Icon Textures</div>
+              <div className="debug-texture-stats">
+                {iconTextureEntries.length} total, {iconTextureEntries.filter((e) => iconUsedTextures.has(e.name)).length} in use by panes
+              </div>
+              <div className="textures-grid">
+                {iconTextureEntries.length === 0 ? (
+                  <div className="empty-state">No icon textures.</div>
+                ) : (
+                  iconTextureEntries.map((entry) => (
+                    <DebugTextureCard
+                      key={entry.key}
+                      entry={entry}
+                      isUsed={iconUsedTextures.has(entry.name)}
+                    />
+                  ))
                 )}
               </div>
             </div>
