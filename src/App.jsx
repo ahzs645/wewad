@@ -984,6 +984,150 @@ function resolveAnimationSelection(targetResult, selectedState) {
   };
 }
 
+/**
+ * Check whether a pane entry in the primary RSO animation should be replaced
+ * by an auxiliary RSO's version.  Returns true when the entry is a "degenerate"
+ * initial-state placeholder (all keyframes beyond frameSize) AND its clamped
+ * pane alpha is zero — meaning the pane is invisible in the primary animation
+ * and needs the auxiliary RSO to make it visible.
+ *
+ * Entries that are degenerate but already alpha=255 (e.g. N_Rcmd_00) are kept
+ * as-is to avoid introducing unwanted fade-out keyframes from auxiliary RSOs.
+ */
+function shouldReplaceWithAuxiliary(paneEntry, frameSize) {
+  if (!paneEntry?.tags || frameSize <= 0) {
+    return false;
+  }
+
+  // Check all keyframes are beyond frameSize (degenerate initial-state pattern).
+  let hasKeyframes = false;
+  for (const tag of paneEntry.tags) {
+    for (const entry of tag.entries ?? []) {
+      for (const kf of entry.keyframes ?? []) {
+        hasKeyframes = true;
+        if (kf.frame < frameSize) {
+          return false;
+        }
+      }
+    }
+  }
+  if (!hasKeyframes) {
+    return false;
+  }
+
+  // Only replace when the clamped pane alpha is 0 (invisible).
+  // RLVC type 0x10 = paneAlpha.  The clamped value is the first keyframe's
+  // value (since all keyframes are beyond the frame range).
+  for (const tag of paneEntry.tags) {
+    if (String(tag?.type ?? "") !== "RLVC") {
+      continue;
+    }
+    for (const entry of tag.entries ?? []) {
+      if (entry.type === 0x10 && entry.keyframes?.length > 0) {
+        const clampedAlpha = entry.keyframes[0].value ?? 0;
+        return clampedAlpha <= 0;
+      }
+    }
+  }
+
+  return false;
+}
+
+/**
+ * On the real Wii, multiple RSO animations play simultaneously (e.g. RSO0 for
+ * base elements + RSO1-3 for the first recommendation card).  Our renderer
+ * only drives a single animation, so we merge pane entries from auxiliary RSO
+ * animations into the primary RSO0 animation.
+ *
+ * When RSO0 has a "degenerate" entry for a pane (all keyframes beyond
+ * frameSize — just an initial-state placeholder), we replace it with the
+ * auxiliary RSO's version which has the actual fade-in / slide animation.
+ */
+function mergeRelatedRsoAnimations(primaryAnim, targetResult, activeState) {
+  if (!primaryAnim || !targetResult || !activeState) {
+    return primaryAnim;
+  }
+
+  const stateMatch = String(activeState).match(/^RSO(\d+)$/i);
+  if (!stateMatch) {
+    return primaryAnim;
+  }
+
+  const baseIndex = Number.parseInt(stateMatch[1], 10);
+  const entries = targetResult.animEntries ?? [];
+  if (entries.length <= 1) {
+    return primaryAnim;
+  }
+
+  const primaryFrameSize = primaryAnim.frameSize ?? 0;
+
+  // Index primary panes by name so we can detect and replace degenerate entries.
+  const primaryPanesByName = new Map();
+  for (const pane of primaryAnim.panes ?? []) {
+    primaryPanesByName.set(pane.name, pane);
+  }
+
+  // Track which primary panes get replaced by auxiliary versions.
+  const replacedPaneNames = new Set();
+  const additionalPanes = [];
+  const additionalTimgs = [];
+
+  // Wii Shop icon pattern: RSO0=base, RSO1-3=first recommendation set.
+  const maxMerge = 3;
+  for (let offset = 1; offset <= maxMerge; offset += 1) {
+    const targetState = `RSO${baseIndex + offset}`;
+    const entry = entries.find(
+      (animEntry) => String(animEntry.state ?? "").toUpperCase() === targetState,
+    );
+    if (!entry?.anim) {
+      continue;
+    }
+
+    for (const pane of entry.anim.panes ?? []) {
+      if (replacedPaneNames.has(pane.name)) {
+        continue;
+      }
+
+      const existing = primaryPanesByName.get(pane.name);
+      if (!existing) {
+        // Pane not in primary animation — add it.
+        additionalPanes.push(pane);
+        primaryPanesByName.set(pane.name, pane);
+      } else if (shouldReplaceWithAuxiliary(existing, primaryFrameSize)) {
+        // Primary has a degenerate placeholder — replace with real animation.
+        replacedPaneNames.add(pane.name);
+        additionalPanes.push(pane);
+      }
+    }
+
+    for (const timgName of entry.anim.timgNames ?? []) {
+      if (timgName && !additionalTimgs.includes(timgName)) {
+        additionalTimgs.push(timgName);
+      }
+    }
+  }
+
+  if (replacedPaneNames.size === 0 && additionalPanes.length === 0 && additionalTimgs.length === 0) {
+    return primaryAnim;
+  }
+
+  // Build merged pane list: keep non-replaced primary panes, then add auxiliaries.
+  const mergedPanes = (primaryAnim.panes ?? []).filter(
+    (pane) => !replacedPaneNames.has(pane.name),
+  );
+  mergedPanes.push(...additionalPanes);
+
+  const existingTimgs = primaryAnim.timgNames ?? [];
+  return {
+    ...primaryAnim,
+    panes: mergedPanes,
+    timgNames: [
+      ...existingTimgs,
+      ...additionalTimgs.filter((name) => !existingTimgs.includes(name)),
+    ],
+  };
+}
+
 function hasWeatherPaneName(name) {
   return /^W_/i.test(name) || /^code$/i.test(name) || /^weather$/i.test(name);
 }
@@ -1179,10 +1323,48 @@ export default function App() {
     () => resolveAnimationSelection(parsed?.results?.banner, bannerRenderState),
     [parsed, bannerRenderState],
   );
-  const iconAnimSelection = useMemo(
-    () => resolveAnimationSelection(parsed?.results?.icon, effectiveIconRenderState),
-    [parsed, effectiveIconRenderState],
-  );
+  const iconAnimSelection = useMemo(() => {
+    const selection = resolveAnimationSelection(parsed?.results?.icon, effectiveIconRenderState);
+    if (!selection.anim || !selection.renderState) {
+      return selection;
+    }
+    const iconResult = parsed?.results?.icon;
+    let mergedAnim = mergeRelatedRsoAnimations(selection.anim, iconResult, selection.renderState);
+    if (mergedAnim === selection.anim) {
+      return selection;
+    }
+
+    // The RSO merge makes recommendation card panes visible, including text
+    // background panes (P_txtBg_*).  On real Wii these show recommendation text
+    // fetched from Nintendo's servers; without that data they render as blank
+    // white rectangles.  Hide them by injecting alpha=0 animation entries.
+    const layoutPanes = iconResult?.renderLayout?.panes;
+    if (layoutPanes) {
+      const animatedNames = new Set(mergedAnim.panes.map((p) => p.name));
+      const txtBgHideEntries = layoutPanes
+        .filter((p) => /^P_txtBg_\d+$/.test(p.name) && !animatedNames.has(p.name))
+        .map((p) => ({
+          name: p.name,
+          tags: [{
+            type: "RLVC",
+            entries: [{
+              targetGroup: 0, type: 0x10, dataType: 2, typeName: "RLVC",
+              interpolation: "hermite", preExtrapolation: "clamp", postExtrapolation: "clamp",
+              keyframes: [{ frame: 0, value: 0, blend: 0 }],
+            }],
+          }],
+        }));
+      if (txtBgHideEntries.length > 0) {
+        mergedAnim = { ...mergedAnim, panes: [...mergedAnim.panes, ...txtBgHideEntries] };
+      }
+    }
+
+    return {
+      ...selection,
+      anim: mergedAnim,
+      loopAnim: selection.loopAnim === selection.anim ? mergedAnim : selection.loopAnim,
+    };
+  }, [parsed, effectiveIconRenderState]);
 
   const canCustomizeWeather = useMemo(
     () => hasWeatherScene(parsed?.results?.banner?.renderLayout),
