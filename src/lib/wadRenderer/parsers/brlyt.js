@@ -99,7 +99,7 @@ export function parseBRLYT(buffer, loggerInput) {
 
   reader.u16(); // BOM
   reader.u16(); // version
-  reader.u32(); // file size
+  const fileSize = reader.u32();
   const headerSize = reader.u16();
   const numSections = reader.u16();
 
@@ -117,10 +117,19 @@ export function parseBRLYT(buffer, loggerInput) {
   const paneParentStack = [];
   let lastPaneName = null;
 
-  for (let sectionIndex = 0; sectionIndex < numSections; sectionIndex += 1) {
+  // Some BRLYTs have more sections than numSections indicates (group sub-sections
+  // after grs1 are not counted in the header).  Use the file size as the boundary.
+  const bufferLength = reader.buffer.byteLength;
+  const fileEnd = fileSize > 0 ? Math.min(fileSize, bufferLength) : bufferLength;
+  const maxSections = numSections + 200; // safety cap for extra group sections
+  for (let sectionIndex = 0; (sectionIndex < numSections || reader.offset + 8 <= fileEnd) && sectionIndex < maxSections; sectionIndex += 1) {
     const sectionStart = reader.offset;
     const sectionMagic = reader.string(4);
     const sectionSize = reader.u32();
+
+    if (sectionSize < 8) {
+      break; // invalid section — stop parsing
+    }
 
     switch (sectionMagic) {
       case "lyt1": {

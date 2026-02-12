@@ -136,19 +136,11 @@ function drawPaneWithResolvedState(renderer, context, pane, paneState, localPane
     context.globalCompositeOperation = blendOp;
   }
 
-  if (pane.type === "pic1" || pane.type === "bnd1" || pane.type === "wnd1") {
+  if (pane.type === "pic1" || pane.type === "wnd1") {
     // Try the TEV pipeline first for materials with non-trivial TEV stages.
     if (renderer.shouldUseTevPipeline(pane)) {
       const tevResult = renderer.runTevPipeline(pane, paneState, paneState.width, paneState.height);
       if (tevResult) {
-        // DEBUG: Log TEV compare mode usage
-        const mat = renderer.layout?.materials?.[pane.materialIndex];
-        const stages = mat?.tevStages ?? [];
-        const hasCompare = stages.some((s) => s.tevBiasA === 3 || s.tevBiasC === 3);
-        if (renderer.layout?.width <= 256) {
-          const nonZeroPixels = Array.from(tevResult.data).filter((_, i) => i % 4 === 3 && tevResult.data[i] > 0).length;
-          console.log(`[TEV${hasCompare ? "-COMPARE" : ""}] ${pane.name}: ${tevResult.width}x${tevResult.height}, alpha>0: ${nonZeroPixels}/${tevResult.width * tevResult.height}, globalAlpha: ${alpha.toFixed(3)}`);
-        }
         renderer.drawTevResult(context, tevResult, paneState.width, paneState.height);
         context.restore();
         return;
@@ -158,16 +150,9 @@ function drawPaneWithResolvedState(renderer, context, pane, paneState, localPane
     // Fallback to Canvas 2D heuristic path.
     const binding = renderer.getTextureBindingForPane(pane, paneState);
     if (binding) {
-      // DEBUG: Log heuristic path usage for icon panes
-      if (renderer.layout?.width <= 256) {
-        console.log(`[HEURISTIC] ${pane.name}: ${paneState.width}x${paneState.height}, alpha: ${alpha.toFixed(3)}, tex: ${binding?.textureName ?? "?"}`);
-      }
       renderer.drawPane(context, binding, pane, paneState, paneState.width, paneState.height);
     } else {
       // No texture — draw vertex-colored rectangle (reference always draws quad).
-      if (renderer.layout?.width <= 256) {
-        console.log(`[VERTEX-COLOR] ${pane.name}: ${paneState.width}x${paneState.height}, alpha: ${alpha.toFixed(3)}`);
-      }
       renderer.drawVertexColoredPane(context, pane, paneState, paneState.width, paneState.height);
     }
   } else if (pane.type === "txt1") {
@@ -533,7 +518,7 @@ export function renderFrame(frame) {
   }
 
   const renderablePanes = this.layout.panes.filter((pane) =>
-    pane.type === "pic1" || pane.type === "txt1" || pane.type === "bnd1" || pane.type === "wnd1"
+    pane.type === "pic1" || pane.type === "txt1" || pane.type === "wnd1"
   );
   const orderedRenderablePanes = this.getCustomWeatherOrderedPanes?.(renderablePanes) ?? renderablePanes;
   const shouldUseWiiShopBackdropMask =

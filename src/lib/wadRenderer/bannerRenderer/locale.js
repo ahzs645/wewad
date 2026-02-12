@@ -109,6 +109,18 @@ export function extractTitleLocaleCode(name) {
     }
   }
 
+  // System-level locale containers: font_e, font_j, etc.  On real Wii the
+  // System Menu firmware directly sets the matching font_* pane visible based
+  // on the console language.  Match "font_" followed by a single locale letter.
+  match = name.match(/^font_([ejfgisn])$/i);
+  if (match) {
+    const SINGLE_LETTER_MAP = { J: "JP", E: "US", F: "FR", G: "GE", I: "IT", S: "SP", N: "NE" };
+    const mapped = SINGLE_LETTER_MAP[match[1].toUpperCase()];
+    if (mapped) {
+      return mapped;
+    }
+  }
+
   match = name.match(/^(JP|NE|GE|SP|IT|FR|US|KR)_/);
   if (match) {
     return match[1];

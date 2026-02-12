@@ -45,7 +45,7 @@ function hasRenderableDescendant(paneName, childrenByParent, cache) {
   const children = childrenByParent.get(paneName) ?? [];
   let value = false;
   for (const child of children) {
-    if (child.type === "pic1" || child.type === "txt1" || child.type === "bnd1" || child.type === "wnd1") {
+    if (child.type === "pic1" || child.type === "txt1" || child.type === "wnd1") {
       value = true;
       break;
     }

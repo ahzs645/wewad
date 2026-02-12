@@ -601,37 +601,9 @@ export function getTextureBindingForPane(pane, paneState = null) {
     }
   }
 
-  // Fallback: try materialIndex as texture index (legacy compatibility).
-  if (pane.materialIndex >= 0 && pane.materialIndex < this.layout.textures.length) {
-    const textureName = this.layout.textures[pane.materialIndex];
-    if (this.textureCanvases[textureName]) {
-      return {
-        texture: this.textureCanvases[textureName],
-        textureName,
-        material: null,
-        wrapS: 0,
-        wrapT: 0,
-        textureSRT: null,
-        texCoordIndex: 0,
-      };
-    }
-  }
-
-  // Last resort: first available texture.
-  for (const textureName of this.layout.textures) {
-    if (this.textureCanvases[textureName]) {
-      return {
-        texture: this.textureCanvases[textureName],
-        textureName,
-        material: null,
-        wrapS: 0,
-        wrapT: 0,
-        textureSRT: null,
-        texCoordIndex: 0,
-      };
-    }
-  }
-
+  // No valid texture binding found.  Reference never falls back to arbitrary
+  // textures — panes with unresolvable materials simply draw nothing (or
+  // vertex colors via drawVertexColoredPane).
   return null;
 }
 
