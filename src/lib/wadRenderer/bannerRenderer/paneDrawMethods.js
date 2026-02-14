@@ -88,10 +88,17 @@ function resolveBlendCompositeOp(pane, materials) {
   return null;
 }
 
-function drawPaneWithResolvedState(renderer, context, pane, paneState, localPaneStates, layoutWidth, layoutHeight) {
+function drawPaneWithResolvedState(renderer, context, pane, paneState, localPaneStates, layoutWidth, layoutHeight, adjustX) {
   let alpha = 1;
   let visible = true;
   const transformChain = renderer.getPaneTransformChain(pane);
+
+  // Per-pane widescreen adjustment: the adjust factor is propagated through the
+  // transform chain exactly as the real Wii System Menu does it (see wii-banner-player
+  // Pane::Render).  Each pane's translation is multiplied by the current adjust.
+  // When a pane has positionAdjust=false (FLAG_POSITION_ADJUST bit set in the BRLYT
+  // flags byte), the adjust resets to 1.0 for that pane's drawn size and all children.
+  let currentAdjustX = typeof adjustX === "number" && Number.isFinite(adjustX) ? adjustX : 1;
 
   context.save();
   context.translate(layoutWidth / 2, layoutHeight / 2);
@@ -109,17 +116,29 @@ function drawPaneWithResolvedState(renderer, context, pane, paneState, localPane
       alpha *= chainState.alpha;
     }
 
-    context.translate(chainState.tx, -chainState.ty);
+    // Translation is always multiplied by the current adjust factor.
+    context.translate(chainState.tx * currentAdjustX, -chainState.ty);
+
+    // After translating, check if this pane resets the adjust for children/size.
+    if (chainPane.positionAdjust === false) {
+      currentAdjustX = 1;
+    }
 
     const projected = getProjectedTransform2D(renderer, chainState);
     context.transform(projected.a, projected.b, projected.c, projected.d, 0, 0);
   }
 
+  // Apply the widescreen adjust factor to the drawn pane's width.
+  const adjustedWidth = paneState.width * currentAdjustX;
+  const adjustedHeight = paneState.height;
+
   // Apply origin offset ONLY for the pane being drawn, AFTER all transforms.
   // Reference: origin is inside Quad::Draw() with its own push/pop matrix,
   // so it does NOT propagate to children.  Origin must come after scale so
   // the anchor point scales correctly with the pane.
-  const originOffset = renderer.getPaneOriginOffset(pane, paneState.width, paneState.height);
+  // Use adjusted dimensions so the anchor is positioned correctly within the
+  // widescreen-adjusted size (matching reference: origin is inside the scaled quad).
+  const originOffset = renderer.getPaneOriginOffset(pane, adjustedWidth, adjustedHeight);
   if (originOffset.x !== 0 || originOffset.y !== 0) {
     context.translate(originOffset.x, originOffset.y);
   }
@@ -139,9 +158,9 @@ function drawPaneWithResolvedState(renderer, context, pane, paneState, localPane
   if (pane.type === "pic1" || pane.type === "wnd1") {
     // Try the TEV pipeline first for materials with non-trivial TEV stages.
     if (renderer.shouldUseTevPipeline(pane)) {
-      const tevResult = renderer.runTevPipeline(pane, paneState, paneState.width, paneState.height);
+      const tevResult = renderer.runTevPipeline(pane, paneState, adjustedWidth, adjustedHeight);
       if (tevResult) {
-        renderer.drawTevResult(context, tevResult, paneState.width, paneState.height);
+        renderer.drawTevResult(context, tevResult, adjustedWidth, adjustedHeight);
         context.restore();
         return;
       }
@@ -150,13 +169,13 @@ function drawPaneWithResolvedState(renderer, context, pane, paneState, localPane
     // Fallback to Canvas 2D heuristic path.
     const binding = renderer.getTextureBindingForPane(pane, paneState);
     if (binding) {
-      renderer.drawPane(context, binding, pane, paneState, paneState.width, paneState.height);
+      renderer.drawPane(context, binding, pane, paneState, adjustedWidth, adjustedHeight);
     } else {
       // No texture — draw vertex-colored rectangle (reference always draws quad).
-      renderer.drawVertexColoredPane(context, pane, paneState, paneState.width, paneState.height);
+      renderer.drawVertexColoredPane(context, pane, paneState, adjustedWidth, adjustedHeight);
     }
   } else if (pane.type === "txt1") {
-    renderer.drawTextPane(context, pane, paneState.width, paneState.height);
+    renderer.drawTextPane(context, pane, adjustedWidth, adjustedHeight);
   }
 
   context.restore();
@@ -506,11 +525,18 @@ export function renderFrame(frame) {
     this.canvas.style.height = `${outputHeight}px`;
   }
 
-  context.setTransform(dpr * displayScaleX, 0, 0, dpr, 0, 0);
+  // Per-pane widescreen adjustment factor: the Wii System Menu passes an
+  // adjust vector through the pane tree (adjust.x = displayAspect / refAspect).
+  // Panes opt in/out via the FLAG_POSITION_ADJUST bit (bit 2 of pane flags).
+  // The canvas is sized for the full output width, but the base context transform
+  // does NOT include the horizontal stretch — it's applied per-pane instead.
+  const widescreenAdjustX = displayScaleX;
+
+  context.setTransform(dpr, 0, 0, dpr, 0, 0);
   context.imageSmoothingEnabled = true;
   context.imageSmoothingQuality = "high";
 
-  context.clearRect(0, 0, layoutWidth, layoutHeight);
+  context.clearRect(0, 0, outputWidth, outputHeight);
 
   const localPaneStates = new Map();
   for (const pane of this.layout.panes) {
@@ -544,10 +570,10 @@ export function renderFrame(frame) {
 
     if (!backdropContext) {
       backdropContext = this.wiiShopBackdropContext;
-      backdropContext.setTransform(dpr * displayScaleX, 0, 0, dpr, 0, 0);
+      backdropContext.setTransform(dpr, 0, 0, dpr, 0, 0);
       backdropContext.imageSmoothingEnabled = true;
       backdropContext.imageSmoothingQuality = "high";
-      backdropContext.clearRect(0, 0, layoutWidth, layoutHeight);
+      backdropContext.clearRect(0, 0, outputWidth, outputHeight);
     }
 
     return backdropContext;
@@ -563,13 +589,13 @@ export function renderFrame(frame) {
     if (maskPane && maskPaneState) {
       backdropContext.save();
       backdropContext.globalCompositeOperation = "destination-out";
-      drawPaneWithResolvedState(this, backdropContext, maskPane, maskPaneState, localPaneStates, layoutWidth, layoutHeight);
+      drawPaneWithResolvedState(this, backdropContext, maskPane, maskPaneState, localPaneStates, outputWidth, layoutHeight, widescreenAdjustX);
       backdropContext.restore();
     }
 
-    context.drawImage(this.wiiShopBackdropSurface, 0, 0, layoutWidth, layoutHeight);
+    context.drawImage(this.wiiShopBackdropSurface, 0, 0, outputWidth, layoutHeight);
     hasBackdropContent = false;
-    backdropContext.clearRect(0, 0, layoutWidth, layoutHeight);
+    backdropContext.clearRect(0, 0, outputWidth, layoutHeight);
   };
 
   for (const pane of orderedRenderablePanes) {
@@ -598,7 +624,7 @@ export function renderFrame(frame) {
       const paneName = String(pane?.name ?? "");
       if (/^CL[A-Z_-]/i.test(paneName)) {
         const targetContext = ensureBackdropSurface();
-        drawPaneWithResolvedState(this, targetContext, pane, paneState, localPaneStates, layoutWidth, layoutHeight);
+        drawPaneWithResolvedState(this, targetContext, pane, paneState, localPaneStates, outputWidth, layoutHeight, widescreenAdjustX);
         hasBackdropContent = true;
         continue;
       }
@@ -612,7 +638,7 @@ export function renderFrame(frame) {
       }
     }
 
-    drawPaneWithResolvedState(this, context, pane, paneState, localPaneStates, layoutWidth, layoutHeight);
+    drawPaneWithResolvedState(this, context, pane, paneState, localPaneStates, outputWidth, layoutHeight, widescreenAdjustX);
   }
 
   if (shouldUseWiiShopBackdropMask && hasBackdropContent) {

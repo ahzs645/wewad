@@ -54,6 +54,7 @@ export function createRenderableLayout(layout, tplImages, fallbackWidth, fallbac
         origin: 4,
         alpha: 255,
         visible: true,
+        positionAdjust: true,
         parent: null,
         translate: { x: 0, y: 0, z: 0 },
         rotate: { x: 0, y: 0, z: 0 },
