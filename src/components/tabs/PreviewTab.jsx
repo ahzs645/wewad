@@ -1,5 +1,6 @@
 import { DISPLAY_ASPECT_OPTIONS, TITLE_LOCALE_LABELS, WEATHER_CONDITION_OPTIONS } from "../../constants";
 import { normalizeDomId } from "../../utils/misc";
+import { PlaybackTimeline } from "../PlaybackTimeline";
 
 export function PreviewTab({
   previewDisplay, setPreviewDisplay,
@@ -27,6 +28,11 @@ export function PreviewTab({
   audioUrl, audioElementRef, audioInfo,
   parsed,
   showWeatherOptions, showNewsOptions,
+  phaseMode, setPhaseMode,
+  hasStartAnim, hasLoopAnim,
+  timelineRef,
+  timelineSegments,
+  seekToGlobalFrame,
 }) {
   return (
     <div className="tab-content active">
@@ -71,6 +77,19 @@ export function PreviewTab({
             Export Icon PNG
           </button>
         </div>
+
+        <PlaybackTimeline
+          ref={timelineRef}
+          startFrames={timelineSegments.startFrames}
+          loopFrames={timelineSegments.loopFrames}
+          phaseMode={phaseMode}
+          setPhaseMode={setPhaseMode}
+          hasStartAnim={hasStartAnim}
+          hasLoopAnim={hasLoopAnim}
+          onSeek={seekToGlobalFrame}
+          isPlaying={isPlaying}
+        />
+
         <div className="frame-settings">
           <label htmlFor="start-frame">Start Sequence Frame</label>
           <input
@@ -318,7 +337,6 @@ export function PreviewTab({
             ) : null}
           </div>
         ) : null}
-        <div className="anim-status">{animStatus}</div>
 
         <div className="audio-section">
           <label>Channel Audio</label>
@@ -326,7 +344,6 @@ export function PreviewTab({
             <audio
               ref={audioElementRef}
               controls
-              loop={parsed?.results?.audio?.loopFlag ?? false}
               src={audioUrl}
             />
           ) : (

@@ -13,6 +13,7 @@ import { collectRenderStateOptions, mergeRelatedRsoAnimations } from "./utils/re
 import { hasWeatherScene, hasNewsScene, resolveWeatherRenderState, resolveCustomWeatherBannerFrame } from "./utils/weather";
 import { getUsedTextureNames, resolveIconViewport, createRecentIconPreview } from "./utils/layout";
 import { createWavBuffer } from "./utils/audio";
+import { createAudioSyncController } from "./utils/audioSync";
 import { saveRecentWad } from "./utils/recentWads";
 import { sortTitleLocales, arePaneStateGroupsEqual, shallowEqualSelections, normalizePaneStateSelections } from "./utils/misc";
 
@@ -37,12 +38,16 @@ export default function App() {
   const iconRendererRef = useRef(null);
   const bundleFileInputRef = useRef(null);
 
+  const audioSyncRef = useRef(null);
+  const timelineRef = useRef(null);
+
   // --- Core state ---
   const [activeTab, setActiveTab] = useState("preview");
   const [isDragOver, setIsDragOver] = useState(false);
   const [isProcessing, setIsProcessing] = useState(false);
   const [isPlaying, setIsPlaying] = useState(false);
   const [animStatus, setAnimStatus] = useState("Frame 0");
+  const [phaseMode, setPhaseMode] = useState("full");
   const [startFrame, setStartFrame] = useState(0);
   const [startFrameInput, setStartFrameInput] = useState("0");
   const [selectedFileName, setSelectedFileName] = useState("");
@@ -146,6 +151,21 @@ export default function App() {
       loopAnim: selection.loopAnim === selection.anim ? mergedAnim : selection.loopAnim,
     };
   }, [parsed, effectiveIconRenderState]);
+
+  const hasStartAnim = Boolean(bannerAnimSelection.startAnim || iconAnimSelection.startAnim);
+  const hasLoopAnim = Boolean(bannerAnimSelection.loopAnim || bannerAnimSelection.anim || iconAnimSelection.loopAnim || iconAnimSelection.anim);
+
+  const timelineSegments = useMemo(() => {
+    if (!parsed) return { startFrames: 0, loopFrames: 0 };
+    const startFrames = phaseMode === "loopOnly" ? 0
+      : (bannerAnimSelection.startAnim?.frameSize ?? iconAnimSelection.startAnim?.frameSize ?? 0);
+    const loopFrames = phaseMode === "startOnly" ? 0
+      : (bannerAnimSelection.loopAnim?.frameSize ?? bannerAnimSelection.anim?.frameSize
+        ?? iconAnimSelection.loopAnim?.frameSize ?? iconAnimSelection.anim?.frameSize ?? 0);
+    if (phaseMode === "startOnly") return { startFrames, loopFrames: 0 };
+    if (phaseMode === "loopOnly") return { startFrames: 0, loopFrames };
+    return { startFrames, loopFrames };
+  }, [parsed, phaseMode, bannerAnimSelection, iconAnimSelection]);
 
   const canCustomizeWeather = useMemo(
     () => hasWeatherScene(parsed?.results?.banner?.renderLayout),
@@ -255,6 +275,7 @@ export default function App() {
       setIsProcessing(true);
       setIsPlaying(false);
       setAnimStatus("Frame 0");
+      setPhaseMode("full");
       setActiveTab("preview");
       setBannerRenderState("auto");
       setIconRenderState("auto");
@@ -327,6 +348,10 @@ export default function App() {
     if (!freezeVisualPlayback && bannerRenderer) { bannerRenderer.play(); startedPlayback = true; }
     if (!freezeVisualPlayback && iconRenderer) { iconRenderer.play(); startedPlayback = true; }
     if (audioElement && audioUrl) {
+      const info = bannerRenderer?.getPlaybackInfo() ?? iconRenderer?.getPlaybackInfo();
+      if (info) {
+        audioSyncRef.current?.seekToFrame(info.globalFrame);
+      }
       const playPromise = audioElement.play();
       if (typeof playPromise?.catch === "function") playPromise.catch(() => {});
       startedPlayback = true;
@@ -356,6 +381,13 @@ export default function App() {
     setStartFrame(next);
     setStartFrameInput(String(next));
   }, [normalizeStartFrame, startFrame]);
+
+  const seekToGlobalFrame = useCallback((globalFrame) => {
+    bannerRendererRef.current?.seekToFrame(globalFrame);
+    iconRendererRef.current?.seekToFrame(globalFrame);
+    audioSyncRef.current?.seekToFrame(globalFrame);
+    setIsPlaying(false);
+  }, []);
 
   const exportCanvas = useCallback((canvasRef, filename) => {
     const canvas = canvasRef.current;
@@ -455,6 +487,24 @@ export default function App() {
     return () => URL.revokeObjectURL(nextAudioUrl);
   }, [parsed]);
 
+  // Audio sync controller
+  useEffect(() => {
+    const audio = parsed?.results?.audio;
+    const audioEl = audioElementRef.current;
+    if (!audio || !audioEl || !audioUrl) {
+      audioSyncRef.current = null;
+      return undefined;
+    }
+    const controller = createAudioSyncController(audioEl, audio, 60);
+    audioSyncRef.current = controller;
+    const onTimeUpdate = () => controller?.handleTimeUpdate();
+    audioEl.addEventListener("timeupdate", onTimeUpdate);
+    return () => {
+      audioEl.removeEventListener("timeupdate", onTimeUpdate);
+      audioSyncRef.current = null;
+    };
+  }, [parsed, audioUrl]);
+
   // Main renderer setup
   useEffect(() => {
     stopRenderers();
@@ -471,27 +521,55 @@ export default function App() {
     const iconResult = parsed.results.icon;
     const requestedLocale = titleLocale === "auto" ? undefined : titleLocale;
 
+    const resolvePhaseModeOptions = (selection) => {
+      if (phaseMode === "startOnly" && selection.startAnim) {
+        return {
+          anim: selection.startAnim,
+          startAnim: null,
+          loopAnim: null,
+          playbackMode: "hold",
+        };
+      }
+      if (phaseMode === "loopOnly") {
+        return {
+          anim: selection.loopAnim ?? selection.anim ?? null,
+          startAnim: null,
+          loopAnim: selection.loopAnim ?? selection.anim ?? null,
+          playbackMode: selection.playbackMode ?? "loop",
+        };
+      }
+      return {
+        anim: selection.anim,
+        startAnim: selection.startAnim ?? null,
+        loopAnim: selection.loopAnim ?? selection.anim ?? null,
+        playbackMode: selection.playbackMode ?? "loop",
+      };
+    };
+
     if (bannerResult && bannerCanvasRef.current) {
+      const bannerPhaseOpts = resolvePhaseModeOptions(bannerAnimSelection);
       const bannerRenderer = new BannerRenderer(
         bannerCanvasRef.current,
         bannerResult.renderLayout,
-        bannerAnimSelection.anim,
+        bannerPhaseOpts.anim,
         bannerResult.tplImages,
         {
           initialFrame: effectiveBannerStartFrame,
-          startAnim: bannerAnimSelection.startAnim ?? null,
-          loopAnim: bannerAnimSelection.loopAnim ?? bannerAnimSelection.anim ?? null,
+          startAnim: bannerPhaseOpts.startAnim,
+          loopAnim: bannerPhaseOpts.loopAnim,
           renderState: bannerAnimSelection.renderState,
-          playbackMode: bannerAnimSelection.playbackMode ?? "loop",
+          playbackMode: bannerPhaseOpts.playbackMode,
           paneStateSelections: customWeatherData ? null : bannerPaneStateSelections,
           titleLocale: requestedLocale,
           customWeather: customWeatherData,
           displayAspect: previewDisplayAspect,
           tevQuality,
           fonts: bannerResult.fonts,
-          onFrame: (frame, total, phase) => {
+          onFrame: (frame, total, phase, globalFrame) => {
             const phaseLabel = phase === "start" ? "Start" : "Loop";
             setAnimStatus(`${phaseLabel} ${Math.floor(frame)} / ${Math.max(1, Math.floor(total))}`);
+            timelineRef.current?.updatePlayhead(globalFrame);
+            audioSyncRef.current?.syncFrame(globalFrame);
           },
         },
       );
@@ -502,17 +580,18 @@ export default function App() {
     if (iconResult && iconCanvasRef.current) {
       const iconViewport = resolveIconViewport(iconResult.renderLayout);
       const iconLayout = { ...iconResult.renderLayout, width: iconViewport.width, height: iconViewport.height };
+      const iconPhaseOpts = resolvePhaseModeOptions(iconAnimSelection);
       const iconRenderer = new BannerRenderer(
         iconCanvasRef.current,
         iconLayout,
-        iconAnimSelection.anim,
+        iconPhaseOpts.anim,
         iconResult.tplImages,
         {
           initialFrame: effectiveIconStartFrame,
-          startAnim: iconAnimSelection.startAnim ?? null,
-          loopAnim: iconAnimSelection.loopAnim ?? iconAnimSelection.anim ?? null,
+          startAnim: iconPhaseOpts.startAnim,
+          loopAnim: iconPhaseOpts.loopAnim,
           renderState: iconAnimSelection.renderState,
-          playbackMode: iconAnimSelection.playbackMode ?? "loop",
+          playbackMode: iconPhaseOpts.playbackMode,
           paneStateSelections: customWeatherData ? null : iconPaneStateSelections,
           titleLocale: requestedLocale,
           customWeather: customWeatherData,
@@ -551,7 +630,7 @@ export default function App() {
     activeTab, parsed, startFrame, effectiveBannerStartFrame, effectiveIconStartFrame,
     stopRenderers, bannerAnimSelection, iconAnimSelection, titleLocale,
     bannerPaneStateSelections, iconPaneStateSelections, customWeatherData, customNewsData,
-    previewDisplayAspect, tevQuality,
+    previewDisplayAspect, tevQuality, phaseMode,
   ]);
 
   // Start frame sync
@@ -647,6 +726,11 @@ export default function App() {
                   audioUrl={audioUrl} audioElementRef={audioElementRef} audioInfo={audioInfo}
                   parsed={parsed}
                   showWeatherOptions={canCustomizeWeather} showNewsOptions={canCustomizeNews}
+                  phaseMode={phaseMode} setPhaseMode={setPhaseMode}
+                  hasStartAnim={hasStartAnim} hasLoopAnim={hasLoopAnim}
+                  timelineRef={timelineRef}
+                  timelineSegments={timelineSegments}
+                  seekToGlobalFrame={seekToGlobalFrame}
                 />
               ) : null}
 

@@ -271,8 +271,8 @@ export function drawPane(context, binding, pane, paneState, width, height) {
   this.applyPaneVertexColorModulation(paneContext, pane, paneState, surfaceWidth, surfaceHeight);
   paneContext.restore();
 
-  // Expand by 1px on each side to cover Canvas 2D anti-aliasing seams between adjacent panes
-  const pad = 1;
+  // Expand to cover Canvas 2D anti-aliasing seams between adjacent panes
+  const pad = 4;
   context.drawImage(this.paneCompositeSurface, -width / 2 - pad, -height / 2 - pad, width + 2 * pad, height + 2 * pad);
 }
 

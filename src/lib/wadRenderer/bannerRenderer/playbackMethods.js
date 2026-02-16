@@ -68,6 +68,28 @@ export function reset() {
   this.applyFrame(this.frame);
 }
 
+export function getPlaybackInfo() {
+  const startFrames = this.startFrameCount;
+  const loopLength = this.sequenceEnabled ? this.getLoopPlaybackLength() : this.getFrameCountForAnim(this.anim);
+
+  let globalFrame;
+  if (this.sequenceEnabled && this.phase === "loop") {
+    globalFrame = startFrames + Math.max(0, this.frame - this.loopPlaybackStartFrame);
+  } else {
+    globalFrame = this.frame;
+  }
+
+  return {
+    phase: this.phase,
+    localFrame: this.frame,
+    globalFrame,
+    startFrames,
+    loopFrames: loopLength,
+    totalFrames: startFrames + loopLength,
+    fps: this.fps,
+  };
+}
+
 export function dispose() {
   this.stop();
   if (this.gsapTimeline) {

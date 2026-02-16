@@ -77,6 +77,7 @@ export class BannerRenderer {
     }
     this.sequenceEnabled = Boolean(this.startAnim && this.loopAnim);
     this.phase = this.sequenceEnabled ? "start" : "loop";
+    this.startFrameCount = this.sequenceEnabled ? this.getFrameCountForAnim(this.startAnim) : 0;
     this.loopPlaybackStartFrame = 0;
     this.loopPlaybackEndFrame = this.getFrameCountForAnim(this.loopAnim);
     if (this.loopPlaybackEndFrame <= this.loopPlaybackStartFrame) {

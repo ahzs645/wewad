@@ -298,8 +298,8 @@ export function drawPaneTexture(context, binding, pane, width, height) {
     }
   }
 
-  // Expand by 1px on each side to cover Canvas 2D anti-aliasing seams between adjacent panes
-  const pad = 1;
+  // Expand to cover Canvas 2D anti-aliasing seams between adjacent panes
+  const pad = 4;
   if (sourceRect) {
     context.drawImage(
       texture,

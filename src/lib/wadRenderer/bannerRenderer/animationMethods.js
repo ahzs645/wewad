@@ -89,7 +89,8 @@ export function applyFrame(rawFrame) {
     const loopLength = this.getLoopPlaybackLength();
     this.frame = nextFrame;
     this.renderFrame(this.frame);
-    this.onFrame(Math.max(0, this.frame - this.loopPlaybackStartFrame), loopLength, this.phase);
+    const globalFrame = this.startFrameCount + Math.max(0, this.frame - this.loopPlaybackStartFrame);
+    this.onFrame(Math.max(0, this.frame - this.loopPlaybackStartFrame), loopLength, this.phase, globalFrame);
     return;
   }
 
@@ -97,7 +98,7 @@ export function applyFrame(rawFrame) {
   const nextFrame = this.normalizeFrameForPlayback(rawFrame);
   this.frame = nextFrame;
   this.renderFrame(this.frame);
-  this.onFrame(this.frame, total, this.phase);
+  this.onFrame(this.frame, total, this.phase, this.frame);
 }
 
 export function setStartFrame(rawFrame) {
@@ -139,6 +140,47 @@ export function ensureGsapTimeline() {
     duration,
     ease: "none",
   });
+}
+
+export function seekToFrame(globalFrame) {
+  if (this.playing) {
+    this.stop();
+  }
+  if (this.gsapTimeline) {
+    this.gsapTimeline.kill();
+    this.gsapTimeline = null;
+  }
+
+  const clamped = Math.max(0, Number.isFinite(globalFrame) ? globalFrame : 0);
+
+  if (this.sequenceEnabled && this.startAnim) {
+    const startFrames = this.startFrameCount;
+    if (clamped < startFrames) {
+      if (this.phase !== "start") {
+        this.setActiveAnim(this.startAnim, "start");
+        this.frozenStartState.clear();
+      }
+      this.frame = clamped;
+      this.gsapDriver.frame = clamped;
+      this.applyFrame(clamped);
+      return;
+    }
+    if (this.phase !== "loop") {
+      this.captureStartEndState();
+      this.setActiveAnim(this.loopAnim, "loop");
+    }
+    const loopLocalFrame = this.loopPlaybackStartFrame +
+      ((clamped - startFrames) % this.getLoopPlaybackLength());
+    this.frame = loopLocalFrame;
+    this.gsapDriver.frame = loopLocalFrame;
+    this.applyFrame(loopLocalFrame);
+    return;
+  }
+
+  const normalized = this.normalizeFrameForPlayback(clamped);
+  this.frame = normalized;
+  this.gsapDriver.frame = normalized;
+  this.applyFrame(normalized);
 }
 
 export function advanceFrame(deltaMs = 1000 / this.fps) {
