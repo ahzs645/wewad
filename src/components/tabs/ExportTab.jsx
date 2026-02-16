@@ -3,6 +3,7 @@ export function ExportTab({
   isExporting, exportProgress,
   parsed,
   handleExportBundle,
+  handleExportGsap,
   bundleFileInputRef,
   handleLoadBundleZip,
   bundlePreview,
@@ -44,6 +45,14 @@ export function ExportTab({
               title="Includes all animation frames as PNGs (may be slow for long animations)"
             >
               {isExporting ? "Exporting..." : "Export with All Frames"}
+            </button>
+            <button
+              onClick={handleExportGsap}
+              disabled={isExporting || !parsed}
+              type="button"
+              title="Export as GSAP animation bundle with individual layers, timeline JSON, and a self-contained HTML player"
+            >
+              {isExporting ? "Exporting..." : "Export GSAP Animation"}
             </button>
             {exportProgress && <span className="export-progress">{exportProgress}</span>}
           </div>

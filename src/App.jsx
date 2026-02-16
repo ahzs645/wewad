@@ -5,6 +5,7 @@ import {
   processWAD,
 } from "./lib/wadRenderer";
 import { downloadBlob, exportBundle, loadBundle, revokeBundle } from "./lib/exportBundle";
+import { exportGsapBundle } from "./lib/gsapExport";
 
 import { TABS, WEATHER_CONDITION_OPTIONS } from "./constants";
 import { createArrayLogger, formatLayoutInfo, formatAnimationInfo, formatDuration } from "./utils/formatters";
@@ -452,6 +453,53 @@ export default function App() {
     }
   }, [parsed, isExporting, selectedFileName, bannerAnimSelection, iconAnimSelection, exportAspect, tevQuality, titleLocale, bannerPaneStateSelections, bundlePreview]);
 
+  const handleExportGsap = useCallback(async () => {
+    if (!parsed || isExporting) return;
+    setIsExporting(true);
+    setExportProgress("Preparing GSAP export...");
+
+    try {
+      const blob = await exportGsapBundle({
+        parsed,
+        sourceFileName: selectedFileName,
+        BannerRenderer,
+        bannerAnimSelection,
+        iconAnimSelection,
+        rendererOptions: {
+          tevQuality,
+          titleLocale: titleLocale === "auto" ? undefined : titleLocale,
+          paneStateSelections: bannerPaneStateSelections,
+        },
+        exportAspect,
+        onProgress: (stage, current, total) => {
+          const labels = {
+            loading: "Loading zip library...",
+            "banner-layers": `Rendering banner layers (${current}/${total})...`,
+            "banner-sampling-start": `Sampling banner start animation (${current}/${total})...`,
+            "banner-sampling-loop": `Sampling banner loop animation (${current}/${total})...`,
+            "icon-layers": `Rendering icon layers (${current}/${total})...`,
+            "icon-sampling-start": `Sampling icon start animation (${current}/${total})...`,
+            "icon-sampling-loop": `Sampling icon loop animation (${current}/${total})...`,
+            compressing: "Compressing zip...",
+            done: "Done!",
+          };
+          setExportProgress(labels[stage] ?? `${stage} ${current}/${total}`);
+        },
+      });
+
+      const titleId = parsed.wad?.titleId ?? "export";
+      const safeName = selectedFileName
+        ? selectedFileName.replace(/\.wad$/i, "").replace(/[^a-zA-Z0-9_\-() [\]]/g, "_")
+        : titleId;
+      downloadBlob(blob, `${safeName}-gsap.zip`);
+    } catch (error) {
+      console.error("GSAP export failed:", error);
+      setExportProgress(`GSAP export failed: ${error.message}`);
+    } finally {
+      setTimeout(() => { setIsExporting(false); setExportProgress(""); }, 2000);
+    }
+  }, [parsed, isExporting, selectedFileName, bannerAnimSelection, iconAnimSelection, exportAspect, tevQuality, titleLocale, bannerPaneStateSelections]);
+
   const handleLoadBundleZip = useCallback(async (file) => {
     if (!file) return;
     try {
@@ -757,6 +805,7 @@ export default function App() {
                   isExporting={isExporting} exportProgress={exportProgress}
                   parsed={parsed}
                   handleExportBundle={handleExportBundle}
+                  handleExportGsap={handleExportGsap}
                   bundleFileInputRef={bundleFileInputRef}
                   handleLoadBundleZip={handleLoadBundleZip}
                   bundlePreview={bundlePreview}
