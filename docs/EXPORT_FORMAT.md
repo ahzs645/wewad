@@ -7,10 +7,14 @@ WeWAD can export Wii channel banner and icon assets as a **zip archive** contain
 ## Export Bundle Structure
 
 ```
-{title-id}.zip
+{source-name}.zip
 ├── manifest.json              # Metadata + animation timeline
-├── banner.png                 # Banner snapshot (first loop frame, 608×456)
-├── icon.png                   # Icon snapshot (128×128)
+├── banner.png                 # Banner snapshot (current preview aspect)
+├── banner-4x3.png             # Banner at 4:3 (608×456)
+├── banner-16x9.png            # Banner at 16:9 (811×456)
+├── icon.png                   # Icon snapshot (current preview)
+├── icon-4x3.png               # Icon (aspect-independent, 128×96 typical)
+├── icon-16x9.png              # Icon (same as 4x3 — icons don't stretch)
 ├── banner-frames/             # Optional: all banner animation frames
 │   ├── 0000.png
 │   ├── 0001.png
@@ -28,6 +32,29 @@ WeWAD can export Wii channel banner and icon assets as a **zip archive** contain
 └── audio.wav                  # Channel audio (if available)
 ```
 
+## Aspect Ratio Handling
+
+The Wii renders channel banners differently depending on the console's display setting:
+
+| Setting | Aspect | Banner Size | How it works |
+|---------|--------|-------------|--------------|
+| Standard | 4:3 | 608×456 | Native layout dimensions, no stretch |
+| Widescreen | 16:9 | ~811×456 | Layout horizontally scaled by 16:9 ÷ 4:3 = 1.333× |
+
+**What's exported:**
+- **Snapshots**: Both `banner-4x3.png` and `banner-16x9.png` are always included so your pipeline can pick whichever it needs
+- **`banner.png`**: A copy of whatever aspect the preview is currently showing
+- **Animation frames**: Rendered at the aspect ratio you select in the Export tab (defaults to 4:3)
+- **Icon**: Not affected by aspect ratio — icons are always square-ish (typically 128×96)
+- **Textures**: Raw texture data, not rendered — always at their native TPL resolution
+
+**For your pipeline:**
+```javascript
+// Pick the right snapshot for your target display
+const bannerUrl = manifest.banner.snapshots["16:9"].file; // "banner-16x9.png"
+const bannerWidth = manifest.banner.snapshots["16:9"].width; // 811
+```
+
 ## manifest.json
 
 ```jsonc
@@ -38,12 +65,19 @@ WeWAD can export Wii channel banner and icon assets as a **zip archive** contain
   // WAD metadata
   "titleId": "HAJA",
   "sourceFile": "Internet Channel [USA] (WiiLink).wad",
+  // Which aspect ratio was used for animation frame renders
+  "exportAspect": "4:3",
 
   // Banner info
   "banner": {
-    "width": 608,
-    "height": 456,
-    "snapshot": "banner.png",
+    // Native BRLYT layout dimensions (before aspect ratio scaling)
+    "nativeWidth": 608,
+    "nativeHeight": 456,
+    // Pre-rendered snapshots at both aspect ratios
+    "snapshots": {
+      "4:3":  { "file": "banner-4x3.png",  "width": 608, "height": 456 },
+      "16:9": { "file": "banner-16x9.png", "width": 811, "height": 456 }
+    },
     "animation": {
       // Total frame count across start + loop phases
       "totalFrames": 300,
@@ -56,7 +90,10 @@ WeWAD can export Wii channel banner and icon assets as a **zip archive** contain
       "durationSeconds": 5.0
     },
     // Frame directory (present only if frame export was requested)
-    "frames": "banner-frames/",
+    "frames": {
+      "directory": "banner-frames/",
+      "aspect": "4:3"
+    },
     // Textures used by this banner
     "textures": [
       "my_texture_01.tpl",
@@ -78,14 +115,6 @@ WeWAD can export Wii channel banner and icon assets as a **zip archive** contain
         "parent": null,
         "size": [608, 456],
         "visible": true
-      },
-      {
-        "name": "P_bg",
-        "type": "pic1",
-        "parent": "RootPane",
-        "size": [608, 456],
-        "visible": true,
-        "materialIndex": 0
       }
     ],
     // Render state groups available (RSO0, RSO1, etc.)
@@ -94,9 +123,12 @@ WeWAD can export Wii channel banner and icon assets as a **zip archive** contain
 
   // Icon info (same structure, nullable)
   "icon": {
-    "width": 128,
-    "height": 96,
-    "snapshot": "icon.png",
+    "nativeWidth": 128,
+    "nativeHeight": 96,
+    "snapshots": {
+      "4:3":  { "file": "icon-4x3.png",  "width": 128, "height": 96 },
+      "16:9": { "file": "icon-16x9.png", "width": 128, "height": 96 }
+    },
     "animation": {
       "totalFrames": 5000,
       "fps": 60,
@@ -104,7 +136,7 @@ WeWAD can export Wii channel banner and icon assets as a **zip archive** contain
       "loopFrames": 5000,
       "durationSeconds": 83.33
     },
-    "frames": "icon-frames/",
+    "frames": null,
     "textures": ["icon_bg01.tpl"],
     "materials": [],
     "panes": [],
@@ -129,27 +161,27 @@ WeWAD can export Wii channel banner and icon assets as a **zip archive** contain
 import { readFileSync } from "fs";
 import JSZip from "jszip";
 
-const zip = await JSZip.loadAsync(readFileSync("HAJA.zip"));
+const zip = await JSZip.loadAsync(readFileSync("Internet Channel [USA] (WiiLink).zip"));
 const manifest = JSON.parse(await zip.file("manifest.json").async("string"));
 
-// Get the static banner PNG
-const bannerPng = await zip.file(manifest.banner.snapshot).async("nodebuffer");
+// Pick the right aspect ratio for your use case
+const banner43 = await zip.file(manifest.banner.snapshots["4:3"].file).async("nodebuffer");
+const banner169 = await zip.file(manifest.banner.snapshots["16:9"].file).async("nodebuffer");
 
-// Get the static icon PNG
-const iconPng = await zip.file(manifest.icon.snapshot).async("nodebuffer");
+// Icon (same for both aspects)
+const icon = await zip.file(manifest.icon.snapshots["4:3"].file).async("nodebuffer");
 
-// Get audio WAV (if available)
+// Audio (if available)
 if (manifest.audio) {
   const audioWav = await zip.file(manifest.audio.file).async("nodebuffer");
 }
 
 // Iterate animation frames (if exported)
 if (manifest.banner.frames) {
-  const totalFrames = manifest.banner.animation.loopFrames;
-  for (let i = 0; i < totalFrames; i++) {
-    const framePng = await zip
-      .file(`${manifest.banner.frames}${String(i).padStart(4, "0")}.png`)
-      .async("nodebuffer");
+  const dir = manifest.banner.frames.directory;
+  const total = manifest.banner.animation.totalFrames;
+  for (let i = 0; i < total; i++) {
+    const framePng = await zip.file(`${dir}${String(i).padStart(4, "0")}.png`).async("nodebuffer");
     // process frame...
   }
 }
@@ -165,31 +197,32 @@ for (const texName of manifest.banner.textures) {
 ```python
 import json
 import zipfile
-from pathlib import Path
 from PIL import Image
 import io
 
-with zipfile.ZipFile("HAJA.zip") as zf:
+with zipfile.ZipFile("Internet Channel [USA] (WiiLink).zip") as zf:
     manifest = json.loads(zf.read("manifest.json"))
 
-    # Get banner snapshot
-    banner_bytes = zf.read(manifest["banner"]["snapshot"])
-    banner = Image.open(io.BytesIO(banner_bytes))
+    # Get banner at desired aspect ratio
+    banner_file = manifest["banner"]["snapshots"]["16:9"]["file"]
+    banner = Image.open(io.BytesIO(zf.read(banner_file)))
+    print(f"Banner: {banner.size}")  # (811, 456) for 16:9
 
-    # Get icon snapshot
-    icon_bytes = zf.read(manifest["icon"]["snapshot"])
-    icon = Image.open(io.BytesIO(icon_bytes))
+    # Icon
+    icon_file = manifest["icon"]["snapshots"]["4:3"]["file"]
+    icon = Image.open(io.BytesIO(zf.read(icon_file)))
 
     # Iterate frames for video generation
-    if manifest["banner"].get("frames"):
+    frames_info = manifest["banner"].get("frames")
+    if frames_info:
         fps = manifest["banner"]["animation"]["fps"]
-        total = manifest["banner"]["animation"]["loopFrames"]
+        total = manifest["banner"]["animation"]["totalFrames"]
         for i in range(total):
-            frame_path = f"{manifest['banner']['frames']}{i:04d}.png"
-            frame = Image.open(io.BytesIO(zf.read(frame_path)))
+            path = f"{frames_info['directory']}{i:04d}.png"
+            frame = Image.open(io.BytesIO(zf.read(path)))
             # feed to ffmpeg, moviepy, etc.
 
-    # Extract audio
+    # Audio
     if manifest.get("audio"):
         audio_wav = zf.read(manifest["audio"]["file"])
 ```
@@ -198,20 +231,20 @@ with zipfile.ZipFile("HAJA.zip") as zf:
 
 ```bash
 # Extract the zip first
-unzip HAJA.zip -d HAJA/
+unzip "Internet Channel [USA] (WiiLink).zip" -d channel/
 
 # Banner video from frames + audio
-ffmpeg -framerate 60 -i HAJA/banner-frames/%04d.png \
-       -i HAJA/audio.wav \
+ffmpeg -framerate 60 -i channel/banner-frames/%04d.png \
+       -i channel/audio.wav \
        -c:v libx264 -pix_fmt yuv420p \
        -c:a aac -shortest \
-       HAJA_banner.mp4
+       channel_banner.mp4
 
-# Icon GIF (looping)
-ffmpeg -framerate 60 -i HAJA/icon-frames/%04d.png \
+# Icon GIF (looping, scaled up with nearest neighbor for pixel art feel)
+ffmpeg -framerate 60 -i channel/icon-frames/%04d.png \
        -vf "fps=30,scale=256:192:flags=neighbor" \
        -loop 0 \
-       HAJA_icon.gif
+       channel_icon.gif
 ```
 
 ### Generating Thumbnails
@@ -219,28 +252,42 @@ ffmpeg -framerate 60 -i HAJA/icon-frames/%04d.png \
 The simplest pipeline use case — just grab the snapshots:
 
 ```bash
-unzip -j HAJA.zip banner.png icon.png -d thumbnails/
-# banner.png = 608×456, icon.png = 128×128 (or 128×96 for some channels)
+# Extract just the 4:3 snapshots
+unzip -j channel.zip banner-4x3.png icon-4x3.png -d thumbnails/
+
+# Or use 16:9 for widescreen displays
+unzip -j channel.zip banner-16x9.png -d thumbnails/
 ```
+
+## Previewing a Bundle
+
+The **Export** tab in the WeWAD UI includes a built-in bundle previewer. You can:
+
+1. **After exporting**: The bundle is automatically loaded into the previewer
+2. **Load any .zip**: Click "Load .zip" to inspect a previously exported bundle
+3. **Browse sections**:
+   - **Snapshots** — View all banner/icon snapshots at both aspect ratios
+   - **Textures** — Browse individual extracted textures
+   - **Manifest** — Read the full manifest.json
+   - **All Files** — File listing with sizes and types
+   - **Audio** — Play back the channel audio directly
 
 ## Export Options
 
-When triggering an export from the UI, these options are available:
-
 | Option | Default | Description |
 |--------|---------|-------------|
+| **Frame aspect ratio** | `4:3` | Aspect ratio for animation frame PNGs (snapshots always include both) |
 | **Include frames** | `false` | Export every animation frame as individual PNGs |
-| **Frame range** | `loop` | Which phase to export: `start`, `loop`, or `all` |
 | **Include textures** | `true` | Export individual texture PNGs |
 | **Include audio** | `true` | Export channel audio as WAV |
-| **Snapshot frame** | `0` (loop start) | Which frame to use for the static snapshot |
 
 ## Format Details
 
 ### Images
 - All images are **PNG** with alpha channel (RGBA)
-- Banner: **608×456** pixels (native Wii banner resolution)
-- Icon: **128×128** or **128×96** pixels (depends on channel)
+- Banner 4:3: **608×456** pixels (native Wii layout)
+- Banner 16:9: **~811×456** pixels (horizontally scaled for widescreen)
+- Icon: typically **128×96** pixels (varies by channel)
 - Textures: Original resolution from TPL, various sizes
 
 ### Audio
@@ -259,13 +306,14 @@ When triggering an export from the UI, these options are available:
 
 ### Pattern 1: Thumbnail Database
 
-For building a channel thumbnail database (e.g., for a game launcher):
+For building a channel thumbnail database:
 
 ```
 foreach WAD:
-  1. Export with frames=false (snapshots only)
+  1. Export bundle (frames=false)
   2. Read manifest.json for titleId
-  3. Store banner.png and icon.png keyed by titleId
+  3. Pick banner-4x3.png or banner-16x9.png based on target display
+  4. Store icon-4x3.png keyed by titleId
 ```
 
 ### Pattern 2: Animated Previews
@@ -274,30 +322,18 @@ For generating animated GIF/WebP previews:
 
 ```
 foreach WAD:
-  1. Export with frames=true, range=loop
+  1. Export with frames=true, aspect=4:3 or 16:9
   2. Use ffmpeg/sharp/Pillow to encode frames → animated WebP
   3. Trim to first 3-5 seconds for reasonable file size
 ```
 
-### Pattern 3: Channel Database
-
-For extracting structured metadata:
-
-```
-foreach WAD:
-  1. Export with frames=false, textures=false, audio=false
-  2. Parse manifest.json
-  3. Store: titleId, pane tree, materials, texture names, animation info
-  4. Use banner.png + icon.png as visual assets
-```
-
-### Pattern 4: Video Compilation
+### Pattern 3: Video Compilation
 
 For creating video showcases of Wii channels:
 
 ```
 foreach WAD:
-  1. Export with frames=true, range=all (start + loop)
+  1. Export with frames=true, aspect=16:9
   2. Combine start + loop frames
   3. Mux with audio.wav
   4. Concatenate into compilation video
