@@ -155,7 +155,7 @@ export class BannerRenderer {
     this.perspectiveDistance = Number.isFinite(options.perspectiveDistance)
       ? Math.max(64, options.perspectiveDistance)
       : Math.max(256, Math.max(layout?.width ?? 608, layout?.height ?? 456) * 2);
-    this.rotationOrder = String(options.rotationOrder ?? "RZ_RY_RX")
+    this.rotationOrder = String(options.rotationOrder ?? "RX_RY_RZ")
       .trim()
       .toUpperCase();
 

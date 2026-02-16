@@ -77,7 +77,7 @@ function projectPointPerspective(point, zOffset, distance) {
 
 export function getProjectedTransform2D(renderer, state) {
   const rotXRad = (state.rotX * Math.PI) / 180;
-  const rotYRad = (state.rotY * Math.PI) / 180;
+  const rotYRad = (-state.rotY * Math.PI) / 180;
   // Canvas y-axis points down; keep legacy BRLYT yaw convention by
   // mirroring Z rotation sign to match previous rotate(-z) behavior.
   const rotZRad = (-state.rotation * Math.PI) / 180;
