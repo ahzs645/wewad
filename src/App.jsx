@@ -2105,21 +2105,6 @@ export default function App() {
           </div>
         ) : null}
 
-        {showRenderArea ? (
-          <nav className="tab-bar">
-            {TABS.map((tab) => (
-              <button
-                key={tab.id}
-                className={`tab ${activeTab === tab.id ? "active" : ""}`}
-                onClick={() => setActiveTab(tab.id)}
-                type="button"
-              >
-                {tab.label}
-              </button>
-            ))}
-          </nav>
-        ) : null}
-
         <div className="sidebar-footer">
           <button
             className="theme-toggle"
@@ -2138,6 +2123,22 @@ export default function App() {
           </button>
         </div>
       </aside>
+
+      <div className="main-area">
+        {showRenderArea ? (
+          <nav className="tab-bar">
+            {TABS.map((tab) => (
+              <button
+                key={tab.id}
+                className={`tab ${activeTab === tab.id ? "active" : ""}`}
+                onClick={() => setActiveTab(tab.id)}
+                type="button"
+              >
+                {tab.label}
+              </button>
+            ))}
+          </nav>
+        ) : null}
 
       <main className="main-content">
         {showRenderArea ? (
@@ -2737,6 +2738,7 @@ export default function App() {
           </div>
         )}
       </main>
+      </div>
     </div>
   );
 }
