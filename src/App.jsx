@@ -152,20 +152,23 @@ export default function App() {
     };
   }, [parsed, effectiveIconRenderState]);
 
-  const hasStartAnim = Boolean(bannerAnimSelection.startAnim || iconAnimSelection.startAnim);
-  const hasLoopAnim = Boolean(bannerAnimSelection.loopAnim || bannerAnimSelection.anim || iconAnimSelection.loopAnim || iconAnimSelection.anim);
+  const primaryAnimSelection = previewDisplay === "icon" ? iconAnimSelection : bannerAnimSelection;
+  const fallbackAnimSelection = previewDisplay === "icon" ? bannerAnimSelection : iconAnimSelection;
+
+  const hasStartAnim = Boolean(primaryAnimSelection.startAnim || fallbackAnimSelection.startAnim);
+  const hasLoopAnim = Boolean(primaryAnimSelection.loopAnim || primaryAnimSelection.anim || fallbackAnimSelection.loopAnim || fallbackAnimSelection.anim);
 
   const timelineSegments = useMemo(() => {
     if (!parsed) return { startFrames: 0, loopFrames: 0 };
+    const sel = primaryAnimSelection.anim ? primaryAnimSelection : fallbackAnimSelection;
     const startFrames = phaseMode === "loopOnly" ? 0
-      : (bannerAnimSelection.startAnim?.frameSize ?? iconAnimSelection.startAnim?.frameSize ?? 0);
+      : (sel.startAnim?.frameSize ?? 0);
     const loopFrames = phaseMode === "startOnly" ? 0
-      : (bannerAnimSelection.loopAnim?.frameSize ?? bannerAnimSelection.anim?.frameSize
-        ?? iconAnimSelection.loopAnim?.frameSize ?? iconAnimSelection.anim?.frameSize ?? 0);
+      : (sel.loopAnim?.frameSize ?? sel.anim?.frameSize ?? 0);
     if (phaseMode === "startOnly") return { startFrames, loopFrames: 0 };
     if (phaseMode === "loopOnly") return { startFrames: 0, loopFrames };
     return { startFrames, loopFrames };
-  }, [parsed, phaseMode, bannerAnimSelection, iconAnimSelection]);
+  }, [parsed, phaseMode, previewDisplay, bannerAnimSelection, iconAnimSelection, primaryAnimSelection, fallbackAnimSelection]);
 
   const canCustomizeWeather = useMemo(
     () => hasWeatherScene(parsed?.results?.banner?.renderLayout),
@@ -548,6 +551,8 @@ export default function App() {
       };
     };
 
+    const bannerDrivesTimeline = previewDisplay !== "icon";
+
     if (bannerResult && bannerCanvasRef.current) {
       const bannerPhaseOpts = resolvePhaseModeOptions(bannerAnimSelection);
       const bannerRenderer = new BannerRenderer(
@@ -567,12 +572,14 @@ export default function App() {
           displayAspect: previewDisplayAspect,
           tevQuality,
           fonts: bannerResult.fonts,
-          onFrame: (frame, total, phase, globalFrame) => {
-            const phaseLabel = phase === "start" ? "Start" : "Loop";
-            setAnimStatus(`${phaseLabel} ${Math.floor(frame)} / ${Math.max(1, Math.floor(total))}`);
-            timelineRef.current?.updatePlayhead(globalFrame);
-            audioSyncRef.current?.syncFrame(globalFrame);
-          },
+          onFrame: bannerDrivesTimeline
+            ? (frame, total, phase, globalFrame) => {
+                const phaseLabel = phase === "start" ? "Start" : "Loop";
+                setAnimStatus(`${phaseLabel} ${Math.floor(frame)} / ${Math.max(1, Math.floor(total))}`);
+                timelineRef.current?.updatePlayhead(globalFrame);
+                audioSyncRef.current?.syncFrame(globalFrame);
+              }
+            : undefined,
         },
       );
       bannerRenderer.render();
@@ -601,6 +608,14 @@ export default function App() {
           displayAspect: previewDisplayAspect,
           tevQuality,
           fonts: iconResult.fonts,
+          onFrame: !bannerDrivesTimeline
+            ? (frame, total, phase, globalFrame) => {
+                const phaseLabel = phase === "start" ? "Start" : "Loop";
+                setAnimStatus(`${phaseLabel} ${Math.floor(frame)} / ${Math.max(1, Math.floor(total))}`);
+                timelineRef.current?.updatePlayhead(globalFrame);
+                audioSyncRef.current?.syncFrame(globalFrame);
+              }
+            : undefined,
         },
       );
       iconRenderer.render();

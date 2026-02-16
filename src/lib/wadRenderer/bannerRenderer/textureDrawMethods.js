@@ -292,14 +292,14 @@ export function drawPaneTexture(context, binding, pane, width, height) {
       context.save();
       context.translate(-width / 2, -height / 2);
       context.fillStyle = pattern;
-      context.fillRect(-2, -2, width + 4, height + 4);
+      const rPad = this._seamPad || 0;
+      context.fillRect(-rPad, -rPad, width + 2 * rPad, height + 2 * rPad);
       context.restore();
       return;
     }
   }
 
-  // Expand to cover Canvas 2D anti-aliasing seams between adjacent panes
-  const pad = 2;
+  const pad = this._seamPad || 0;
   if (sourceRect) {
     context.drawImage(
       texture,

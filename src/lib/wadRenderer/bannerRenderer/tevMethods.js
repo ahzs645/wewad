@@ -413,7 +413,6 @@ export function drawTevResult(context, tevResult, width, height) {
 
   const imageData = new ImageData(tevResult.data, w, h);
   this.tevResultContext.putImageData(imageData, 0, 0);
-  // Expand to cover Canvas 2D anti-aliasing seams between adjacent panes
-  const pad = 2;
+  const pad = this._seamPad || 0;
   context.drawImage(this.tevResultSurface, -width / 2 - pad, -height / 2 - pad, width + 2 * pad, height + 2 * pad);
 }

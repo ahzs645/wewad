@@ -136,6 +136,19 @@ function drawPaneWithResolvedState(renderer, context, pane, paneState, localPane
     context.globalCompositeOperation = blendOp;
   }
 
+  // Detect 3D rotation in the transform chain — when present, Canvas 2D
+  // anti-aliases the edges of rotated drawImage rectangles, creating seams
+  // between adjacent pieces.  Apply padding only to these panes.
+  let has3DRotation = false;
+  for (const chainPane of transformChain) {
+    const cs = localPaneStates.get(chainPane);
+    if (cs && (cs.rotX !== 0 || cs.rotY !== 0)) {
+      has3DRotation = true;
+      break;
+    }
+  }
+  renderer._seamPad = has3DRotation ? 4 : 0;
+
   if (pane.type === "pic1" || pane.type === "wnd1") {
     // Try the TEV pipeline first for materials with non-trivial TEV stages.
     if (renderer.shouldUseTevPipeline(pane)) {
@@ -271,8 +284,7 @@ export function drawPane(context, binding, pane, paneState, width, height) {
   this.applyPaneVertexColorModulation(paneContext, pane, paneState, surfaceWidth, surfaceHeight);
   paneContext.restore();
 
-  // Expand to cover Canvas 2D anti-aliasing seams between adjacent panes
-  const pad = 2;
+  const pad = this._seamPad || 0;
   context.drawImage(this.paneCompositeSurface, -width / 2 - pad, -height / 2 - pad, width + 2 * pad, height + 2 * pad);
 }
 
