@@ -386,7 +386,6 @@ export default function App() {
     bannerRendererRef.current?.seekToFrame(globalFrame);
     iconRendererRef.current?.seekToFrame(globalFrame);
     audioSyncRef.current?.seekToFrame(globalFrame);
-    setIsPlaying(false);
   }, []);
 
   const exportCanvas = useCallback((canvasRef, filename) => {
@@ -498,9 +497,12 @@ export default function App() {
     const controller = createAudioSyncController(audioEl, audio, 60);
     audioSyncRef.current = controller;
     const onTimeUpdate = () => controller?.handleTimeUpdate();
+    const onEnded = () => controller?.handleEnded();
     audioEl.addEventListener("timeupdate", onTimeUpdate);
+    audioEl.addEventListener("ended", onEnded);
     return () => {
       audioEl.removeEventListener("timeupdate", onTimeUpdate);
+      audioEl.removeEventListener("ended", onEnded);
       audioSyncRef.current = null;
     };
   }, [parsed, audioUrl]);

@@ -143,6 +143,7 @@ export function ensureGsapTimeline() {
 }
 
 export function seekToFrame(globalFrame) {
+  const wasPlaying = this.playing;
   if (this.playing) {
     this.stop();
   }
@@ -163,6 +164,7 @@ export function seekToFrame(globalFrame) {
       this.frame = clamped;
       this.gsapDriver.frame = clamped;
       this.applyFrame(clamped);
+      if (wasPlaying) this.play();
       return;
     }
     if (this.phase !== "loop") {
@@ -174,6 +176,7 @@ export function seekToFrame(globalFrame) {
     this.frame = loopLocalFrame;
     this.gsapDriver.frame = loopLocalFrame;
     this.applyFrame(loopLocalFrame);
+    if (wasPlaying) this.play();
     return;
   }
 
@@ -181,6 +184,7 @@ export function seekToFrame(globalFrame) {
   this.frame = normalized;
   this.gsapDriver.frame = normalized;
   this.applyFrame(normalized);
+  if (wasPlaying) this.play();
 }
 
 export function advanceFrame(deltaMs = 1000 / this.fps) {

@@ -49,10 +49,17 @@ export function createAudioSyncController(audioElement, bnsMetadata, fps = 60) {
     }
   }
 
+  function handleEnded() {
+    if (!loopFlag) return;
+    audioElement.currentTime = loopStartTime;
+    audioElement.play().catch(() => {});
+  }
+
   return {
     getExpectedAudioTime,
     syncFrame,
     seekToFrame,
     handleTimeUpdate,
+    handleEnded,
   };
 }

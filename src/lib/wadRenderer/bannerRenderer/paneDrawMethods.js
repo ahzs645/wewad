@@ -272,7 +272,7 @@ export function drawPane(context, binding, pane, paneState, width, height) {
   paneContext.restore();
 
   // Expand to cover Canvas 2D anti-aliasing seams between adjacent panes
-  const pad = 4;
+  const pad = 2;
   context.drawImage(this.paneCompositeSurface, -width / 2 - pad, -height / 2 - pad, width + 2 * pad, height + 2 * pad);
 }
 
