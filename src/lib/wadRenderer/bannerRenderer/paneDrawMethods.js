@@ -271,7 +271,9 @@ export function drawPane(context, binding, pane, paneState, width, height) {
   this.applyPaneVertexColorModulation(paneContext, pane, paneState, surfaceWidth, surfaceHeight);
   paneContext.restore();
 
-  context.drawImage(this.paneCompositeSurface, -width / 2, -height / 2, width, height);
+  // Expand by 0.5px on each side to cover Canvas 2D anti-aliasing seams between adjacent panes
+  const pad = 0.5;
+  context.drawImage(this.paneCompositeSurface, -width / 2 - pad, -height / 2 - pad, width + 2 * pad, height + 2 * pad);
 }
 
 // Resolve effective text colors by multiplying textTopColor/textBottomColor with material color2.
