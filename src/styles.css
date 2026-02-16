@@ -983,15 +983,38 @@ button.primary:hover {
   background: var(--tab-hover-bg);
 }
 
+.timeline-track-row {
+  margin-bottom: 10px;
+}
+
+.timeline-track-row:last-child {
+  margin-bottom: 0;
+}
+
 .timeline-labels {
   display: flex;
   justify-content: center;
-  gap: 16px;
+  align-items: baseline;
+  gap: 12px;
   margin-bottom: 6px;
   font-size: 0.72rem;
   font-weight: 600;
   letter-spacing: 0.8px;
   text-transform: uppercase;
+}
+
+.timeline-track-label {
+  color: var(--text-primary);
+  font-weight: 700;
+}
+
+.timeline-counter {
+  margin-left: auto;
+  font-family: "JetBrains Mono", monospace;
+  font-weight: 400;
+  letter-spacing: 0;
+  text-transform: none;
+  color: var(--text-secondary);
 }
 
 .timeline-phase-label.start {
@@ -1057,15 +1080,6 @@ button.primary:hover {
   transform: translateX(-50%);
   z-index: 2;
   box-shadow: 0 0 6px rgb(0 0 0 / 30%);
-}
-
-.timeline-counters {
-  display: flex;
-  justify-content: center;
-  margin-top: 6px;
-  font-family: "JetBrains Mono", monospace;
-  font-size: 0.72rem;
-  color: var(--text-secondary);
 }
 
 /* ──────────────────────────────────────────────────────────── Audio */

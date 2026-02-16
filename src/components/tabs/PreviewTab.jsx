@@ -31,7 +31,7 @@ export function PreviewTab({
   phaseMode, setPhaseMode,
   hasStartAnim, hasLoopAnim,
   timelineRef,
-  timelineSegments,
+  timelineTracks,
   seekToGlobalFrame,
 }) {
   return (
@@ -80,8 +80,7 @@ export function PreviewTab({
 
         <PlaybackTimeline
           ref={timelineRef}
-          startFrames={timelineSegments.startFrames}
-          loopFrames={timelineSegments.loopFrames}
+          tracks={timelineTracks}
           phaseMode={phaseMode}
           setPhaseMode={setPhaseMode}
           hasStartAnim={hasStartAnim}

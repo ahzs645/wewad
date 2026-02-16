@@ -153,23 +153,28 @@ export default function App() {
     };
   }, [parsed, effectiveIconRenderState]);
 
-  const primaryAnimSelection = previewDisplay === "icon" ? iconAnimSelection : bannerAnimSelection;
-  const fallbackAnimSelection = previewDisplay === "icon" ? bannerAnimSelection : iconAnimSelection;
+  const timelineTracks = useMemo(() => {
+    if (!parsed) return [];
+    const buildTrack = (sel, id, label) => {
+      const startFrames = phaseMode === "loopOnly" ? 0 : (sel.startAnim?.frameSize ?? 0);
+      const loopFrames = phaseMode === "startOnly" ? 0 : (sel.loopAnim?.frameSize ?? sel.anim?.frameSize ?? 0);
+      if (startFrames + loopFrames <= 0) return null;
+      return { id, label, startFrames, loopFrames };
+    };
+    const tracks = [];
+    if (previewDisplay !== "icon") {
+      const t = buildTrack(bannerAnimSelection, "banner", "Banner");
+      if (t) tracks.push(t);
+    }
+    if (previewDisplay !== "banner") {
+      const t = buildTrack(iconAnimSelection, "icon", "Icon");
+      if (t) tracks.push(t);
+    }
+    return tracks;
+  }, [parsed, phaseMode, previewDisplay, bannerAnimSelection, iconAnimSelection]);
 
-  const hasStartAnim = Boolean(primaryAnimSelection.startAnim || fallbackAnimSelection.startAnim);
-  const hasLoopAnim = Boolean(primaryAnimSelection.loopAnim || primaryAnimSelection.anim || fallbackAnimSelection.loopAnim || fallbackAnimSelection.anim);
-
-  const timelineSegments = useMemo(() => {
-    if (!parsed) return { startFrames: 0, loopFrames: 0 };
-    const sel = primaryAnimSelection.anim ? primaryAnimSelection : fallbackAnimSelection;
-    const startFrames = phaseMode === "loopOnly" ? 0
-      : (sel.startAnim?.frameSize ?? 0);
-    const loopFrames = phaseMode === "startOnly" ? 0
-      : (sel.loopAnim?.frameSize ?? sel.anim?.frameSize ?? 0);
-    if (phaseMode === "startOnly") return { startFrames, loopFrames: 0 };
-    if (phaseMode === "loopOnly") return { startFrames: 0, loopFrames };
-    return { startFrames, loopFrames };
-  }, [parsed, phaseMode, previewDisplay, bannerAnimSelection, iconAnimSelection, primaryAnimSelection, fallbackAnimSelection]);
+  const hasStartAnim = timelineTracks.some((t) => t.startFrames > 0);
+  const hasLoopAnim = timelineTracks.some((t) => t.loopFrames > 0);
 
   const canCustomizeWeather = useMemo(
     () => hasWeatherScene(parsed?.results?.banner?.renderLayout),
@@ -599,8 +604,6 @@ export default function App() {
       };
     };
 
-    const bannerDrivesTimeline = previewDisplay !== "icon";
-
     if (bannerResult && bannerCanvasRef.current) {
       const bannerPhaseOpts = resolvePhaseModeOptions(bannerAnimSelection);
       const bannerRenderer = new BannerRenderer(
@@ -620,14 +623,10 @@ export default function App() {
           displayAspect: previewDisplayAspect,
           tevQuality,
           fonts: bannerResult.fonts,
-          onFrame: bannerDrivesTimeline
-            ? (frame, total, phase, globalFrame) => {
-                const phaseLabel = phase === "start" ? "Start" : "Loop";
-                setAnimStatus(`${phaseLabel} ${Math.floor(frame)} / ${Math.max(1, Math.floor(total))}`);
-                timelineRef.current?.updatePlayhead(globalFrame);
-                audioSyncRef.current?.syncFrame(globalFrame);
-              }
-            : undefined,
+          onFrame: (frame, total, phase, globalFrame) => {
+            timelineRef.current?.updatePlayhead("banner", globalFrame);
+            audioSyncRef.current?.syncFrame(globalFrame);
+          },
         },
       );
       bannerRenderer.render();
@@ -656,14 +655,9 @@ export default function App() {
           displayAspect: previewDisplayAspect,
           tevQuality,
           fonts: iconResult.fonts,
-          onFrame: !bannerDrivesTimeline
-            ? (frame, total, phase, globalFrame) => {
-                const phaseLabel = phase === "start" ? "Start" : "Loop";
-                setAnimStatus(`${phaseLabel} ${Math.floor(frame)} / ${Math.max(1, Math.floor(total))}`);
-                timelineRef.current?.updatePlayhead(globalFrame);
-                audioSyncRef.current?.syncFrame(globalFrame);
-              }
-            : undefined,
+          onFrame: (frame, total, phase, globalFrame) => {
+            timelineRef.current?.updatePlayhead("icon", globalFrame);
+          },
         },
       );
       iconRenderer.render();
@@ -794,7 +788,7 @@ export default function App() {
                   phaseMode={phaseMode} setPhaseMode={setPhaseMode}
                   hasStartAnim={hasStartAnim} hasLoopAnim={hasLoopAnim}
                   timelineRef={timelineRef}
-                  timelineSegments={timelineSegments}
+                  timelineTracks={timelineTracks}
                   seekToGlobalFrame={seekToGlobalFrame}
                 />
               ) : null}

@@ -6,38 +6,12 @@ const PHASE_MODES = [
   { value: "loopOnly", label: "Loop Only" },
 ];
 
-export const PlaybackTimeline = forwardRef(function PlaybackTimeline({
-  startFrames,
-  loopFrames,
-  phaseMode,
-  setPhaseMode,
-  hasStartAnim,
-  hasLoopAnim,
-  onSeek,
-  isPlaying,
-}, ref) {
+function TrackRow({ id, label, startFrames, loopFrames, showLabel, onSeek, elemRef }) {
   const trackRef = useRef(null);
-  const playheadRef = useRef(null);
-  const counterRef = useRef(null);
   const [isDragging, setIsDragging] = useState(false);
 
   const totalFrames = startFrames + loopFrames;
   const startPercent = totalFrames > 0 ? (startFrames / totalFrames) * 100 : 0;
-  const showPhaseMode = hasStartAnim && hasLoopAnim;
-
-  useImperativeHandle(ref, () => ({
-    updatePlayhead(globalFrame) {
-      if (!playheadRef.current || !counterRef.current) return;
-      const clamped = Math.max(0, Math.min(globalFrame, totalFrames));
-      const percent = totalFrames > 0 ? (clamped / totalFrames) * 100 : 0;
-      playheadRef.current.style.left = `${percent}%`;
-
-      const phase = startFrames > 0 && clamped < startFrames ? "Start" : "Loop";
-      const localFrame = clamped < startFrames ? clamped : clamped - startFrames;
-      const phaseTotal = clamped < startFrames ? startFrames : loopFrames;
-      counterRef.current.textContent = `${phase} ${Math.floor(localFrame)} / ${Math.floor(phaseTotal)}`;
-    },
-  }), [totalFrames, startFrames, loopFrames]);
 
   const resolveFrameFromPointer = useCallback((clientX) => {
     const rect = trackRef.current?.getBoundingClientRect();
@@ -51,14 +25,12 @@ export const PlaybackTimeline = forwardRef(function PlaybackTimeline({
     event.preventDefault();
     setIsDragging(true);
     trackRef.current.setPointerCapture(event.pointerId);
-    const frame = resolveFrameFromPointer(event.clientX);
-    onSeek?.(frame);
+    onSeek?.(resolveFrameFromPointer(event.clientX));
   }, [resolveFrameFromPointer, onSeek]);
 
   const handlePointerMove = useCallback((event) => {
     if (!isDragging) return;
-    const frame = resolveFrameFromPointer(event.clientX);
-    onSeek?.(frame);
+    onSeek?.(resolveFrameFromPointer(event.clientX));
   }, [isDragging, resolveFrameFromPointer, onSeek]);
 
   const handlePointerUp = useCallback(() => {
@@ -73,6 +45,76 @@ export const PlaybackTimeline = forwardRef(function PlaybackTimeline({
   }, [isDragging]);
 
   if (totalFrames <= 0) return null;
+
+  return (
+    <div className="timeline-track-row">
+      <div className="timeline-labels">
+        {showLabel ? <span className="timeline-track-label">{label}</span> : null}
+        {startFrames > 0 ? (
+          <span className="timeline-phase-label start">Start ({startFrames}f)</span>
+        ) : null}
+        <span className="timeline-phase-label loop">Loop ({loopFrames}f)</span>
+        <span
+          className="timeline-counter"
+          ref={(el) => { elemRef.current[`${id}-counter`] = el; }}
+        >
+          0 / {totalFrames}
+        </span>
+      </div>
+      <div
+        className={`timeline-track${isDragging ? " dragging" : ""}`}
+        ref={trackRef}
+        onPointerDown={handlePointerDown}
+        onPointerMove={handlePointerMove}
+        onPointerUp={handlePointerUp}
+      >
+        {startFrames > 0 ? (
+          <div className="timeline-segment start" style={{ width: `${startPercent}%` }} />
+        ) : null}
+        <div className="timeline-segment loop" style={{ width: `${100 - startPercent}%` }} />
+        <div
+          className="timeline-playhead"
+          ref={(el) => { elemRef.current[`${id}-playhead`] = el; }}
+        />
+      </div>
+    </div>
+  );
+}
+
+export const PlaybackTimeline = forwardRef(function PlaybackTimeline({
+  tracks,
+  phaseMode,
+  setPhaseMode,
+  hasStartAnim,
+  hasLoopAnim,
+  onSeek,
+  isPlaying,
+}, ref) {
+  const elemRef = useRef({});
+  const showPhaseMode = hasStartAnim && hasLoopAnim;
+  const showLabel = tracks.length > 1;
+
+  useImperativeHandle(ref, () => ({
+    updatePlayhead(trackId, globalFrame) {
+      const track = tracks.find((t) => t.id === trackId);
+      if (!track) return;
+      const playhead = elemRef.current[`${trackId}-playhead`];
+      const counter = elemRef.current[`${trackId}-counter`];
+      const total = track.startFrames + track.loopFrames;
+      const clamped = Math.max(0, Math.min(globalFrame, total));
+      const percent = total > 0 ? (clamped / total) * 100 : 0;
+      if (playhead) playhead.style.left = `${percent}%`;
+      if (counter) {
+        const phase = track.startFrames > 0 && clamped < track.startFrames ? "Start" : "Loop";
+        const localFrame = clamped < track.startFrames ? clamped : clamped - track.startFrames;
+        const phaseTotal = clamped < track.startFrames ? track.startFrames : track.loopFrames;
+        counter.textContent = `${phase} ${Math.floor(localFrame)} / ${Math.floor(phaseTotal)}`;
+      }
+    },
+  }), [tracks]);
+
+  const hasAnyFrames = tracks.some((t) => (t.startFrames + t.loopFrames) > 0);
+  if (!hasAnyFrames) return null;
 
   return (
     <div className="playback-timeline">
@@ -91,30 +133,18 @@ export const PlaybackTimeline = forwardRef(function PlaybackTimeline({
         </div>
       ) : null}
 
-      <div className="timeline-labels">
-        {startFrames > 0 ? (
-          <span className="timeline-phase-label start">Start ({startFrames}f)</span>
-        ) : null}
-        <span className="timeline-phase-label loop">Loop ({loopFrames}f)</span>
-      </div>
-
-      <div
-        className={`timeline-track${isDragging ? " dragging" : ""}`}
-        ref={trackRef}
-        onPointerDown={handlePointerDown}
-        onPointerMove={handlePointerMove}
-        onPointerUp={handlePointerUp}
-      >
-        {startFrames > 0 ? (
-          <div className="timeline-segment start" style={{ width: `${startPercent}%` }} />
-        ) : null}
-        <div className="timeline-segment loop" style={{ width: `${100 - startPercent}%` }} />
-        <div className="timeline-playhead" ref={playheadRef} />
-      </div>
-
-      <div className="timeline-counters">
-        <span ref={counterRef}>Frame 0 / {totalFrames}</span>
-      </div>
+      {tracks.map((track) => (
+        <TrackRow
+          key={track.id}
+          id={track.id}
+          label={track.label}
+          startFrames={track.startFrames}
+          loopFrames={track.loopFrames}
+          showLabel={showLabel}
+          onSeek={onSeek}
+          elemRef={elemRef}
+        />
+      ))}
     </div>
   );
 });
