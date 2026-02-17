@@ -32,7 +32,8 @@ export function PreviewTab({
   hasStartAnim, hasLoopAnim,
   timelineRef,
   timelineTracks,
-  seekToGlobalFrame,
+  onTrackTogglePlay,
+  onTrackSeek,
 }) {
   return (
     <div className="tab-content active">
@@ -85,8 +86,8 @@ export function PreviewTab({
           setPhaseMode={setPhaseMode}
           hasStartAnim={hasStartAnim}
           hasLoopAnim={hasLoopAnim}
-          onSeek={seekToGlobalFrame}
-          isPlaying={isPlaying}
+          onTogglePlay={onTrackTogglePlay}
+          onSeek={onTrackSeek}
         />
 
         <div className="frame-settings">

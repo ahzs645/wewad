@@ -98,6 +98,7 @@ export class BannerRenderer {
     this.subframePlayback = options.subframePlayback !== false;
     this.gsapTimeline = null;
     this.gsapDriver = { frame: 0 };
+    this.audioFrame = 0;
     this.patternTextureCache = new Map();
     this.patternTextureCacheLimit = Number.isFinite(options.patternTextureCacheLimit)
       ? Math.max(64, Math.floor(options.patternTextureCacheLimit))

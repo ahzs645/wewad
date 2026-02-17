@@ -11,3 +11,4 @@ export {
 export { interpolateKeyframes } from "./wadRenderer/animations";
 export { flattenTextures, processWAD } from "./wadRenderer/pipeline";
 export { BannerRenderer } from "./wadRenderer/BannerRenderer";
+export { loadRendererBundle } from "./bundleLoader";

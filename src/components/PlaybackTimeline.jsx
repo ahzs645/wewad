@@ -6,7 +6,7 @@ const PHASE_MODES = [
   { value: "loopOnly", label: "Loop Only" },
 ];
 
-function TrackRow({ id, label, startFrames, loopFrames, showLabel, onSeek, elemRef }) {
+function TrackRow({ id, label, startFrames, loopFrames, isPlaying, showLabel, onTogglePlay, onSeek, elemRef }) {
   const trackRef = useRef(null);
   const [isDragging, setIsDragging] = useState(false);
 
@@ -25,13 +25,13 @@ function TrackRow({ id, label, startFrames, loopFrames, showLabel, onSeek, elemR
     event.preventDefault();
     setIsDragging(true);
     trackRef.current.setPointerCapture(event.pointerId);
-    onSeek?.(resolveFrameFromPointer(event.clientX));
-  }, [resolveFrameFromPointer, onSeek]);
+    onSeek?.(id, resolveFrameFromPointer(event.clientX));
+  }, [id, resolveFrameFromPointer, onSeek]);
 
   const handlePointerMove = useCallback((event) => {
     if (!isDragging) return;
-    onSeek?.(resolveFrameFromPointer(event.clientX));
-  }, [isDragging, resolveFrameFromPointer, onSeek]);
+    onSeek?.(id, resolveFrameFromPointer(event.clientX));
+  }, [id, isDragging, resolveFrameFromPointer, onSeek]);
 
   const handlePointerUp = useCallback(() => {
     setIsDragging(false);
@@ -49,6 +49,14 @@ function TrackRow({ id, label, startFrames, loopFrames, showLabel, onSeek, elemR
   return (
     <div className="timeline-track-row">
       <div className="timeline-labels">
+        <button
+          type="button"
+          className="timeline-track-play"
+          onClick={() => onTogglePlay?.(id)}
+          title={isPlaying ? "Pause" : "Play"}
+        >
+          {isPlaying ? "\u23F8" : "\u25B6"}
+        </button>
         {showLabel ? <span className="timeline-track-label">{label}</span> : null}
         {startFrames > 0 ? (
           <span className="timeline-phase-label start">Start ({startFrames}f)</span>
@@ -87,8 +95,8 @@ export const PlaybackTimeline = forwardRef(function PlaybackTimeline({
   setPhaseMode,
   hasStartAnim,
   hasLoopAnim,
+  onTogglePlay,
   onSeek,
-  isPlaying,
 }, ref) {
   const elemRef = useRef({});
   const showPhaseMode = hasStartAnim && hasLoopAnim;
@@ -140,7 +148,9 @@ export const PlaybackTimeline = forwardRef(function PlaybackTimeline({
           label={track.label}
           startFrames={track.startFrames}
           loopFrames={track.loopFrames}
+          isPlaying={track.isPlaying}
           showLabel={showLabel}
+          onTogglePlay={onTogglePlay}
           onSeek={onSeek}
           elemRef={elemRef}
         />

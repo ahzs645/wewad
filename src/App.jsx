@@ -46,7 +46,9 @@ export default function App() {
   const [activeTab, setActiveTab] = useState("preview");
   const [isDragOver, setIsDragOver] = useState(false);
   const [isProcessing, setIsProcessing] = useState(false);
-  const [isPlaying, setIsPlaying] = useState(false);
+  const [bannerPlaying, setBannerPlaying] = useState(false);
+  const [iconPlaying, setIconPlaying] = useState(false);
+  const isPlaying = bannerPlaying || iconPlaying;
   const [animStatus, setAnimStatus] = useState("Frame 0");
   const [phaseMode, setPhaseMode] = useState("full");
   const [startFrame, setStartFrame] = useState(0);
@@ -282,7 +284,8 @@ export default function App() {
 
       setSelectedFileName(file.name);
       setIsProcessing(true);
-      setIsPlaying(false);
+      setBannerPlaying(false);
+      setIconPlaying(false);
       setAnimStatus("Frame 0");
       setPhaseMode("full");
       setActiveTab("preview");
@@ -349,23 +352,18 @@ export default function App() {
       bannerRenderer?.stop();
       iconRenderer?.stop();
       audioElement?.pause();
-      setIsPlaying(false);
+      setBannerPlaying(false);
+      setIconPlaying(false);
       return;
     }
 
-    let startedPlayback = false;
-    if (!freezeVisualPlayback && bannerRenderer) { bannerRenderer.play(); startedPlayback = true; }
-    if (!freezeVisualPlayback && iconRenderer) { iconRenderer.play(); startedPlayback = true; }
+    if (!freezeVisualPlayback && bannerRenderer) { bannerRenderer.play(); setBannerPlaying(true); }
+    if (!freezeVisualPlayback && iconRenderer) { iconRenderer.play(); setIconPlaying(true); }
     if (audioElement && audioUrl) {
       const info = bannerRenderer?.getPlaybackInfo() ?? iconRenderer?.getPlaybackInfo();
-      if (info) {
-        audioSyncRef.current?.seekToFrame(info.globalFrame);
-      }
-      const playPromise = audioElement.play();
-      if (typeof playPromise?.catch === "function") playPromise.catch(() => {});
-      startedPlayback = true;
+      if (info) audioSyncRef.current?.seekToFrame(info.audioFrame ?? info.globalFrame);
+      audioElement.play()?.catch(() => {});
     }
-    setIsPlaying(startedPlayback);
   }, [audioUrl, canCustomizeWeather, customWeatherData, isPlaying]);
 
   const resetPlayback = useCallback(() => {
@@ -375,7 +373,47 @@ export default function App() {
     iconRendererRef.current?.reset();
     const audioElement = audioElementRef.current;
     if (audioElement) { audioElement.pause(); audioElement.currentTime = 0; }
-    setIsPlaying(false);
+    setBannerPlaying(false);
+    setIconPlaying(false);
+  }, []);
+
+  const handleTrackTogglePlay = useCallback((trackId) => {
+    if (trackId === "banner") {
+      const renderer = bannerRendererRef.current;
+      if (!renderer) return;
+      if (bannerPlaying) {
+        renderer.stop();
+        audioElementRef.current?.pause();
+        setBannerPlaying(false);
+      } else {
+        renderer.play();
+        if (audioElementRef.current && audioUrl) {
+          const info = renderer.getPlaybackInfo();
+          if (info) audioSyncRef.current?.seekToFrame(info.audioFrame ?? info.globalFrame);
+          audioElementRef.current.play()?.catch(() => {});
+        }
+        setBannerPlaying(true);
+      }
+    } else if (trackId === "icon") {
+      const renderer = iconRendererRef.current;
+      if (!renderer) return;
+      if (iconPlaying) {
+        renderer.stop();
+        setIconPlaying(false);
+      } else {
+        renderer.play();
+        setIconPlaying(true);
+      }
+    }
+  }, [bannerPlaying, iconPlaying, audioUrl]);
+
+  const handleTrackSeek = useCallback((trackId, globalFrame) => {
+    if (trackId === "banner") {
+      bannerRendererRef.current?.seekToFrame(globalFrame);
+      audioSyncRef.current?.seekToFrame(globalFrame);
+    } else if (trackId === "icon") {
+      iconRendererRef.current?.seekToFrame(globalFrame);
+    }
   }, []);
 
   const applyStartFrame = useCallback(() => {
@@ -390,12 +428,6 @@ export default function App() {
     setStartFrame(next);
     setStartFrameInput(String(next));
   }, [normalizeStartFrame, startFrame]);
-
-  const seekToGlobalFrame = useCallback((globalFrame) => {
-    bannerRendererRef.current?.seekToFrame(globalFrame);
-    iconRendererRef.current?.seekToFrame(globalFrame);
-    audioSyncRef.current?.seekToFrame(globalFrame);
-  }, []);
 
   const exportCanvas = useCallback((canvasRef, filename) => {
     const canvas = canvasRef.current;
@@ -461,13 +493,12 @@ export default function App() {
   const handleExportGsap = useCallback(async () => {
     if (!parsed || isExporting) return;
     setIsExporting(true);
-    setExportProgress("Preparing GSAP export...");
+    setExportProgress("Preparing renderer bundle...");
 
     try {
       const blob = await exportGsapBundle({
         parsed,
         sourceFileName: selectedFileName,
-        BannerRenderer,
         bannerAnimSelection,
         iconAnimSelection,
         rendererOptions: {
@@ -479,12 +510,8 @@ export default function App() {
         onProgress: (stage, current, total) => {
           const labels = {
             loading: "Loading zip library...",
-            "banner-layers": `Rendering banner layers (${current}/${total})...`,
-            "banner-sampling-start": `Sampling banner start animation (${current}/${total})...`,
-            "banner-sampling-loop": `Sampling banner loop animation (${current}/${total})...`,
-            "icon-layers": `Rendering icon layers (${current}/${total})...`,
-            "icon-sampling-start": `Sampling icon start animation (${current}/${total})...`,
-            "icon-sampling-loop": `Sampling icon loop animation (${current}/${total})...`,
+            "banner-textures": `Encoding banner textures (${current}/${total})...`,
+            "icon-textures": `Encoding icon textures (${current}/${total})...`,
             compressing: "Compressing zip...",
             done: "Done!",
           };
@@ -496,10 +523,10 @@ export default function App() {
       const safeName = selectedFileName
         ? selectedFileName.replace(/\.wad$/i, "").replace(/[^a-zA-Z0-9_\-() [\]]/g, "_")
         : titleId;
-      downloadBlob(blob, `${safeName}-gsap.zip`);
+      downloadBlob(blob, `${safeName}-renderer-bundle.zip`);
     } catch (error) {
-      console.error("GSAP export failed:", error);
-      setExportProgress(`GSAP export failed: ${error.message}`);
+      console.error("Renderer bundle export failed:", error);
+      setExportProgress(`Export failed: ${error.message}`);
     } finally {
       setTimeout(() => { setIsExporting(false); setExportProgress(""); }, 2000);
     }
@@ -550,7 +577,8 @@ export default function App() {
       audioSyncRef.current = null;
       return undefined;
     }
-    const controller = createAudioSyncController(audioEl, audio, 60);
+    const animationLoops = phaseMode !== "startOnly";
+    const controller = createAudioSyncController(audioEl, audio, 60, { animationLoops });
     audioSyncRef.current = controller;
     const onTimeUpdate = () => controller?.handleTimeUpdate();
     const onEnded = () => controller?.handleEnded();
@@ -561,12 +589,13 @@ export default function App() {
       audioEl.removeEventListener("ended", onEnded);
       audioSyncRef.current = null;
     };
-  }, [parsed, audioUrl]);
+  }, [parsed, audioUrl, phaseMode]);
 
   // Main renderer setup
   useEffect(() => {
     stopRenderers();
-    setIsPlaying(false);
+    setBannerPlaying(false);
+    setIconPlaying(false);
     setAvailableTitleLocales([]);
     setBannerPaneStateGroups([]);
     setIconPaneStateGroups([]);
@@ -623,9 +652,9 @@ export default function App() {
           displayAspect: previewDisplayAspect,
           tevQuality,
           fonts: bannerResult.fonts,
-          onFrame: (frame, total, phase, globalFrame) => {
+          onFrame: (frame, total, phase, globalFrame, audioFrame) => {
             timelineRef.current?.updatePlayhead("banner", globalFrame);
-            audioSyncRef.current?.syncFrame(globalFrame);
+            audioSyncRef.current?.syncFrame(audioFrame);
           },
         },
       );
@@ -655,7 +684,7 @@ export default function App() {
           displayAspect: previewDisplayAspect,
           tevQuality,
           fonts: iconResult.fonts,
-          onFrame: (frame, total, phase, globalFrame) => {
+          onFrame: (frame, total, phase, globalFrame, _audioFrame) => {
             timelineRef.current?.updatePlayhead("icon", globalFrame);
           },
         },
@@ -701,7 +730,8 @@ export default function App() {
     bannerRenderer?.setStartFrame(effectiveBannerStartFrame);
     iconRenderer?.setStartFrame(effectiveIconStartFrame);
     if (audioElement) { audioElement.pause(); audioElement.currentTime = 0; }
-    setIsPlaying(false);
+    setBannerPlaying(false);
+    setIconPlaying(false);
   }, [effectiveBannerStartFrame, effectiveIconStartFrame, startFrame]);
 
   // Clamp start frame when max changes
@@ -788,8 +818,12 @@ export default function App() {
                   phaseMode={phaseMode} setPhaseMode={setPhaseMode}
                   hasStartAnim={hasStartAnim} hasLoopAnim={hasLoopAnim}
                   timelineRef={timelineRef}
-                  timelineTracks={timelineTracks}
-                  seekToGlobalFrame={seekToGlobalFrame}
+                  timelineTracks={timelineTracks.map(t => ({
+                    ...t,
+                    isPlaying: t.id === "banner" ? bannerPlaying : iconPlaying,
+                  }))}
+                  onTrackTogglePlay={handleTrackTogglePlay}
+                  onTrackSeek={handleTrackSeek}
                 />
               ) : null}
 

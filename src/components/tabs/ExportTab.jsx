@@ -14,8 +14,35 @@ export function ExportTab({
       <div className="section-title">Export Bundle</div>
       <div className="export-panel">
         <div className="export-options">
+          <div className="export-actions">
+            <button
+              className="primary"
+              onClick={handleExportGsap}
+              disabled={isExporting || !parsed}
+              type="button"
+              title="Export renderer data bundle — contains layout, textures, animations, and fonts needed to replay this animation in another project using BannerRenderer + GSAP"
+            >
+              {isExporting ? "Exporting..." : "Export Renderer Bundle"}
+            </button>
+            <button
+              onClick={() => handleExportBundle(false)}
+              disabled={isExporting || !parsed}
+              type="button"
+            >
+              {isExporting ? "Exporting..." : "Export Snapshots (.zip)"}
+            </button>
+            <button
+              onClick={() => handleExportBundle(true)}
+              disabled={isExporting || !parsed}
+              type="button"
+              title="Includes all animation frames as PNGs — requires selecting an aspect ratio"
+            >
+              {isExporting ? "Exporting..." : "Export with All Frames"}
+            </button>
+            {exportProgress && <span className="export-progress">{exportProgress}</span>}
+          </div>
           <div className="export-option-row">
-            <label htmlFor="export-aspect">Frame Aspect Ratio</label>
+            <label htmlFor="export-aspect">Frame Render Aspect</label>
             <select
               id="export-aspect"
               value={exportAspect}
@@ -26,35 +53,8 @@ export function ExportTab({
               <option value="16:10">16:10</option>
             </select>
             <span className="export-option-hint">
-              Snapshots always include both 4:3 and 16:9. This controls animation frame renders.
+              Only applies to snapshot/frame exports. Renderer bundle uses native resolution (aspect set at runtime).
             </span>
-          </div>
-          <div className="export-actions">
-            <button
-              className="primary"
-              onClick={() => handleExportBundle(false)}
-              disabled={isExporting || !parsed}
-              type="button"
-            >
-              {isExporting ? "Exporting..." : "Export Bundle (.zip)"}
-            </button>
-            <button
-              onClick={() => handleExportBundle(true)}
-              disabled={isExporting || !parsed}
-              type="button"
-              title="Includes all animation frames as PNGs (may be slow for long animations)"
-            >
-              {isExporting ? "Exporting..." : "Export with All Frames"}
-            </button>
-            <button
-              onClick={handleExportGsap}
-              disabled={isExporting || !parsed}
-              type="button"
-              title="Export as GSAP animation bundle with individual layers, timeline JSON, and a self-contained HTML player"
-            >
-              {isExporting ? "Exporting..." : "Export GSAP Animation"}
-            </button>
-            {exportProgress && <span className="export-progress">{exportProgress}</span>}
           </div>
         </div>
 

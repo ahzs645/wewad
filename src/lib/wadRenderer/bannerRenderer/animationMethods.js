@@ -90,7 +90,7 @@ export function applyFrame(rawFrame) {
     this.frame = nextFrame;
     this.renderFrame(this.frame);
     const globalFrame = this.startFrameCount + Math.max(0, this.frame - this.loopPlaybackStartFrame);
-    this.onFrame(Math.max(0, this.frame - this.loopPlaybackStartFrame), loopLength, this.phase, globalFrame);
+    this.onFrame(Math.max(0, this.frame - this.loopPlaybackStartFrame), loopLength, this.phase, globalFrame, this.audioFrame);
     return;
   }
 
@@ -98,7 +98,7 @@ export function applyFrame(rawFrame) {
   const nextFrame = this.normalizeFrameForPlayback(rawFrame);
   this.frame = nextFrame;
   this.renderFrame(this.frame);
-  this.onFrame(this.frame, total, this.phase, this.frame);
+  this.onFrame(this.frame, total, this.phase, this.frame, this.audioFrame);
 }
 
 export function setStartFrame(rawFrame) {
@@ -153,6 +153,7 @@ export function seekToFrame(globalFrame) {
   }
 
   const clamped = Math.max(0, Number.isFinite(globalFrame) ? globalFrame : 0);
+  this.audioFrame = clamped;
 
   if (this.sequenceEnabled && this.startAnim) {
     const startFrames = this.startFrameCount;
@@ -189,6 +190,7 @@ export function seekToFrame(globalFrame) {
 
 export function advanceFrame(deltaMs = 1000 / this.fps) {
   const frameDelta = this.subframePlayback ? Math.max(0, (deltaMs * this.fps) / 1000) : 1;
+  this.audioFrame += frameDelta;
 
   if (this.sequenceEnabled && this.phase === "start") {
     const startFrames = this.getFrameCountForAnim(this.startAnim);

@@ -28,14 +28,14 @@ function canvasToBlob(canvas, type = "image/png") {
   });
 }
 
-function imageDataToPngBlob(imageData) {
+export function imageDataToPngBlob(imageData) {
   const canvas = new OffscreenCanvas(imageData.width, imageData.height);
   const ctx = canvas.getContext("2d");
   ctx.putImageData(imageData, 0, 0);
   return canvas.convertToBlob({ type: "image/png" });
 }
 
-function tplImageToImageData(image) {
+export function tplImageToImageData(image) {
   return new ImageData(
     new Uint8ClampedArray(image.imageData.buffer, image.imageData.byteOffset, image.imageData.byteLength),
     image.width,
@@ -139,7 +139,7 @@ function buildManifest(parsed, sourceFileName, options) {
   return manifest;
 }
 
-function createWavArrayBuffer(audio) {
+export function createWavArrayBuffer(audio) {
   if (!audio?.pcm16?.length || !Number.isFinite(audio.sampleRate) || audio.sampleRate <= 0) {
     return null;
   }

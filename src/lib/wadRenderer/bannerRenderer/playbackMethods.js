@@ -62,6 +62,7 @@ export function reset() {
   }
   this.frame = this.normalizeFrameForPlayback(this.startFrame);
   this.gsapDriver.frame = this.frame;
+  this.audioFrame = this.frame;
   if (this.gsapTimeline) {
     this.gsapTimeline.pause(0);
   }
@@ -83,6 +84,7 @@ export function getPlaybackInfo() {
     phase: this.phase,
     localFrame: this.frame,
     globalFrame,
+    audioFrame: this.audioFrame,
     startFrames,
     loopFrames: loopLength,
     totalFrames: startFrames + loopLength,
