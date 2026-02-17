@@ -301,7 +301,7 @@ export function suggestInitialFrame(result) {
   return 0;
 }
 
-export function resolveAnimationSelection(targetResult, selectedState) {
+export function resolveAnimationSelection(targetResult, selectedState, animOverrideId) {
   const explicitState = normalizeRenderState(selectedState);
   if (!targetResult) {
     return {
@@ -311,6 +311,20 @@ export function resolveAnimationSelection(targetResult, selectedState) {
       renderState: explicitState,
       playbackMode: "loop",
     };
+  }
+
+  // If a specific animation entry is selected by override, use it directly.
+  if (animOverrideId) {
+    const entry = targetResult.animEntries?.find((e) => e.id === animOverrideId);
+    if (entry?.anim) {
+      return {
+        anim: entry.anim,
+        startAnim: null,
+        loopAnim: entry.anim,
+        renderState: null,
+        playbackMode: "loop",
+      };
+    }
   }
 
   const autoState = resolveAutoRenderState(targetResult);

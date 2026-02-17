@@ -141,6 +141,7 @@ export class BannerRenderer {
     this.availablePaneStateGroups = [];
     this.activePaneStateSelections = {};
     this.paneStateMembershipByPaneName = new Map();
+    this.paneVisibilityOverrides = options.paneVisibilityOverrides ?? null;
     this.customWeather = options.customWeather ?? null;
     this.customWeatherIconPaneSet = null;
     this.customWeatherDigitMap = null;

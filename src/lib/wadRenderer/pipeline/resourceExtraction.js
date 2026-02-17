@@ -20,7 +20,7 @@ function inferAnimationState(filePath) {
   return match[1].toUpperCase();
 }
 
-function parseResourceSet(files, loggerInput) {
+export function parseResourceSet(files, loggerInput) {
   const logger = withLogger(loggerInput);
   const sourceFiles = { ...files };
 

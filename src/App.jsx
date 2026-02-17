@@ -2,7 +2,9 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   BannerRenderer,
   flattenTextures,
+  processArchive,
   processWAD,
+  processZipBundle,
 } from "./lib/wadRenderer";
 import { downloadBlob, exportBundle, loadBundle, revokeBundle } from "./lib/exportBundle";
 import { exportGsapBundle } from "./lib/gsapExport";
@@ -60,6 +62,8 @@ export default function App() {
 
   // --- Render state & locale ---
   const [bannerRenderState, setBannerRenderState] = useState("auto");
+  const [bannerAnimOverride, setBannerAnimOverride] = useState(null);
+  const [bannerDiscType, setBannerDiscType] = useState("auto");
   const [iconRenderState, setIconRenderState] = useState("auto");
   const [titleLocale, setTitleLocale] = useState("auto");
   const [availableTitleLocales, setAvailableTitleLocales] = useState([]);
@@ -115,9 +119,59 @@ export default function App() {
   }, [iconRenderState, parsed, useCustomWeather]);
 
   const bannerAnimSelection = useMemo(
-    () => resolveAnimationSelection(parsed?.results?.banner, bannerRenderState),
-    [parsed, bannerRenderState],
+    () => resolveAnimationSelection(parsed?.results?.banner, bannerRenderState, bannerAnimOverride),
+    [parsed, bannerRenderState, bannerAnimOverride],
   );
+
+  // Detect whether the banner layout has Disc Channel disc-type panes.
+  const bannerDiscPaneNames = useMemo(() => {
+    const panes = parsed?.results?.banner?.renderLayout?.panes;
+    if (!panes) return null;
+    const names = new Set(panes.map((p) => p.name));
+    if (names.has("WiiDisk") && names.has("GCDisk") && names.has("DVDDisk")) {
+      return names;
+    }
+    return null;
+  }, [parsed]);
+
+  // Build pane visibility overrides for disc type selection.
+  const bannerPaneVisibilityOverrides = useMemo(() => {
+    if (!bannerDiscPaneNames || bannerDiscType === "auto") return null;
+    const overrides = new Map();
+    // Show the master disc container.
+    overrides.set("N_DVD0", true);
+    const wii = bannerDiscType === "wii";
+    const gc = bannerDiscType === "gc";
+    const dvd = bannerDiscType === "dvd";
+    // Disc meshes
+    overrides.set("DVDDisk", dvd);
+    overrides.set("N_Wii0", wii);
+    overrides.set("WiiDisk", wii);
+    overrides.set("N_GC0", gc);
+    overrides.set("GCDisk", gc);
+    // Shadows
+    overrides.set("SahdeDVD", dvd);
+    overrides.set("ShadeWii", wii);
+    overrides.set("ShadeGC", gc);
+    // Reflections
+    overrides.set("N_RefDVD", dvd);
+    overrides.set("RefDVD", dvd);
+    overrides.set("N_RefWii", wii);
+    overrides.set("RefWii", wii);
+    overrides.set("N_RefGC", gc);
+    overrides.set("RefGC", gc);
+    // Unknown disc
+    overrides.set("N_Unknown", false);
+    overrides.set("UnknownDisk", false);
+    overrides.set("N_RefUnknown", false);
+    overrides.set("RefUnknown", false);
+    overrides.set("ShadeWii_00", false);
+    // Window panes (disc label areas)
+    overrides.set("W_DVD", dvd);
+    overrides.set("W_Wii", wii);
+    overrides.set("W_GC", gc);
+    return overrides;
+  }, [bannerDiscPaneNames, bannerDiscType]);
 
   const iconAnimSelection = useMemo(() => {
     const selection = resolveAnimationSelection(parsed?.results?.icon, effectiveIconRenderState);
@@ -290,6 +344,8 @@ export default function App() {
       setPhaseMode("full");
       setActiveTab("preview");
       setBannerRenderState("auto");
+      setBannerAnimOverride(null);
+      setBannerDiscType("auto");
       setIconRenderState("auto");
       setTitleLocale("auto");
       setAvailableTitleLocales([]);
@@ -307,7 +363,15 @@ export default function App() {
 
       try {
         const buffer = await file.arrayBuffer();
-        const result = await processWAD(buffer, logger);
+        const ext = file.name.toLowerCase().split(".").pop();
+        let result;
+        if (ext === "arc") {
+          result = processArchive(buffer, logger);
+        } else if (ext === "zip") {
+          result = await processZipBundle(buffer, logger);
+        } else {
+          result = await processWAD(buffer, logger);
+        }
 
         if (!result.results.banner && !result.results.icon) {
           logger.warn("No banner or icon content could be rendered.");
@@ -649,6 +713,7 @@ export default function App() {
           paneStateSelections: customWeatherData ? null : bannerPaneStateSelections,
           titleLocale: requestedLocale,
           customWeather: customWeatherData,
+          paneVisibilityOverrides: bannerPaneVisibilityOverrides,
           displayAspect: previewDisplayAspect,
           tevQuality,
           fonts: bannerResult.fonts,
@@ -718,7 +783,7 @@ export default function App() {
     activeTab, parsed, startFrame, effectiveBannerStartFrame, effectiveIconStartFrame,
     stopRenderers, bannerAnimSelection, iconAnimSelection, titleLocale,
     bannerPaneStateSelections, iconPaneStateSelections, customWeatherData, customNewsData,
-    previewDisplayAspect, tevQuality, phaseMode,
+    previewDisplayAspect, tevQuality, phaseMode, bannerPaneVisibilityOverrides,
   ]);
 
   // Start frame sync
@@ -792,6 +857,9 @@ export default function App() {
                   tevQuality={tevQuality} setTevQuality={setTevQuality}
                   bannerRenderState={bannerRenderState} setBannerRenderState={setBannerRenderState}
                   bannerRenderStateOptions={bannerRenderStateOptions}
+                  bannerAnimOverride={bannerAnimOverride} setBannerAnimOverride={setBannerAnimOverride}
+                  bannerDiscType={bannerDiscType} setBannerDiscType={setBannerDiscType}
+                  showDiscTypeOption={bannerDiscPaneNames != null}
                   iconRenderState={iconRenderState} setIconRenderState={setIconRenderState}
                   iconRenderStateOptions={iconRenderStateOptions}
                   titleLocale={titleLocale} setTitleLocale={setTitleLocale}

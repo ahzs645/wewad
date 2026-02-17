@@ -1,1 +1,1 @@
-export { flattenTextures, processWAD } from "./process";
+export { flattenTextures, processArchive, processWAD, processZipBundle } from "./process";

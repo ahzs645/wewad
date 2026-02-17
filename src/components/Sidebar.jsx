@@ -18,7 +18,7 @@ export function Sidebar({
     <aside className="sidebar">
       <header>
         <h1>Wii Channel Banner Renderer</h1>
-        <p>Drop a .WAD file to extract and render its channel banner and icon</p>
+        <p>Drop a .WAD, .ARC, or .ZIP file to extract and render its channel banner and icon</p>
       </header>
 
       <div
@@ -43,13 +43,13 @@ export function Sidebar({
             ? `Processing ${selectedFileName || "file"}...`
             : selectedFileName
               ? `Loaded: ${selectedFileName}`
-              : "Drop .WAD file here"}
+              : "Drop file here"}
         </div>
         <span>or click to browse</span>
         <input
           ref={fileInputRef}
           type="file"
-          accept=".wad"
+          accept=".wad,.arc,.zip"
           onChange={(event) => {
             const file = event.target.files?.[0];
             if (file) {

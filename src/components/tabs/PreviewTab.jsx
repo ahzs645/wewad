@@ -11,6 +11,8 @@ export function PreviewTab({
   previewDisplayAspect, setPreviewDisplayAspect,
   tevQuality, setTevQuality,
   bannerRenderState, setBannerRenderState, bannerRenderStateOptions,
+  bannerAnimOverride, setBannerAnimOverride,
+  bannerDiscType, setBannerDiscType, showDiscTypeOption,
   iconRenderState, setIconRenderState, iconRenderStateOptions,
   titleLocale, setTitleLocale, availableTitleLocales,
   bannerPaneStateGroups, bannerPaneStateSelections, setBannerPaneStateSelections,
@@ -154,6 +156,41 @@ export function PreviewTab({
                     {state}
                   </option>
                 ))}
+              </select>
+            </div>
+          ) : null}
+          {(parsed?.results?.banner?.animEntries?.length ?? 0) > 2 ? (
+            <div className="state-control">
+              <label htmlFor="banner-anim">Animation</label>
+              <select
+                id="banner-anim"
+                value={bannerAnimOverride ?? "auto"}
+                onChange={(event) => setBannerAnimOverride(event.target.value === "auto" ? null : event.target.value)}
+              >
+                <option value="auto">Auto</option>
+                {parsed.results.banner.animEntries.map((entry) => {
+                  const fileName = entry.path.split("/").pop().replace(/\.[^.]+$/, "");
+                  return (
+                    <option key={entry.id} value={entry.id}>
+                      {fileName} ({entry.frameSize}f)
+                    </option>
+                  );
+                })}
+              </select>
+            </div>
+          ) : null}
+          {showDiscTypeOption ? (
+            <div className="state-control">
+              <label htmlFor="banner-disc-type">Disc Type</label>
+              <select
+                id="banner-disc-type"
+                value={bannerDiscType}
+                onChange={(event) => setBannerDiscType(event.target.value)}
+              >
+                <option value="auto">Auto</option>
+                <option value="wii">Wii Disc</option>
+                <option value="gc">GameCube Disc</option>
+                <option value="dvd">DVD</option>
               </select>
             </div>
           ) : null}
@@ -355,21 +392,25 @@ export function PreviewTab({
 
       <div className="info-panel">
         {parsed ? (
-          <>
-            <div>
-              <span className="key">Title ID:</span> <span className="val">{parsed.wad.titleId}</span>
-            </div>
-            <div>
-              <span className="key">WAD Type:</span>{" "}
-              <span className="val">0x{parsed.wad.wadType.toString(16)}</span>
-            </div>
-            <div>
-              <span className="key">Contents:</span>{" "}
-              <span className="val">{parsed.wad.numContents} file(s)</span>
-            </div>
-          </>
+          parsed.wad ? (
+            <>
+              <div>
+                <span className="key">Title ID:</span> <span className="val">{parsed.wad.titleId}</span>
+              </div>
+              <div>
+                <span className="key">WAD Type:</span>{" "}
+                <span className="val">0x{parsed.wad.wadType.toString(16)}</span>
+              </div>
+              <div>
+                <span className="key">Contents:</span>{" "}
+                <span className="val">{parsed.wad.numContents} file(s)</span>
+              </div>
+            </>
+          ) : (
+            <span className="val">Archive loaded (no WAD metadata)</span>
+          )
         ) : (
-          <span className="val">No WAD data parsed.</span>
+          <span className="val">No data parsed.</span>
         )}
       </div>
     </div>

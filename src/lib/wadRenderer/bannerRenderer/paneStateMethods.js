@@ -35,9 +35,13 @@ export function getLocalPaneState(pane, frame) {
 
   // Custom weather digit visibility takes priority over icon visibility.
   const digitVisibilityOverride = this.getCustomWeatherDigitVisibility?.(pane) ?? null;
+  // User-provided pane visibility overrides (e.g., disc type selection).
+  const userVisOverride = this.paneVisibilityOverrides?.get(pane.name) ?? null;
   const visibilityOverride = digitVisibilityOverride != null
     ? digitVisibilityOverride
-    : (this.getCustomWeatherVisibilityOverride?.(pane) ?? null);
+    : userVisOverride != null
+      ? userVisOverride
+      : (this.getCustomWeatherVisibilityOverride?.(pane) ?? null);
   const hasAnimatedAlpha = animValues.alpha != null;
   // On real Wii, the system menu sets locale-matching panes visible (they're
   // visible=false in the BRLYT since the layout doesn't know the console language).

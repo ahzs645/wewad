@@ -1,9 +1,10 @@
-import { parseWAD } from "../parsers/index";
+import { parseU8, parseWAD } from "../parsers/index";
 import { withLogger } from "../shared/index";
 import { tryFindBannerArchiveByTmdIndex, tryFindMetaArchive } from "./archiveSelection";
 import { decryptWadContents } from "./decryption";
 import { createRenderableLayout } from "./layout";
-import { extractChannelAudio, extractTargetResources } from "./resourceExtraction";
+import { extractChannelAudio, extractTargetResources, parseResourceSet } from "./resourceExtraction";
+import { loadJSZip } from "../../exportBundle";
 
 export async function processWAD(buffer, loggerInput) {
   const logger = withLogger(loggerInput);
@@ -90,4 +91,132 @@ export function flattenTextures(tplImages) {
   }
 
   return entries;
+}
+
+function buildResultFromResourceSet(parsedTarget, logger) {
+  if (!parsedTarget) {
+    return null;
+  }
+
+  return {
+    tplImages: parsedTarget.tplImages,
+    layout: parsedTarget.layout,
+    anim: parsedTarget.anim,
+    animStart: parsedTarget.animStart ?? null,
+    animLoop: parsedTarget.animLoop ?? null,
+    animEntries: parsedTarget.animEntries ?? [],
+    fonts: parsedTarget.fonts ?? {},
+    renderLayout: createRenderableLayout(
+      parsedTarget.layout,
+      parsedTarget.tplImages,
+      608,
+      456,
+      logger,
+    ),
+  };
+}
+
+export function processArchive(buffer, loggerInput) {
+  const logger = withLogger(loggerInput);
+
+  logger.info("=== Parsing U8 Archive ===");
+  let files;
+  try {
+    files = parseU8(buffer, logger);
+  } catch (error) {
+    logger.error(`Failed to parse U8 archive: ${error.message}`);
+    return { wad: null, results: {} };
+  }
+
+  const fileCount = Object.keys(files).length;
+  logger.info(`Extracted ${fileCount} file(s) from archive`);
+
+  const parsedTarget = parseResourceSet(files, logger);
+  const banner = buildResultFromResourceSet(parsedTarget, logger);
+
+  const results = {};
+  if (banner) {
+    results.banner = banner;
+  } else {
+    logger.warn("No renderable layout found in archive");
+  }
+
+  logger.success("=== Done! ===");
+  return { wad: null, results };
+}
+
+export async function processZipBundle(buffer, loggerInput) {
+  const logger = withLogger(loggerInput);
+
+  logger.info("=== Parsing ZIP Bundle ===");
+  const JSZip = await loadJSZip();
+  const zip = await JSZip.loadAsync(buffer);
+
+  // Collect all .arc files from the ZIP
+  const arcEntries = Object.entries(zip.files).filter(
+    ([path, entry]) => !entry.dir && path.toLowerCase().endsWith(".arc"),
+  );
+
+  // Collect loose raw files (.brlyt, .brlan, .tpl)
+  const looseEntries = Object.entries(zip.files).filter(([path, entry]) => {
+    if (entry.dir) return false;
+    const lower = path.toLowerCase();
+    return lower.endsWith(".brlyt") || lower.endsWith(".brlan") || lower.endsWith(".tpl") ||
+      lower.endsWith(".brfnt") || lower.endsWith(".szs");
+  });
+
+  const mergedFiles = {};
+
+  // Parse each .arc and merge files (largest first for priority)
+  if (arcEntries.length > 0) {
+    // Sort by size descending so the largest archive's files take priority
+    const arcBuffers = [];
+    for (const [path, entry] of arcEntries) {
+      const arcBuffer = await entry.async("arraybuffer");
+      arcBuffers.push({ path, buffer: arcBuffer, size: arcBuffer.byteLength });
+    }
+    arcBuffers.sort((a, b) => b.size - a.size);
+
+    for (const { path, buffer: arcBuffer } of arcBuffers) {
+      logger.info(`Parsing archive: ${path}`);
+      try {
+        const arcFiles = parseU8(arcBuffer, logger);
+        for (const [filePath, data] of Object.entries(arcFiles)) {
+          if (!mergedFiles[filePath]) {
+            mergedFiles[filePath] = data;
+          }
+        }
+      } catch (error) {
+        logger.warn(`Failed to parse ${path}: ${error.message}`);
+      }
+    }
+  }
+
+  // Add loose files
+  for (const [path, entry] of looseEntries) {
+    if (!mergedFiles[path]) {
+      mergedFiles[path] = await entry.async("arraybuffer");
+    }
+  }
+
+  const fileCount = Object.keys(mergedFiles).length;
+  if (fileCount === 0) {
+    logger.warn("No renderable files found in ZIP bundle");
+    return { wad: null, results: {} };
+  }
+
+  logger.info(`Total ${fileCount} file(s) available for rendering`);
+
+  const parsedTarget = parseResourceSet(mergedFiles, logger);
+  const banner = buildResultFromResourceSet(parsedTarget, logger);
+
+  const results = {};
+  if (banner) {
+    results.banner = banner;
+  } else {
+    logger.warn("No renderable layout found in ZIP bundle");
+  }
+
+  logger.success("=== Done! ===");
+  return { wad: null, results };
 }
