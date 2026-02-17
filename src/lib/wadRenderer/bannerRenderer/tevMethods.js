@@ -385,6 +385,28 @@ export function runTevPipeline(pane, paneState, width, height) {
   // Run per-pixel TEV evaluation with effective stages (may be default if none defined).
   const result = evaluateTevPipeline(stages, material, textureBuffers, rasBuffer, evalW, evalH);
 
+  // Post-process: for panes where the hardware relies on an external clip mask (e.g.
+  // BackMask2) to hide areas outside the first texture's shape, multiply the TEV output
+  // alpha by the first texture's alpha so the shape is preserved in Canvas 2D.
+  if (this.paneAlphaMaskFromFirstTexture?.has(pane.name) && textureBuffers.length > 0 && textureBuffers[0]) {
+    const firstTex = textureBuffers[0];
+    const data = result.data;
+    const texData = firstTex.data;
+    const rW = result.width;
+    const rH = result.height;
+    const tW = firstTex.width;
+    const tH = firstTex.height;
+    for (let y = 0; y < rH; y += 1) {
+      for (let x = 0; x < rW; x += 1) {
+        const ri = (y * rW + x) * 4;
+        const tx = Math.min(x, tW - 1);
+        const ty = Math.min(y, tH - 1);
+        const ti = (ty * tW + tx) * 4;
+        data[ri + 3] = Math.round(data[ri + 3] * texData[ti + 3] / 255);
+      }
+    }
+  }
+
   if (useFastPath && cacheKey) {
     this.tevResultCache.set(pane.name, { key: cacheKey, result });
   }

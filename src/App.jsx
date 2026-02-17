@@ -134,44 +134,63 @@ export default function App() {
     return null;
   }, [parsed]);
 
-  // Build pane visibility overrides for disc type selection.
+  // Build pane visibility overrides for disc channel layouts.
+  // Always hide panes that render incorrectly in Canvas 2D (GX clipping masks,
+  // untextured window panes, reflection panes with complex TEV materials).
+  // Note: WeWAD's BRLYT parser produces a flat sibling structure under N_Disk —
+  // discs, shadows, reflections, and masks are all siblings, not nested children.
   const bannerPaneVisibilityOverrides = useMemo(() => {
-    if (!bannerDiscPaneNames || bannerDiscType === "auto") return null;
+    if (!bannerDiscPaneNames) return null;
     const overrides = new Map();
-    // Show the master disc container.
-    overrides.set("N_DVD0", true);
-    const wii = bannerDiscType === "wii";
-    const gc = bannerDiscType === "gc";
-    const dvd = bannerDiscType === "dvd";
-    // Disc meshes
-    overrides.set("DVDDisk", dvd);
-    overrides.set("N_Wii0", wii);
-    overrides.set("WiiDisk", wii);
-    overrides.set("N_GC0", gc);
-    overrides.set("GCDisk", gc);
-    // Shadows
-    overrides.set("SahdeDVD", dvd);
-    overrides.set("ShadeWii", wii);
-    overrides.set("ShadeGC", gc);
-    // Reflections
-    overrides.set("N_RefDVD", dvd);
-    overrides.set("RefDVD", dvd);
-    overrides.set("N_RefWii", wii);
-    overrides.set("RefWii", wii);
-    overrides.set("N_RefGC", gc);
-    overrides.set("RefGC", gc);
-    // Unknown disc
-    overrides.set("N_Unknown", false);
-    overrides.set("UnknownDisk", false);
-    overrides.set("N_RefUnknown", false);
-    overrides.set("RefUnknown", false);
-    overrides.set("ShadeWii_00", false);
-    // Window panes (disc label areas)
-    overrides.set("W_DVD", dvd);
-    overrides.set("W_Wii", wii);
-    overrides.set("W_GC", gc);
+    // BackMask2 is a GX clipping mask — renders as solid gray/black in Canvas 2D.
+    overrides.set("BackMask2", false);
+    // Window panes have untextured content materials (color1=[0,0,0,0]) —
+    // on real hardware their content is filled dynamically by the System Menu.
+    overrides.set("W_DVD", false);
+    overrides.set("W_Wii", false);
+    overrides.set("W_GC", false);
+
+    if (bannerDiscType !== "auto") {
+      // Show the master disc container (N_DVD0 is visible=false by default).
+      overrides.set("N_DVD0", true);
+      const wii = bannerDiscType === "wii";
+      const gc = bannerDiscType === "gc";
+      const dvd = bannerDiscType === "dvd";
+      // Disc meshes
+      overrides.set("DVDDisk", dvd);
+      overrides.set("N_Wii0", wii);
+      overrides.set("WiiDisk", wii);
+      overrides.set("N_GC0", gc);
+      overrides.set("GCDisk", gc);
+      // Shadows
+      overrides.set("SahdeDVD", dvd);
+      overrides.set("ShadeWii", wii);
+      overrides.set("ShadeGC", gc);
+      // Reflections
+      overrides.set("N_RefDVD", dvd);
+      overrides.set("RefDVD", dvd);
+      overrides.set("N_RefWii", wii);
+      overrides.set("RefWii", wii);
+      overrides.set("N_RefGC", gc);
+      overrides.set("RefGC", gc);
+      // Unknown disc + reflection
+      overrides.set("N_Unknown", false);
+      overrides.set("UnknownDisk", false);
+      overrides.set("ShadeWii_00", false);
+      overrides.set("N_Ref0_00", false);
+      overrides.set("N_RefUnknown", false);
+      overrides.set("RefUnknown", false);
+    }
     return overrides;
   }, [bannerDiscPaneNames, bannerDiscType]);
+
+  // Reflection panes rely on BackMask2 for circular clipping on real hardware.
+  // In Canvas 2D we post-multiply the TEV alpha by the first texture's alpha
+  // so the disc's circular shape is preserved.
+  const bannerAlphaMaskPanes = useMemo(() => {
+    if (!bannerDiscPaneNames) return null;
+    return new Set(["RefDVD", "RefWii", "RefGC", "RefUnknown"]);
+  }, [bannerDiscPaneNames]);
 
   const iconAnimSelection = useMemo(() => {
     const selection = resolveAnimationSelection(parsed?.results?.icon, effectiveIconRenderState);
@@ -714,6 +733,7 @@ export default function App() {
           titleLocale: requestedLocale,
           customWeather: customWeatherData,
           paneVisibilityOverrides: bannerPaneVisibilityOverrides,
+          paneAlphaMaskFromFirstTexture: bannerAlphaMaskPanes,
           displayAspect: previewDisplayAspect,
           tevQuality,
           fonts: bannerResult.fonts,
@@ -783,7 +803,7 @@ export default function App() {
     activeTab, parsed, startFrame, effectiveBannerStartFrame, effectiveIconStartFrame,
     stopRenderers, bannerAnimSelection, iconAnimSelection, titleLocale,
     bannerPaneStateSelections, iconPaneStateSelections, customWeatherData, customNewsData,
-    previewDisplayAspect, tevQuality, phaseMode, bannerPaneVisibilityOverrides,
+    previewDisplayAspect, tevQuality, phaseMode, bannerPaneVisibilityOverrides, bannerAlphaMaskPanes,
   ]);
 
   // Start frame sync
