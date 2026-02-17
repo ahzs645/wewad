@@ -218,14 +218,28 @@ function WiiBanner({ bundleUrl, aspectRatio = 4 / 3 }) {
 
 ### Audio
 
-If \`audio.wav\` is present in the bundle:
+If \`audio.wav\` is present in the bundle, the manifest includes loop metadata:
 
 \`\`\`js
 if (bundle.audioWav) {
   const blob = new Blob([bundle.audioWav], { type: "audio/wav" });
   const audioEl = new Audio(URL.createObjectURL(blob));
-  audioEl.loop = true;
-  audioEl.play();
+
+  const { loopFlag, loopStart, sampleRate, durationSeconds } = bundle.manifest.audio;
+  const loopStartTime = loopFlag ? loopStart / sampleRate : 0;
+
+  // When audio ends (or reaches end), seek back to loop point
+  audioEl.addEventListener("ended", () => {
+    audioEl.currentTime = loopStartTime;
+    audioEl.play().catch(() => {});
+  });
+  audioEl.addEventListener("timeupdate", () => {
+    if (audioEl.currentTime >= durationSeconds - 0.05) {
+      audioEl.currentTime = loopStartTime;
+    }
+  });
+
+  audioEl.play().catch(() => {});
 }
 \`\`\`
 
@@ -292,6 +306,14 @@ export async function exportGsapBundle({
     if (wavBuffer) {
       zip.file("audio.wav", wavBuffer);
       manifest.hasAudio = true;
+      manifest.audio = {
+        sampleRate: audioData.sampleRate,
+        channelCount: audioData.channelCount ?? audioData.pcm16?.length ?? 1,
+        sampleCount: audioData.sampleCount ?? 0,
+        loopFlag: Boolean(audioData.loopFlag),
+        loopStart: audioData.loopStart ?? 0,
+        durationSeconds: audioData.durationSeconds ?? 0,
+      };
     }
   }
 
