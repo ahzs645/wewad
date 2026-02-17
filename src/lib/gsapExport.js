@@ -360,7 +360,12 @@ export async function exportGsapBundle({
 // ---------------------------------------------------------------------------
 
 async function serializeTarget(zip, prefix, result, animSelection, iconViewport, onTextureProgress) {
-  const layout = result.renderLayout;
+  // For icons, override layout dimensions to the icon viewport (128x96),
+  // matching how the main app clones the layout with viewport dimensions.
+  // The BannerRenderer uses layout.width/height to size its rendering area.
+  const layout = iconViewport
+    ? { ...result.renderLayout, width: iconViewport.width, height: iconViewport.height }
+    : result.renderLayout;
 
   // Layout JSON
   zip.file(`${prefix}/layout.json`, JSON.stringify(layout, null, 2));
