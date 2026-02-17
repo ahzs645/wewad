@@ -192,6 +192,28 @@ export default function App() {
     return new Set(["RefDVD", "RefWii", "RefGC", "RefUnknown"]);
   }, [bannerDiscPaneNames]);
 
+  // Disc Channel text overrides — the System Menu firmware writes localized BMG
+  // strings into text panes at runtime.  We replicate that here.
+  const bannerTextOverrides = useMemo(() => {
+    if (!bannerDiscPaneNames) return null;
+    const DISC_CHANNEL_STRINGS = {
+      US: { title: "Disc Channel", insert: "Please insert a disc." },
+      JP: { title: "ディスクドライブチャンネル", insert: "ディスクを挿入してください。" },
+      FR: { title: "Chaîne disques", insert: "Veuillez insérer un disque." },
+      GE: { title: "Disc-Kanal", insert: "Bitte schiebe eine Disc ein." },
+      IT: { title: "Canale Disco", insert: "Inserisci un disco." },
+      NE: { title: "Diskkanaal", insert: "Voer een disk in." },
+      SP: { title: "Canal Disco", insert: "Inserta un disco en la consola." },
+    };
+    const localeKey = titleLocale === "auto" ? "US" : (titleLocale || "US");
+    const strings = DISC_CHANNEL_STRINGS[localeKey] ?? DISC_CHANNEL_STRINGS.US;
+    return {
+      T_Bar: strings.title,
+      T_Comment0: strings.insert,
+      T_Comment1: "",
+    };
+  }, [bannerDiscPaneNames, titleLocale]);
+
   const iconAnimSelection = useMemo(() => {
     const selection = resolveAnimationSelection(parsed?.results?.icon, effectiveIconRenderState);
     if (!selection.anim || !selection.renderState) return selection;
@@ -734,6 +756,7 @@ export default function App() {
           customWeather: customWeatherData,
           paneVisibilityOverrides: bannerPaneVisibilityOverrides,
           paneAlphaMaskFromFirstTexture: bannerAlphaMaskPanes,
+          textOverrides: bannerTextOverrides,
           displayAspect: previewDisplayAspect,
           tevQuality,
           fonts: bannerResult.fonts,
@@ -803,7 +826,7 @@ export default function App() {
     activeTab, parsed, startFrame, effectiveBannerStartFrame, effectiveIconStartFrame,
     stopRenderers, bannerAnimSelection, iconAnimSelection, titleLocale,
     bannerPaneStateSelections, iconPaneStateSelections, customWeatherData, customNewsData,
-    previewDisplayAspect, tevQuality, phaseMode, bannerPaneVisibilityOverrides, bannerAlphaMaskPanes,
+    previewDisplayAspect, tevQuality, phaseMode, bannerPaneVisibilityOverrides, bannerAlphaMaskPanes, bannerTextOverrides,
   ]);
 
   // Start frame sync

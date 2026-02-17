@@ -147,6 +147,7 @@ export class BannerRenderer {
     this.customWeatherIconPaneSet = null;
     this.customWeatherDigitMap = null;
     this.customNews = options.customNews ?? null;
+    this.textOverrides = options.textOverrides ?? null;
     this.referenceAspectRatio = normalizePositiveAspect(
       parseAspectRatio(options.referenceAspectRatio),
       DEFAULT_REFERENCE_ASPECT,
