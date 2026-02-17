@@ -258,7 +258,28 @@ export function drawPaneTexture(context, binding, pane, width, height) {
   const textureSRT = binding.textureSRT ?? null;
   const texCoordIndex = binding.texCoordIndex ?? 0;
 
+  // Detect tex coord flipping (e.g., mirror/reflection panes use T: 1→0).
+  // getSourceRectForPane takes min/max of tex coords, losing directionality,
+  // so we must detect and apply the flip via a canvas transform.
+  const transformed = this.getTransformedTexCoords(pane, textureSRT, texCoordIndex);
+  let flipS = false;
+  let flipT = false;
+  if (transformed) {
+    const leftS = (transformed.tl.s + transformed.bl.s) * 0.5;
+    const rightS = (transformed.tr.s + transformed.br.s) * 0.5;
+    flipS = rightS < leftS;
+    const topT = (transformed.tl.t + transformed.tr.t) * 0.5;
+    const bottomT = (transformed.bl.t + transformed.br.t) * 0.5;
+    flipT = bottomT < topT;
+  }
+
+  if (flipS || flipT) {
+    context.save();
+    context.scale(flipS ? -1 : 1, flipT ? -1 : 1);
+  }
+
   if (this.drawPaneTextureWithVerticalClamp(context, binding, pane, width, height)) {
+    if (flipS || flipT) context.restore();
     return;
   }
 
@@ -295,6 +316,7 @@ export function drawPaneTexture(context, binding, pane, width, height) {
       const rPad = this._seamPad || 0;
       context.fillRect(-rPad, -rPad, width + 2 * rPad, height + 2 * rPad);
       context.restore();
+      if (flipS || flipT) context.restore();
       return;
     }
   }
@@ -312,8 +334,10 @@ export function drawPaneTexture(context, binding, pane, width, height) {
       width + 2 * pad,
       height + 2 * pad,
     );
+    if (flipS || flipT) context.restore();
     return;
   }
 
   context.drawImage(texture, -width / 2 - pad, -height / 2 - pad, width + 2 * pad, height + 2 * pad);
+  if (flipS || flipT) context.restore();
 }

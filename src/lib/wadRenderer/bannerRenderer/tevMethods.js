@@ -42,9 +42,12 @@ function isTevAlphaAlwaysZero(stages) {
     return false;
   }
   const s = stages[0];
-  // Alpha compare mode: D + (compare(A,B) ? C : 0).
-  // When D=ZERO(7) and C=APREV(5): result is always 0.
-  return s.tevBiasA === 3 && s.dA === 7 && s.cA === 5;
+  // Alpha compare mode (op >= 8): D + (compare(A,B) ? C : 0).
+  // When D=ZERO(7) and C is APREV(0) or RASA(5): the TEV alpha is trivial
+  // (either always 0, or just passes vertex alpha through on compare-pass).
+  // In either case, the heuristic Canvas 2D path produces better results
+  // by drawing the texture directly with its natural alpha.
+  return s.tevOpA >= 8 && s.dA === 7 && (s.cA === 0 || s.cA === 5);
 }
 
 // Check whether a pane's material should use the per-pixel TEV pipeline.

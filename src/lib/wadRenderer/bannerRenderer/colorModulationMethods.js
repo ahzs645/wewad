@@ -133,11 +133,19 @@ export function getPaneMaterialColorModulation(pane, frame = this.frame) {
   const material = this.layout.materials[pane.materialIndex];
   const staticColor = normalizeMaterialColor(material?.color2) ?? { r: 255, g: 255, b: 255, a: 255 };
   const animatedColor = this.getPaneMaterialAnimColor(pane.name, frame);
+
+  // RLMC types 0x04+ animate TEV color registers (TEVREG0/1/2) which only feed
+  // TEV stage inputs.  For materials without explicit TEV stages these registers
+  // have no visual effect on real hardware, so use only the material-color
+  // animation (color1, RLMC types 0x00-0x03) in the Canvas 2D fallback path.
+  const hasTevStages = (material?.tevStages?.length ?? 0) > 0;
+  const animated = hasTevStages ? animatedColor : animatedColor.color1;
+
   const color = {
-    r: animatedColor.r ?? staticColor.r,
-    g: animatedColor.g ?? staticColor.g,
-    b: animatedColor.b ?? staticColor.b,
-    a: animatedColor.a ?? staticColor.a,
+    r: animated.r ?? staticColor.r,
+    g: animated.g ?? staticColor.g,
+    b: animated.b ?? staticColor.b,
+    a: animated.a ?? staticColor.a,
   };
 
   const hasColorTint = color.r !== 255 || color.g !== 255 || color.b !== 255;

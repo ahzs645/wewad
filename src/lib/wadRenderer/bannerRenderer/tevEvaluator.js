@@ -29,11 +29,13 @@ const CA_RASA = 5;
 const CA_KONST = 6;
 const CA_ZERO = 7;
 
-// TEV operation: 0=add, 1=sub (higher values are compare modes).
+// TEV operation (GX_TEV_* enum, 4-bit):
+// 0=ADD, 1=SUB, 8=COMP_R8_GT, 9=COMP_R8_EQ, 10=COMP_GR16_GT, 11=COMP_GR16_EQ,
+// 12=COMP_BGR24_GT, 13=COMP_BGR24_EQ, 14=COMP_RGB8_GT/A8_GT, 15=COMP_RGB8_EQ/A8_EQ.
 const TEV_ADD = 0;
 const TEV_SUB = 1;
 
-// Bias: 0=zero, 1=+0.5, 2=-0.5, 3=compare.
+// Bias: 0=zero, 1=+0.5, 2=-0.5. (3 is unused in BRLYT; compare mode is op >= 8.)
 const BIAS_VALUES = [0, 0.5, -0.5, 0];
 
 // Scale: 0=1, 1=2, 2=4, 3=0.5.
@@ -152,16 +154,16 @@ function tevCombine(a, b, c, d, op, bias, scale, clamp) {
   return Math.max(-1024, Math.min(1023, result));
 }
 
-// TEV compare mode for color combiner (bias=3).
+// TEV compare mode for color combiner (op >= 8).
 // Switches to: D + (compare(A,B) ? C : 0).
-// tevOp: 0=GT, 1=EQ. scale selects comparison granularity:
+// eq: 0=GT, 1=EQ. granularity selects comparison mode:
 //   0=R8 (R channel only), 1=GR16 (packed), 2=BGR24 (packed), 3=RGB8 (per-component).
-function tevCompareColor(inA, inB, inC, inD, op, scale, clamp) {
-  const useEq = op === TEV_SUB;
+function tevCompareColor(inA, inB, inC, inD, eq, granularity, clamp) {
+  const useEq = eq !== 0;
   const i = (v) => Math.round(v * 255);
 
   let condR, condG, condB;
-  switch (scale) {
+  switch (granularity) {
     case 0: { // COMP_R8: compare R only, scalar result
       const cond = useEq ? (i(inA.r) === i(inB.r)) : (i(inA.r) > i(inB.r));
       condR = condG = condB = cond;
@@ -200,13 +202,13 @@ function tevCompareColor(inA, inB, inC, inD, op, scale, clamp) {
   return { r, g, b };
 }
 
-// TEV compare mode for alpha combiner (bias=3).
+// TEV compare mode for alpha combiner (op >= 8).
 // Always A8 comparison: D + (compare(A,B) ? C : 0).
 // GT uses >= (not strict >) to match observed GX hardware behavior:
 // CMPR textures with 1-bit alpha (0 or 255) need 255 >= KONST(255) = true
 // so that opaque pixels pass the compare and transparent pixels don't.
-function tevCompareAlpha(a, b, c, d, op, clamp) {
-  const useEq = op === TEV_SUB;
+function tevCompareAlpha(a, b, c, d, eq, clamp) {
+  const useEq = eq !== 0;
   const iA = Math.round(a * 255);
   const iB = Math.round(b * 255);
   const cond = useEq ? (iA === iB) : (iA >= iB);
@@ -316,8 +318,11 @@ export function evaluateTevStagesForPixel(stages, texSamples, rasColor, material
     const inDC = resolveColorInput(stage.dC, state);
     const doClampC = stage.clampC !== 0;
     let outR, outG, outB;
-    if (stage.tevBiasC === 3) {
-      const cmp = tevCompareColor(inAC, inBC, inCC, inDC, stage.tevOpC, stage.tevScaleC, doClampC);
+    if (stage.tevOpC >= 8) {
+      // Compare mode: op encodes GX enum (8-15). Granularity = (op-8)>>1, EQ = op&1.
+      const cmpGranularity = (stage.tevOpC - 8) >> 1;
+      const cmpEq = stage.tevOpC & 1;
+      const cmp = tevCompareColor(inAC, inBC, inCC, inDC, cmpEq, cmpGranularity, doClampC);
       outR = cmp.r; outG = cmp.g; outB = cmp.b;
     } else {
       const biasC = BIAS_VALUES[stage.tevBiasC];
@@ -335,8 +340,10 @@ export function evaluateTevStagesForPixel(stages, texSamples, rasColor, material
     const inDA = resolveAlphaInput(stage.dA, state);
     const doClampA = stage.clampA !== 0;
     let outA;
-    if (stage.tevBiasA === 3) {
-      outA = tevCompareAlpha(inAA, inBA, inCA, inDA, stage.tevOpA, doClampA);
+    if (stage.tevOpA >= 8) {
+      // Compare mode for alpha: always A8 comparison. EQ = op&1.
+      const cmpEq = stage.tevOpA & 1;
+      outA = tevCompareAlpha(inAA, inBA, inCA, inDA, cmpEq, doClampA);
     } else {
       const biasA = BIAS_VALUES[stage.tevBiasA];
       const scaleA = SCALE_VALUES[stage.tevScaleA];

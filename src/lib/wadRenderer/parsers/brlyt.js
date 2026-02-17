@@ -402,10 +402,11 @@ export function parseBRLYT(buffer, loggerInput) {
               bC: (b4 >> 4) & 0xf,
               cC: b5 & 0xf,
               dC: (b5 >> 4) & 0xf,
-              // Byte 6: scale(2), bias(2), op(4) — benzin brlyt.h LSB-first on x86
-              tevScaleC: b6 & 3,
-              tevBiasC: (b6 >> 2) & 3,
-              tevOpC: (b6 >> 4) & 0xf,
+              // Byte 6: op(4), bias(2), scale(2) — matches wii-banner-player Material.h
+              // op stores the GX_TEV_* enum: 0=ADD, 1=SUB, 8-15=compare modes
+              tevOpC: b6 & 0xf,
+              tevBiasC: (b6 >> 4) & 3,
+              tevScaleC: (b6 >> 6) & 3,
               // Byte 7: clamp(1), regId(2), kColorSel(5) — matches wii-banner-player Material.h
               clampC: b7 & 1,
               tevRegIdC: (b7 >> 1) & 3,
@@ -415,10 +416,11 @@ export function parseBRLYT(buffer, loggerInput) {
               bA: (b8 >> 4) & 0xf,
               cA: b9 & 0xf,
               dA: (b9 >> 4) & 0xf,
-              // Byte 10: scale(2), bias(2), op(4) — benzin brlyt.h LSB-first on x86
-              tevScaleA: b10 & 3,
-              tevBiasA: (b10 >> 2) & 3,
-              tevOpA: (b10 >> 4) & 0xf,
+              // Byte 10: op(4), bias(2), scale(2) — matches wii-banner-player Material.h
+              // op stores the GX_TEV_* enum: 0=ADD, 1=SUB, 8-15=compare modes
+              tevOpA: b10 & 0xf,
+              tevBiasA: (b10 >> 4) & 3,
+              tevScaleA: (b10 >> 6) & 3,
               // Byte 11: clamp(1), regId(2), kAlphaSel(5) — matches wii-banner-player Material.h
               clampA: b11 & 1,
               tevRegIdA: (b11 >> 1) & 3,
