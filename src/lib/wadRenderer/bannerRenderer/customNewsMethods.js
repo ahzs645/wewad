@@ -18,13 +18,16 @@ export function getCustomNewsTextForPane(pane) {
   }
 
   const index = Number.parseInt(match[1], 10);
-  if (index !== 0) {
-    return "";
-  }
 
   const headlines = this.customNews.headlines;
   if (!Array.isArray(headlines) || headlines.length === 0) {
     return null;
+  }
+
+  // The News Channel icon has two ticker lines (telop0, telop1).
+  // Both show the same headlines — the BRLAN animation offsets them.
+  if (index > 1) {
+    return "";
   }
 
   return headlines.join(HEADLINE_SEPARATOR);
@@ -43,7 +46,7 @@ export function shouldRenderPaneForCustomNews(pane) {
   }
 
   const telopMatch = paneName.match(TELOP_PANE_PATTERN);
-  if (telopMatch && Number.parseInt(telopMatch[1], 10) > 0) {
+  if (telopMatch && Number.parseInt(telopMatch[1], 10) > 1) {
     return false;
   }
 

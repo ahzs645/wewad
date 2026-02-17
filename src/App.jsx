@@ -65,6 +65,7 @@ export default function App() {
   const [bannerAnimOverride, setBannerAnimOverride] = useState(null);
   const [bannerDiscType, setBannerDiscType] = useState("auto");
   const [iconRenderState, setIconRenderState] = useState("auto");
+  const [iconAnimOverride, setIconAnimOverride] = useState(null);
   const [titleLocale, setTitleLocale] = useState("auto");
   const [availableTitleLocales, setAvailableTitleLocales] = useState([]);
   const [bannerPaneStateGroups, setBannerPaneStateGroups] = useState([]);
@@ -208,14 +209,14 @@ export default function App() {
     const localeKey = titleLocale === "auto" ? "US" : (titleLocale || "US");
     const strings = DISC_CHANNEL_STRINGS[localeKey] ?? DISC_CHANNEL_STRINGS.US;
     return {
-      T_Bar: strings.title,
+      T_Bar: "",
       T_Comment0: strings.insert,
       T_Comment1: "",
     };
   }, [bannerDiscPaneNames, titleLocale]);
 
   const iconAnimSelection = useMemo(() => {
-    const selection = resolveAnimationSelection(parsed?.results?.icon, effectiveIconRenderState);
+    const selection = resolveAnimationSelection(parsed?.results?.icon, effectiveIconRenderState, iconAnimOverride);
     if (!selection.anim || !selection.renderState) return selection;
 
     const iconResult = parsed?.results?.icon;
@@ -248,7 +249,7 @@ export default function App() {
       anim: mergedAnim,
       loopAnim: selection.loopAnim === selection.anim ? mergedAnim : selection.loopAnim,
     };
-  }, [parsed, effectiveIconRenderState]);
+  }, [parsed, effectiveIconRenderState, iconAnimOverride]);
 
   const timelineTracks = useMemo(() => {
     if (!parsed) return [];
@@ -388,6 +389,7 @@ export default function App() {
       setBannerAnimOverride(null);
       setBannerDiscType("auto");
       setIconRenderState("auto");
+      setIconAnimOverride(null);
       setTitleLocale("auto");
       setAvailableTitleLocales([]);
       setBannerPaneStateGroups([]);
@@ -771,8 +773,9 @@ export default function App() {
     }
 
     if (iconResult && iconCanvasRef.current) {
-      const iconViewport = resolveIconViewport(iconResult.renderLayout);
-      const iconLayout = { ...iconResult.renderLayout, width: iconViewport.width, height: iconViewport.height };
+      const effectiveIconRenderLayout = iconAnimSelection.renderLayout ?? iconResult.renderLayout;
+      const iconViewport = resolveIconViewport(effectiveIconRenderLayout);
+      const iconLayout = { ...effectiveIconRenderLayout, width: iconViewport.width, height: iconViewport.height };
       const iconPhaseOpts = resolvePhaseModeOptions(iconAnimSelection);
       const iconRenderer = new BannerRenderer(
         iconCanvasRef.current,
@@ -903,6 +906,7 @@ export default function App() {
                   bannerAnimOverride={bannerAnimOverride} setBannerAnimOverride={setBannerAnimOverride}
                   bannerDiscType={bannerDiscType} setBannerDiscType={setBannerDiscType}
                   showDiscTypeOption={bannerDiscPaneNames != null}
+                  iconAnimOverride={iconAnimOverride} setIconAnimOverride={setIconAnimOverride}
                   iconRenderState={iconRenderState} setIconRenderState={setIconRenderState}
                   iconRenderStateOptions={iconRenderStateOptions}
                   titleLocale={titleLocale} setTitleLocale={setTitleLocale}

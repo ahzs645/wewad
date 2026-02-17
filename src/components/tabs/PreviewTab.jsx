@@ -13,6 +13,7 @@ export function PreviewTab({
   bannerRenderState, setBannerRenderState, bannerRenderStateOptions,
   bannerAnimOverride, setBannerAnimOverride,
   bannerDiscType, setBannerDiscType, showDiscTypeOption,
+  iconAnimOverride, setIconAnimOverride,
   iconRenderState, setIconRenderState, iconRenderStateOptions,
   titleLocale, setTitleLocale, availableTitleLocales,
   bannerPaneStateGroups, bannerPaneStateSelections, setBannerPaneStateSelections,
@@ -235,6 +236,26 @@ export function PreviewTab({
                     {state}
                   </option>
                 ))}
+              </select>
+            </div>
+          ) : null}
+          {(parsed?.results?.icon?.animEntries?.length ?? 0) > 1 ? (
+            <div className="state-control">
+              <label htmlFor="icon-anim">Icon Animation</label>
+              <select
+                id="icon-anim"
+                value={iconAnimOverride ?? "auto"}
+                onChange={(event) => setIconAnimOverride(event.target.value === "auto" ? null : event.target.value)}
+              >
+                <option value="auto">Auto</option>
+                {parsed.results.icon.animEntries.map((entry) => {
+                  const fileName = entry.path.split("/").pop().replace(/\.[^.]+$/, "");
+                  return (
+                    <option key={entry.id} value={entry.id}>
+                      {fileName} ({entry.frameSize}f)
+                    </option>
+                  );
+                })}
               </select>
             </div>
           ) : null}

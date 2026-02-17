@@ -323,6 +323,7 @@ export function resolveAnimationSelection(targetResult, selectedState, animOverr
         loopAnim: entry.anim,
         renderState: null,
         playbackMode: "loop",
+        renderLayout: entry.renderLayout ?? null,
       };
     }
   }

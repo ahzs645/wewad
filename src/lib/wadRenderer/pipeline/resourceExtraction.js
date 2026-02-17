@@ -12,6 +12,26 @@ function inferAnimationRole(filePath) {
   return "generic";
 }
 
+function filenameStem(filePath) {
+  return (filePath.split("/").pop() ?? filePath).replace(/\.[^.]+$/, "");
+}
+
+function findMatchingLayout(animPath, layoutsByPath, primaryLayoutPath) {
+  const animStem = filenameStem(animPath).toLowerCase();
+  let bestPath = primaryLayoutPath;
+  let bestLen = 0;
+
+  for (const layoutPath of Object.keys(layoutsByPath)) {
+    const layoutStem = filenameStem(layoutPath).toLowerCase();
+    if (animStem.startsWith(layoutStem) && layoutStem.length > bestLen) {
+      bestPath = layoutPath;
+      bestLen = layoutStem.length;
+    }
+  }
+
+  return bestPath;
+}
+
 function inferAnimationState(filePath) {
   const match = String(filePath ?? "").match(/(?:^|[_-])(rso\d+)(?:[_.-]|$)/i);
   if (!match) {
@@ -152,16 +172,24 @@ export function parseResourceSet(files, loggerInput) {
   const brlytEntries = Object.entries(sourceFiles)
     .filter(([filePath]) => filePath.toLowerCase().endsWith(".brlyt"))
     .sort((left, right) => right[1].byteLength - left[1].byteLength);
+  const layoutsByPath = {};
+  let layoutPath = null;
   if (brlytEntries.length > 0) {
     const selectedLayoutEntry =
       brlytEntries.find(([filePath]) => !filePath.toLowerCase().includes("common")) ?? brlytEntries[0];
-    const [layoutPath, layoutData] = selectedLayoutEntry;
+    layoutPath = selectedLayoutEntry[0];
 
-    logger.info(`=== Parsing ${layoutPath} ===`);
-    try {
-      layout = parseBRLYT(layoutData, logger);
-    } catch (error) {
-      logger.error(`BRLYT parse error: ${error.message}`);
+    for (const [path, data] of brlytEntries) {
+      logger.info(`=== Parsing ${path} ===`);
+      try {
+        const parsed = parseBRLYT(data, logger);
+        layoutsByPath[path] = parsed;
+        if (path === layoutPath) {
+          layout = parsed;
+        }
+      } catch (error) {
+        logger.error(`BRLYT parse error (${path}): ${error.message}`);
+      }
     }
   }
 
@@ -173,6 +201,9 @@ export function parseResourceSet(files, loggerInput) {
       try {
         const anim = parseBRLAN(animData, logger);
         const role = inferAnimationRole(animPath);
+        const matchedLayoutPath = Object.keys(layoutsByPath).length > 1
+          ? findMatchingLayout(animPath, layoutsByPath, layoutPath)
+          : layoutPath;
         animationEntries.push({
           id: animPath,
           path: animPath,
@@ -181,6 +212,9 @@ export function parseResourceSet(files, loggerInput) {
           frameSize: anim.frameSize ?? 0,
           paneCount: anim.panes?.length ?? 0,
           anim,
+          layout: matchedLayoutPath && matchedLayoutPath !== layoutPath
+            ? layoutsByPath[matchedLayoutPath]
+            : undefined,
         });
       } catch (error) {
         logger.warn(`BRLAN parse warning: ${error.message}`);
