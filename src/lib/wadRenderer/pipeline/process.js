@@ -148,12 +148,16 @@ export function processArchive(buffer, loggerInput) {
 
   const parsedTarget = parseResourceSet(files, logger);
   const banner = buildResultFromResourceSet(parsedTarget, logger);
+  const icon = buildResultFromResourceSet(parsedTarget, logger, 128, 128);
 
   const results = {};
   if (banner) {
     results.banner = banner;
   } else {
     logger.warn("No renderable layout found in archive");
+  }
+  if (icon) {
+    results.icon = icon;
   }
 
   logger.success("=== Done! ===");
