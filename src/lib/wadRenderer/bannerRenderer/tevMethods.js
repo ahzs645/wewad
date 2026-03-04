@@ -67,21 +67,24 @@ export function shouldUseTevPipeline(pane) {
   const needsAlphaCompare = !isAlphaCompareAlwaysPass(material?.alphaCompare);
   const explicitStages = material.tevStages;
   const hasExplicitStages = explicitStages && explicitStages.length > 0;
-  const textureMaps = material.textureMaps ?? [];
+  const allowShortcutSkips = this.tevQuality === "fast" && this.strictTevEvaluation !== true;
 
   if (hasExplicitStages) {
-    // Skip trivial identity passthrough — Canvas 2D handles it fine (unless alpha compare is needed).
-    if (isTevIdentityPassthrough(explicitStages) && !needsAlphaCompare) {
-      return false;
-    }
-    // Skip common modulate pattern for single-texture — Canvas 2D handles it well (unless alpha compare is needed).
-    if (textureMaps.length <= 1 && isTevModulatePattern(explicitStages) && !needsAlphaCompare) {
-      return false;
-    }
-    // Skip single-stage materials where alpha compare always produces zero.
-    // The heuristic path draws the texture directly, preserving its alpha.
-    if (isTevAlphaAlwaysZero(explicitStages) && !needsAlphaCompare) {
-      return false;
+    if (allowShortcutSkips) {
+      const textureMaps = material.textureMaps ?? [];
+      // Skip trivial identity passthrough — Canvas 2D handles it fine (unless alpha compare is needed).
+      if (isTevIdentityPassthrough(explicitStages) && !needsAlphaCompare) {
+        return false;
+      }
+      // Skip common modulate pattern for single-texture — Canvas 2D handles it well (unless alpha compare is needed).
+      if (textureMaps.length <= 1 && isTevModulatePattern(explicitStages) && !needsAlphaCompare) {
+        return false;
+      }
+      // Skip single-stage materials where alpha compare always produces zero.
+      // The heuristic path draws the texture directly, preserving its alpha.
+      if (isTevAlphaAlwaysZero(explicitStages) && !needsAlphaCompare) {
+        return false;
+      }
     }
     return true;
   }

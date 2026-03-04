@@ -163,6 +163,12 @@ export class BannerRenderer {
     this.rotationOrder = String(options.rotationOrder ?? "RX_RY_RZ")
       .trim()
       .toUpperCase();
+    this.isWiiShopLayout = false;
+    const strictMaterialOption = options.strictMaterialMode;
+    const strictTevOption = options.strictTevEvaluation;
+    this.strictMaterialMode = strictMaterialOption === true;
+    this.strictTevEvaluation =
+      strictTevOption == null ? this.tevQuality === "accurate" : strictTevOption === true;
     // Experimental Wii Shop backdrop masking path. Defaults off so rendering
     // follows the normal pane order unless explicitly requested.
     this.enableWiiShopBackdropMask =
@@ -221,6 +227,22 @@ export class BannerRenderer {
           this.layout.textures.push(timgName);
         }
       }
+    }
+
+    const detectedWiiShopLayout =
+      this.panesByName?.has("backCLs") &&
+      this.panesByName?.has("mask_01") &&
+      this.panesByName?.has("logo_base") &&
+      this.layout?.textures?.includes("logo_pic01.tpl") &&
+      this.layout?.textures?.includes("logo_pic02.tpl");
+    this.isWiiShopLayout = Boolean(detectedWiiShopLayout);
+    // Wii Shop visuals are sensitive to heuristic texture substitutions.
+    // Default to strict material handling for this layout unless explicitly overridden.
+    if (strictMaterialOption == null && this.isWiiShopLayout) {
+      this.strictMaterialMode = true;
+    }
+    if (strictTevOption == null) {
+      this.strictTevEvaluation = this.tevQuality === "accurate" || this.strictMaterialMode;
     }
 
     this.startFrame = this.normalizeFrameForPlayback(this.startFrame);

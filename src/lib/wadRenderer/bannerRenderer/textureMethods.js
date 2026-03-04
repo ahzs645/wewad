@@ -473,6 +473,11 @@ export function getTextureBindingForPane(pane, paneState = null) {
     if (bindings.length > 0) {
       const primary =
         bindings.find((binding) => this.getTextureFormat(binding.textureName) !== 0) ?? bindings[0];
+      // Strict material mode keeps authored texture/material behavior intact and
+      // avoids heuristic substitutions (chroma key, luma masks, synthetic masking).
+      if (this.strictMaterialMode) {
+        return primary;
+      }
       const mask = bindings.find(
         (binding) =>
           binding.textureName !== primary.textureName &&
@@ -585,7 +590,10 @@ export function getTextureBindingForPane(pane, paneState = null) {
       }
       const textureName = this.layout.textures[textureIndex];
       if (this.textureCanvases[textureName]) {
-        if (shouldSkipStandaloneAlphaMask(pane, material, textureName, this.getTextureFormat(textureName))) {
+        if (
+          !this.strictMaterialMode &&
+          shouldSkipStandaloneAlphaMask(pane, material, textureName, this.getTextureFormat(textureName))
+        ) {
           return null;
         }
         return {
