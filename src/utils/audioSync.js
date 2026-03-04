@@ -34,9 +34,10 @@ export function createAudioSyncController(audioElement, bnsMetadata, fps = 60, {
   const sampleRate = bnsMetadata.sampleRate || 1;
   const loopFlag = Boolean(bnsMetadata.loopFlag);
   const totalDuration = audioBuffer.duration;
-  const shouldLoop = loopFlag;
-  const loopStartTime = loopFlag ? (bnsMetadata.loopStart || 0) / sampleRate : 0;
-  const loopAudioDuration = totalDuration - loopStartTime;
+  const rawLoopStartTime = loopFlag ? (bnsMetadata.loopStart || 0) / sampleRate : 0;
+  const loopStartTime = Math.max(0, Math.min(rawLoopStartTime, totalDuration));
+  const shouldLoop = loopFlag && animationLoops && loopStartTime < totalDuration;
+  const loopAudioDuration = shouldLoop ? (totalDuration - loopStartTime) : 0;
 
   let sourceNode = null;
   let gainNode = ctx.createGain();
@@ -47,13 +48,27 @@ export function createAudioSyncController(audioElement, bnsMetadata, fps = 60, {
   let playStartOffset = 0;
   let playing = false;
 
+  function normalizePlaybackTime(rawTime) {
+    const time = Number.isFinite(rawTime) ? Math.max(0, rawTime) : 0;
+    if (!shouldLoop || loopAudioDuration <= 0) {
+      return Math.min(time, totalDuration);
+    }
+    if (time <= totalDuration) {
+      return time;
+    }
+    const overflow = time - totalDuration;
+    return loopStartTime + (overflow % loopAudioDuration);
+  }
+
   function getCurrentTime() {
-    if (!playing) return playStartOffset;
-    return playStartOffset + (ctx.currentTime - playStartContextTime);
+    if (!playing) return normalizePlaybackTime(playStartOffset);
+    const elapsed = Math.max(0, ctx.currentTime - playStartContextTime);
+    return normalizePlaybackTime(playStartOffset + elapsed);
   }
 
   function getExpectedAudioTime(globalFrame) {
-    const elapsed = globalFrame / fps;
+    const frame = Number.isFinite(globalFrame) ? Math.max(0, globalFrame) : 0;
+    const elapsed = frame / fps;
     if (!shouldLoop) return Math.min(elapsed, totalDuration);
     if (elapsed <= totalDuration) return elapsed;
     if (loopAudioDuration <= 0) return totalDuration;
@@ -63,7 +78,9 @@ export function createAudioSyncController(audioElement, bnsMetadata, fps = 60, {
 
   function startSource(offset) {
     stopSource();
-    if (ctx.state === "suspended") ctx.resume();
+    if (ctx.state === "suspended") {
+      void ctx.resume();
+    }
 
     sourceNode = ctx.createBufferSource();
     sourceNode.buffer = audioBuffer;
@@ -76,7 +93,7 @@ export function createAudioSyncController(audioElement, bnsMetadata, fps = 60, {
 
     sourceNode.connect(gainNode);
 
-    const clampedOffset = Math.max(0, Math.min(offset, totalDuration));
+    const clampedOffset = normalizePlaybackTime(offset);
     playStartOffset = clampedOffset;
     playStartContextTime = ctx.currentTime;
     sourceNode.start(0, clampedOffset);
@@ -85,6 +102,7 @@ export function createAudioSyncController(audioElement, bnsMetadata, fps = 60, {
     const thisNode = sourceNode;
     sourceNode.onended = () => {
       if (sourceNode === thisNode) {
+        playStartOffset = getCurrentTime();
         playing = false;
         sourceNode = null;
       }
@@ -129,7 +147,11 @@ export function createAudioSyncController(audioElement, bnsMetadata, fps = 60, {
     if (!playing) return;
     const expected = getExpectedAudioTime(globalFrame);
     const actual = getCurrentTime();
-    if (Math.abs(actual - expected) > 0.15) {
+    let drift = Math.abs(actual - expected);
+    if (shouldLoop && loopAudioDuration > 0 && actual >= loopStartTime && expected >= loopStartTime) {
+      drift = Math.min(drift, Math.abs(loopAudioDuration - drift));
+    }
+    if (drift > 0.15) {
       startSource(expected);
     }
   }
