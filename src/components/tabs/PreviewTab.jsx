@@ -28,7 +28,7 @@ export function PreviewTab({
   useCustomNews, setUseCustomNews,
   customHeadlines, setCustomHeadlines,
   animStatus,
-  audioUrl, audioElementRef, audioInfo,
+  hasAudio, audioInfo,
   parsed,
   showWeatherOptions, showNewsOptions,
   phaseMode, setPhaseMode,
@@ -398,16 +398,11 @@ export function PreviewTab({
 
         <div className="audio-section">
           <label>Channel Audio</label>
-          {audioUrl ? (
-            <audio
-              ref={audioElementRef}
-              controls
-              src={audioUrl}
-            />
+          {hasAudio ? (
+            <div className="audio-meta">{audioInfo}</div>
           ) : (
             <div className="empty-state">No channel audio decoded.</div>
           )}
-          <div className="audio-meta">{audioInfo}</div>
         </div>
       </div>
 

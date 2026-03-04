@@ -12,8 +12,8 @@ function clampSample16(value) {
   if (value > 32767) {
     return 32767;
   }
-  if (value < -32768) {
-    return -32768;
+  if (value < -32767) {
+    return -32767;
   }
   return value;
 }
@@ -29,11 +29,10 @@ function decodeDspAdpcmChannel(source, dataOffset, sampleCount, coefficients, in
   for (let frameIndex = 0; frameIndex < frameCount; frameIndex += 1) {
     const frameOffset = dataOffset + frameIndex * 8;
     const header = source[frameOffset];
-    const predictor = header >> 4;
     const shift = header & 0x0f;
-    const coefBase = Math.min(7, predictor) * 2;
-    const coef1 = coefficients[coefBase] ?? 0;
-    const coef2 = coefficients[coefBase + 1] ?? 0;
+    const coefIdx = (header >> 4) & 7;
+    const coef1 = coefficients[coefIdx * 2] ?? 0;
+    const coef2 = coefficients[coefIdx * 2 + 1] ?? 0;
 
     for (let nibbleIndex = 0; nibbleIndex < 14 && sampleIndex < sampleCount; nibbleIndex += 1) {
       const byteValue = source[frameOffset + 1 + (nibbleIndex >> 1)];
@@ -42,9 +41,9 @@ function decodeDspAdpcmChannel(source, dataOffset, sampleCount, coefficients, in
         nibble -= 16;
       }
 
-      const sample = nibble << shift;
-      const predicted = ((sample << 11) + 1024 + coef1 * hist1 + coef2 * hist2) >> 11;
-      const pcm = clampSample16(predicted);
+      const delta = nibble << shift;
+      const prediction = (1024 + coef1 * hist1 + coef2 * hist2) >> 11;
+      const pcm = clampSample16(delta + prediction);
 
       output[sampleIndex] = pcm;
       sampleIndex += 1;

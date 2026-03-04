@@ -36,7 +36,6 @@ export default function App() {
   const fileInputRef = useRef(null);
   const bannerCanvasRef = useRef(null);
   const iconCanvasRef = useRef(null);
-  const audioElementRef = useRef(null);
   const bannerRendererRef = useRef(null);
   const iconRendererRef = useRef(null);
   const bundleFileInputRef = useRef(null);
@@ -57,7 +56,7 @@ export default function App() {
   const [startFrameInput, setStartFrameInput] = useState("0");
   const [selectedFileName, setSelectedFileName] = useState("");
   const [parsed, setParsed] = useState(null);
-  const [audioUrl, setAudioUrl] = useState(null);
+  const [hasAudio, setHasAudio] = useState(false);
   const [logEntries, setLogEntries] = useState([]);
 
   // --- Render state & locale ---
@@ -367,11 +366,7 @@ export default function App() {
     iconRendererRef.current?.dispose();
     bannerRendererRef.current = null;
     iconRendererRef.current = null;
-    const audioElement = audioElementRef.current;
-    if (audioElement) {
-      audioElement.pause();
-      audioElement.currentTime = 0;
-    }
+    audioSyncRef.current?.stop();
   }, []);
 
   const handleFile = useCallback(
@@ -450,15 +445,15 @@ export default function App() {
   const togglePlayback = useCallback(() => {
     const bannerRenderer = bannerRendererRef.current;
     const iconRenderer = iconRendererRef.current;
-    const audioElement = audioElementRef.current;
+    const audioCtrl = audioSyncRef.current;
     const freezeVisualPlayback = Boolean(customWeatherData && canCustomizeWeather);
 
-    if (!bannerRenderer && !iconRenderer && !audioElement) return;
+    if (!bannerRenderer && !iconRenderer && !audioCtrl) return;
 
     if (isPlaying) {
       bannerRenderer?.stop();
       iconRenderer?.stop();
-      audioElement?.pause();
+      audioCtrl?.pause();
       setBannerPlaying(false);
       setIconPlaying(false);
       return;
@@ -466,38 +461,38 @@ export default function App() {
 
     if (!freezeVisualPlayback && bannerRenderer) { bannerRenderer.play(); setBannerPlaying(true); }
     if (!freezeVisualPlayback && iconRenderer) { iconRenderer.play(); setIconPlaying(true); }
-    if (audioElement && audioUrl) {
+    if (audioCtrl) {
       const info = bannerRenderer?.getPlaybackInfo() ?? iconRenderer?.getPlaybackInfo();
-      if (info) audioSyncRef.current?.seekToFrame(info.audioFrame ?? info.globalFrame);
-      audioElement.play()?.catch(() => {});
+      if (info) audioCtrl.seekToFrame(info.audioFrame ?? info.globalFrame);
+      audioCtrl.play(audioCtrl.currentTime);
     }
-  }, [audioUrl, canCustomizeWeather, customWeatherData, isPlaying]);
+  }, [hasAudio, canCustomizeWeather, customWeatherData, isPlaying]);
 
   const resetPlayback = useCallback(() => {
     bannerRendererRef.current?.stop();
     iconRendererRef.current?.stop();
     bannerRendererRef.current?.reset();
     iconRendererRef.current?.reset();
-    const audioElement = audioElementRef.current;
-    if (audioElement) { audioElement.pause(); audioElement.currentTime = 0; }
+    audioSyncRef.current?.stop();
     setBannerPlaying(false);
     setIconPlaying(false);
   }, []);
 
   const handleTrackTogglePlay = useCallback((trackId) => {
+    const audioCtrl = audioSyncRef.current;
     if (trackId === "banner") {
       const renderer = bannerRendererRef.current;
       if (!renderer) return;
       if (bannerPlaying) {
         renderer.stop();
-        audioElementRef.current?.pause();
+        audioCtrl?.pause();
         setBannerPlaying(false);
       } else {
         renderer.play();
-        if (audioElementRef.current && audioUrl) {
+        if (audioCtrl) {
           const info = renderer.getPlaybackInfo();
-          if (info) audioSyncRef.current?.seekToFrame(info.audioFrame ?? info.globalFrame);
-          audioElementRef.current.play()?.catch(() => {});
+          if (info) audioCtrl.seekToFrame(info.audioFrame ?? info.globalFrame);
+          audioCtrl.play(audioCtrl.currentTime);
         }
         setBannerPlaying(true);
       }
@@ -512,7 +507,7 @@ export default function App() {
         setIconPlaying(true);
       }
     }
-  }, [bannerPlaying, iconPlaying, audioUrl]);
+  }, [bannerPlaying, iconPlaying, hasAudio]);
 
   const handleTrackSeek = useCallback((trackId, globalFrame) => {
     if (trackId === "banner") {
@@ -665,38 +660,25 @@ export default function App() {
     }
   }, [iconRenderState, iconRenderStateOptions]);
 
-  // Audio URL
+  // Web Audio controller (replaces HTML <audio> + sync)
   useEffect(() => {
     const audio = parsed?.results?.audio;
-    if (!audio) { setAudioUrl(null); return undefined; }
-    const wavBuffer = createWavBuffer(audio);
-    if (!wavBuffer) { setAudioUrl(null); return undefined; }
-    const nextAudioUrl = URL.createObjectURL(new Blob([wavBuffer], { type: "audio/wav" }));
-    setAudioUrl(nextAudioUrl);
-    return () => URL.revokeObjectURL(nextAudioUrl);
-  }, [parsed]);
-
-  // Audio sync controller
-  useEffect(() => {
-    const audio = parsed?.results?.audio;
-    const audioEl = audioElementRef.current;
-    if (!audio || !audioEl || !audioUrl) {
+    if (!audio?.pcm16?.length) {
+      audioSyncRef.current?.dispose();
       audioSyncRef.current = null;
+      setHasAudio(false);
       return undefined;
     }
     const animationLoops = phaseMode !== "startOnly";
-    const controller = createAudioSyncController(audioEl, audio, 60, { animationLoops });
+    const controller = createAudioSyncController(null, audio, 60, { animationLoops });
     audioSyncRef.current = controller;
-    const onTimeUpdate = () => controller?.handleTimeUpdate();
-    const onEnded = () => controller?.handleEnded();
-    audioEl.addEventListener("timeupdate", onTimeUpdate);
-    audioEl.addEventListener("ended", onEnded);
+    setHasAudio(Boolean(controller));
     return () => {
-      audioEl.removeEventListener("timeupdate", onTimeUpdate);
-      audioEl.removeEventListener("ended", onEnded);
+      controller?.dispose();
       audioSyncRef.current = null;
+      setHasAudio(false);
     };
-  }, [parsed, audioUrl, phaseMode]);
+  }, [parsed, phaseMode]);
 
   // Main renderer setup
   useEffect(() => {
@@ -837,11 +819,10 @@ export default function App() {
   useEffect(() => {
     const bannerRenderer = bannerRendererRef.current;
     const iconRenderer = iconRendererRef.current;
-    const audioElement = audioElementRef.current;
-    if (!bannerRenderer && !iconRenderer && !audioElement) return;
+    if (!bannerRenderer && !iconRenderer) return;
     bannerRenderer?.setStartFrame(effectiveBannerStartFrame);
     iconRenderer?.setStartFrame(effectiveIconStartFrame);
-    if (audioElement) { audioElement.pause(); audioElement.currentTime = 0; }
+    audioSyncRef.current?.stop();
     setBannerPlaying(false);
     setIconPlaying(false);
   }, [effectiveBannerStartFrame, effectiveIconStartFrame, startFrame]);
@@ -928,7 +909,7 @@ export default function App() {
                   useCustomNews={useCustomNews} setUseCustomNews={setUseCustomNews}
                   customHeadlines={customHeadlines} setCustomHeadlines={setCustomHeadlines}
                   animStatus={animStatus}
-                  audioUrl={audioUrl} audioElementRef={audioElementRef} audioInfo={audioInfo}
+                  hasAudio={hasAudio} audioInfo={audioInfo}
                   parsed={parsed}
                   showWeatherOptions={canCustomizeWeather} showNewsOptions={canCustomizeNews}
                   phaseMode={phaseMode} setPhaseMode={setPhaseMode}
