@@ -163,6 +163,10 @@ export class BannerRenderer {
     this.rotationOrder = String(options.rotationOrder ?? "RX_RY_RZ")
       .trim()
       .toUpperCase();
+    // Experimental Wii Shop backdrop masking path. Defaults off so rendering
+    // follows the normal pane order unless explicitly requested.
+    this.enableWiiShopBackdropMask =
+      options.enableWiiShopBackdropMask === true || options.wiiShopBackdropMask === true;
 
     for (const pane of this.layout?.panes ?? []) {
       if (!this.panesByName.has(pane.name)) {

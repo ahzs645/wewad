@@ -62,7 +62,9 @@ export function getLocalPaneState(pane, frame) {
   // animation may have alpha=0 at the frozen frame since these panes were originally
   // hidden and replaced by Canvas 2D text.
   const alpha = digitVisibilityOverride === true ? 1 : (isVisible ? animatedAlpha * materialAlphaFactor : 0);
-  const propagatesAlpha = (pane.flags & 0x02) !== 0 || pane.type === "pic1" || pane.type === "txt1" || pane.type === "bnd1" || pane.type === "wnd1";
+  // BRLYT pane flag bit 0x02 is widescreen/aspect metadata, not alpha inheritance.
+  // Keep alpha propagation explicit to drawable pane types.
+  const propagatesAlpha = pane.type === "pic1" || pane.type === "txt1" || pane.type === "bnd1" || pane.type === "wnd1";
   const propagatesVisibility = true;
 
   // Custom weather overrides the texture index for digit panes to show the correct digit.

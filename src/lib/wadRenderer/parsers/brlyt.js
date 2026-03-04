@@ -531,6 +531,8 @@ export function parseBRLYT(buffer, loggerInput) {
           origin: paneOrigin,
           alpha: paneAlpha,
           visible: (paneFlags & 0x01) !== 0,
+          widescreenAffected: (paneFlags & 0x02) !== 0,
+          userFlag: (paneFlags & 0x04) !== 0,
           parent: paneParentStack.length > 0 ? paneParentStack[paneParentStack.length - 1] : null,
           translate: { x: transX, y: transY, z: transZ },
           rotate: { x: rotX, y: rotY, z: rotZ },

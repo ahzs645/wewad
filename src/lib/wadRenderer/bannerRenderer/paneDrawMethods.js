@@ -537,6 +537,7 @@ export function renderFrame(frame) {
   );
   const orderedRenderablePanes = this.getCustomWeatherOrderedPanes?.(renderablePanes) ?? renderablePanes;
   const shouldUseWiiShopBackdropMask =
+    this.enableWiiShopBackdropMask === true &&
     this.panesByName?.has("backCLs") &&
     this.panesByName?.has("mask_01") &&
     this.panesByName?.has("logo_base") &&
