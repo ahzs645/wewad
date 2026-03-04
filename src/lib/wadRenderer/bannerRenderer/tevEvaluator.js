@@ -301,7 +301,8 @@ export function evaluateTevStagesForPixel(stages, texSamples, rasColor, material
     // Resolve rasterized color: respect colorChan (GX channel control per stage).
     // 0=COLOR0, 1=COLOR1, 2=ALPHA0, 3=ALPHA1, 4=COLOR0A0, 5=COLOR1A1,
     // 6=GX_COLORZERO (no rasterized color), 7=BUMP, 8=BUMPN, 0xFF=COLORNULL.
-    const stageRasColor = stage.colorChan === 6
+    // COLORNULL means no rasterizer output → RASC/RASA read as zero.
+    const stageRasColor = (stage.colorChan === 6 || stage.colorChan === 0xff)
       ? { r: 0, g: 0, b: 0, a: 0 }
       : rasColor;
     const rasSwapEntry = swapTable?.[stage.rasSel] ?? null;
@@ -381,7 +382,9 @@ export function getDefaultTevStages() {
     },
     {
       // Stage 1: output = prev × ras
-      texCoord: 0, colorChan: 0xff, texMap: 0, rasSel: 0, texSel: 0,
+      // colorChan=4 (COLOR0A0): vertex color with alpha from channel 0.
+      // Reference: GX_SetTevOrder(stage1, 0xFF, 0xFF, 4) — uses COLOR0A0, not COLORNULL.
+      texCoord: 0, colorChan: 4, texMap: 0, rasSel: 0, texSel: 0,
       aC: CC_ZERO,  bC: CC_CPREV, cC: CC_RASC,  dC: CC_ZERO,
       tevOpC: TEV_ADD, tevBiasC: 0, tevScaleC: 0, tevRegIdC: 0, clampC: 1,
       kColorSelC: 0,
@@ -397,9 +400,10 @@ export function getDefaultTevStages() {
 // Single modulate stage: output = texture × raster color.
 // Used as fallback when material needs TEV processing (e.g. alpha compare)
 // but has no explicit TEV stages defined.
+// colorChan=4 (COLOR0A0): vertex color with alpha, since this stage uses RASC/RASA.
 export function getModulateTevStages() {
   return [{
-    texCoord: 0, colorChan: 0xff, texMap: 0, rasSel: 0, texSel: 0,
+    texCoord: 0, colorChan: 4, texMap: 0, rasSel: 0, texSel: 0,
     aC: CC_ZERO, bC: CC_TEXC, cC: CC_RASC, dC: CC_ZERO,
     tevOpC: TEV_ADD, tevBiasC: 0, tevScaleC: 0, tevRegIdC: 0, clampC: 1,
     kColorSelC: 0,

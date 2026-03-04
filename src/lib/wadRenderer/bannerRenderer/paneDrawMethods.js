@@ -496,6 +496,7 @@ export function drawFillTextPane(context, pane, rawText, width, height) {
 export function renderFrame(frame) {
   const context = this.ctx;
   this.textureSrtAnimationCache.clear();
+
   const layoutWidth = this.layout.width || this.canvas.clientWidth || this.canvas.width;
   const layoutHeight = this.layout.height || this.canvas.clientHeight || this.canvas.height;
   const referenceAspect = Number.isFinite(this.referenceAspectRatio) && this.referenceAspectRatio > 0
@@ -621,7 +622,9 @@ export function renderFrame(frame) {
         continue;
       }
 
-      if (paneName === "effects" && hasBackdropContent) {
+      // Flush the backdrop layer before the first non-CL*, non-mask pane
+      // so that colored background lights appear behind logo/text content.
+      if (hasBackdropContent) {
         flushBackdropLayer();
       }
     }

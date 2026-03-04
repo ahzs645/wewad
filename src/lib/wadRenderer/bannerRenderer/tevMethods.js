@@ -155,15 +155,84 @@ export function getAllTextureBindingsForPane(pane, paneState) {
   return bindings;
 }
 
-// Build a rasterized vertex color buffer as ImageData-like object.
-function buildRasterizedColorBuffer(pane, paneState, width, height) {
-  const colors = paneState?.vertexColors
-    ? normalizePaneVertexColors({ vertexColors: paneState.vertexColors })
-    : normalizePaneVertexColors(pane);
+// Build a rasterized color buffer as ImageData-like object.
+// On real Wii hardware, GX channel control determines whether the rasterizer
+// output (RAS) comes from per-vertex colors (matsrc=1, default) or from the
+// material color register (matsrc=0). When channelControl.colorSource=0,
+// the material color is used for RGB; when alphaSource=0, material alpha is used.
+function buildRasterizedColorBuffer(pane, paneState, width, height, material) {
+  const channelControl = material?.channelControl ?? null;
+  const useMatColorRGB = channelControl && channelControl.colorSource === 0;
+  const useMatAlpha = channelControl && channelControl.alphaSource === 0;
 
   const w = Math.max(1, Math.ceil(width));
   const h = Math.max(1, Math.ceil(height));
   const data = new Uint8ClampedArray(w * h * 4);
+
+  // When channel control says to use material color register for either
+  // RGB or alpha, resolve the material color (default: white opaque).
+  if (useMatColorRGB || useMatAlpha) {
+    const mc = material?.materialColor ?? { r: 255, g: 255, b: 255, a: 255 };
+    const vertexColors = (!useMatColorRGB || !useMatAlpha)
+      ? (paneState?.vertexColors
+          ? normalizePaneVertexColors({ vertexColors: paneState.vertexColors })
+          : normalizePaneVertexColors(pane))
+      : null;
+
+    if (useMatColorRGB && useMatAlpha) {
+      // Both from material: uniform color across all pixels.
+      for (let i = 0; i < data.length; i += 4) {
+        data[i] = mc.r;
+        data[i + 1] = mc.g;
+        data[i + 2] = mc.b;
+        data[i + 3] = mc.a;
+      }
+    } else {
+      // Mixed: material for one, vertex for the other.
+      const colors = vertexColors ?? [
+        { r: 255, g: 255, b: 255, a: 255 },
+        { r: 255, g: 255, b: 255, a: 255 },
+        { r: 255, g: 255, b: 255, a: 255 },
+        { r: 255, g: 255, b: 255, a: 255 },
+      ];
+      const [tl, tr, bl, br] = colors;
+      for (let y = 0; y < h; y += 1) {
+        const v = h <= 1 ? 0 : y / (h - 1);
+        for (let x = 0; x < w; x += 1) {
+          const u = w <= 1 ? 0 : x / (w - 1);
+          const idx = (y * w + x) * 4;
+          if (useMatColorRGB) {
+            data[idx] = mc.r;
+            data[idx + 1] = mc.g;
+            data[idx + 2] = mc.b;
+          } else {
+            const topR = tl.r + (tr.r - tl.r) * u;
+            const botR = bl.r + (br.r - bl.r) * u;
+            const topG = tl.g + (tr.g - tl.g) * u;
+            const botG = bl.g + (br.g - bl.g) * u;
+            const topB = tl.b + (tr.b - tl.b) * u;
+            const botB = bl.b + (br.b - bl.b) * u;
+            data[idx] = Math.round(topR + (botR - topR) * v);
+            data[idx + 1] = Math.round(topG + (botG - topG) * v);
+            data[idx + 2] = Math.round(topB + (botB - topB) * v);
+          }
+          if (useMatAlpha) {
+            data[idx + 3] = mc.a;
+          } else {
+            const topA = tl.a + (tr.a - tl.a) * u;
+            const botA = bl.a + (br.a - bl.a) * u;
+            data[idx + 3] = Math.round(topA + (botA - topA) * v);
+          }
+        }
+      }
+    }
+    return { data, width: w, height: h };
+  }
+
+  // Default path: use per-vertex colors (matsrc=1).
+  const colors = paneState?.vertexColors
+    ? normalizePaneVertexColors({ vertexColors: paneState.vertexColors })
+    : normalizePaneVertexColors(pane);
 
   if (!colors) {
     // Default: white opaque.
@@ -382,8 +451,9 @@ export function runTevPipeline(pane, paneState, width, height) {
     textureBuffers.push(sampleTextureToBuffer(this, bindings[i], pane, evalW, evalH));
   }
 
-  // Build rasterized vertex color buffer at evaluation resolution.
-  const rasBuffer = buildRasterizedColorBuffer(pane, paneState, evalW, evalH);
+  // Build rasterized color buffer at evaluation resolution.
+  // Pass material so channelControl can determine vertex vs. material color source.
+  const rasBuffer = buildRasterizedColorBuffer(pane, paneState, evalW, evalH, material);
 
   // Run per-pixel TEV evaluation with effective stages (may be default if none defined).
   const result = evaluateTevPipeline(stages, material, textureBuffers, rasBuffer, evalW, evalH);

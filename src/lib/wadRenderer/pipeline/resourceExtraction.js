@@ -9,6 +9,12 @@ function inferAnimationRole(filePath) {
   if (lower.includes("loop")) {
     return "loop";
   }
+  // "_In" suffix is a start-animation alias used by some channels (reference:
+  // wii-system-menu-player Banner.cpp fallback chain: _Start → _In → _Rso0).
+  const stem = filenameStem(filePath).toLowerCase();
+  if (stem.endsWith("_in")) {
+    return "start";
+  }
   return "generic";
 }
 
@@ -30,6 +36,47 @@ function findMatchingLayout(animPath, layoutsByPath, primaryLayoutPath) {
   }
 
   return bestPath;
+}
+
+/**
+ * For RSO animations where the actual visible content is clustered in a small
+ * portion of the total frameSize, return a copy with a tighter frameSize.
+ * RSO animations on the Wii have large frameSizes because the RSO state system
+ * fills the remaining time with dynamic content — without that system running,
+ * the animation goes blank for most of the cycle.
+ */
+function tightenRsoFrameSize(anim) {
+  const frameSize = anim?.frameSize ?? 0;
+  if (frameSize <= 0) {
+    return null;
+  }
+
+  let maxActiveFrame = 0;
+  for (const pane of anim.panes ?? []) {
+    for (const tag of pane.tags ?? []) {
+      for (const entry of tag.entries ?? []) {
+        for (const kf of entry.keyframes ?? []) {
+          if (kf.frame >= 0 && kf.frame < frameSize && kf.frame > maxActiveFrame) {
+            maxActiveFrame = kf.frame;
+          }
+        }
+      }
+    }
+  }
+
+  if (maxActiveFrame <= 0) {
+    return null;
+  }
+
+  // Add a small margin past the last keyframe for interpolation tails.
+  const effectiveEnd = Math.min(frameSize, Math.ceil(maxActiveFrame) + 10);
+
+  // Only tighten if the content occupies less than half the total frame range.
+  if (effectiveEnd >= frameSize * 0.5) {
+    return null;
+  }
+
+  return { ...anim, frameSize: effectiveEnd };
 }
 
 function inferAnimationState(filePath) {
@@ -231,6 +278,18 @@ export function parseResourceSet(files, loggerInput) {
 
     if (!animationLoop && !animationStart) {
       animation = animationEntries[0]?.anim ?? null;
+
+      // RSO animations (e.g. Wii Shop Channel icon) have large frameSizes
+      // designed for the Wii's RSO state system to fill with dynamic content.
+      // The actual visible content is often clustered in a small portion of
+      // the total frames.  Tighten the loop to the effective content range
+      // so the icon doesn't go blank for long periods.
+      if (animation && animationEntries.some((entry) => entry.state)) {
+        const tightened = tightenRsoFrameSize(animation);
+        if (tightened) {
+          animation = tightened;
+        }
+      }
     } else {
       animation = animationLoop ?? animationStart;
     }
