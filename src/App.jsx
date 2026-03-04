@@ -793,6 +793,7 @@ export default function App() {
           customWeather: customWeatherData,
           customNews: customNewsData,
           displayAspect: previewDisplayAspect,
+          referenceAspectRatio: iconViewport.width / iconViewport.height,
           tevQuality,
           fonts: iconResult.fonts,
           onFrame: (frame, total, phase, globalFrame, _audioFrame) => {
