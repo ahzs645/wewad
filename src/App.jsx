@@ -235,7 +235,7 @@ export default function App() {
     const localeKey = titleLocale === "auto" ? "US" : (titleLocale || "US");
     const strings = DISC_CHANNEL_STRINGS[localeKey] ?? DISC_CHANNEL_STRINGS.US;
     return {
-      T_Bar: "",
+      T_Bar: strings.title,
       T_Comment0: strings.insert,
       T_Comment1: "",
     };
