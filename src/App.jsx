@@ -65,6 +65,7 @@ export default function App() {
   const [bannerDiscType, setBannerDiscType] = useState("auto");
   const [iconRenderState, setIconRenderState] = useState("auto");
   const [iconAnimOverride, setIconAnimOverride] = useState(null);
+  const [iconScene, setIconScene] = useState("auto");
   const [titleLocale, setTitleLocale] = useState("auto");
   const [availableTitleLocales, setAvailableTitleLocales] = useState([]);
   const [bannerPaneStateGroups, setBannerPaneStateGroups] = useState([]);
@@ -241,17 +242,23 @@ export default function App() {
     };
   }, [bannerDiscPaneNames, titleLocale]);
 
-  // Hide the Disc Channel "system update" icon scene — on real Wii this only
-  // shows during firmware updates, not during normal operation.
-  const iconPaneVisibilityOverrides = useMemo(() => {
+  // Disc Channel icon has two scenes: N_GCIcon (normal) and N_DiscUpdateIcon
+  // (system update). On real Wii only one shows at a time.
+  const showIconSceneOption = useMemo(() => {
     const panes = parsed?.results?.icon?.renderLayout?.panes;
-    if (!panes) return null;
+    if (!panes) return false;
     const names = new Set(panes.map((p) => p.name));
-    if (names.has("N_DiscUpdateIcon") && names.has("N_GCIcon")) {
-      return new Map([["N_DiscUpdateIcon", false]]);
-    }
-    return null;
+    return names.has("N_DiscUpdateIcon") && names.has("N_GCIcon");
   }, [parsed]);
+
+  const iconPaneVisibilityOverrides = useMemo(() => {
+    if (!showIconSceneOption) return null;
+    if (iconScene === "update") {
+      return new Map([["N_GCIcon", false]]);
+    }
+    // Auto or "gc" — hide the update scene
+    return new Map([["N_DiscUpdateIcon", false]]);
+  }, [showIconSceneOption, iconScene]);
 
   const iconAnimSelection = useMemo(() => {
     const selection = resolveAnimationSelection(parsed?.results?.icon, effectiveIconRenderState, iconAnimOverride);
@@ -424,6 +431,7 @@ export default function App() {
       setBannerDiscType("auto");
       setIconRenderState("auto");
       setIconAnimOverride(null);
+      setIconScene("auto");
       setTitleLocale("auto");
       setAvailableTitleLocales([]);
       setBannerPaneStateGroups([]);
@@ -724,9 +732,6 @@ export default function App() {
     stopRenderers();
     setBannerPlaying(false);
     setIconPlaying(false);
-    setAvailableTitleLocales([]);
-    setBannerPaneStateGroups([]);
-    setIconPaneStateGroups([]);
 
     if (!parsed || activeTab !== "preview") {
       return () => stopRenderers();
@@ -853,7 +858,7 @@ export default function App() {
     stopRenderers, bannerAnimSelection, iconAnimSelection, titleLocale,
     bannerPaneStateSelections, iconPaneStateSelections, customWeatherData, customNewsData,
     previewDisplayAspect, tevQuality, phaseMode, bannerPaneVisibilityOverrides, bannerAlphaMaskPanes, bannerTextOverrides,
-    iconPaneVisibilityOverrides,
+    iconPaneVisibilityOverrides, iconScene,
   ]);
 
   // Start frame sync
@@ -930,6 +935,7 @@ export default function App() {
                   bannerDiscType={bannerDiscType} setBannerDiscType={setBannerDiscType}
                   showDiscTypeOption={bannerDiscPaneNames != null}
                   iconAnimOverride={iconAnimOverride} setIconAnimOverride={setIconAnimOverride}
+                  iconScene={iconScene} setIconScene={setIconScene} showIconSceneOption={showIconSceneOption}
                   iconRenderState={iconRenderState} setIconRenderState={setIconRenderState}
                   iconRenderStateOptions={iconRenderStateOptions}
                   titleLocale={titleLocale} setTitleLocale={setTitleLocale}

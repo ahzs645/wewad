@@ -5,6 +5,7 @@ import { decryptWadContents } from "./decryption";
 import { createRenderableLayout } from "./layout";
 import { extractChannelAudio, extractTargetResources, parseResourceSet } from "./resourceExtraction";
 import { loadJSZip } from "../../exportBundle";
+import { loadRendererBundle } from "../../bundleLoader";
 
 export async function processWAD(buffer, loggerInput) {
   const logger = withLogger(loggerInput);
@@ -164,12 +165,99 @@ export function processArchive(buffer, loggerInput) {
   return { wad: null, results };
 }
 
+function decodeWavToPcm16(wavBuffer) {
+  const view = new DataView(wavBuffer);
+  if (wavBuffer.byteLength < 44) return null;
+  // Verify RIFF/WAVE header
+  if (view.getUint32(0) !== 0x52494646 || view.getUint32(8) !== 0x57415645) return null;
+
+  let offset = 12;
+  let sampleRate = 44100;
+  let channelCount = 2;
+  let bitsPerSample = 16;
+
+  while (offset < wavBuffer.byteLength - 8) {
+    const chunkId = view.getUint32(offset);
+    const chunkSize = view.getUint32(offset + 4, true);
+
+    if (chunkId === 0x666D7420) { // "fmt "
+      channelCount = view.getUint16(offset + 10, true);
+      sampleRate = view.getUint32(offset + 12, true);
+      bitsPerSample = view.getUint16(offset + 22, true);
+    } else if (chunkId === 0x64617461) { // "data"
+      const dataOffset = offset + 8;
+      const bytesPerSample = bitsPerSample / 8;
+      const sampleCount = Math.floor(chunkSize / (channelCount * bytesPerSample));
+      const pcm16 = [];
+      for (let ch = 0; ch < channelCount; ch++) {
+        pcm16.push(new Int16Array(sampleCount));
+      }
+      let readPos = dataOffset;
+      for (let i = 0; i < sampleCount; i++) {
+        for (let ch = 0; ch < channelCount; ch++) {
+          pcm16[ch][i] = view.getInt16(readPos, true);
+          readPos += 2;
+        }
+      }
+      return { pcm16, sampleRate, channelCount, sampleCount };
+    }
+
+    offset += 8 + chunkSize;
+    if (chunkSize % 2 !== 0) offset++; // WAV chunks are word-aligned
+  }
+  return null;
+}
+
+async function processRendererBundleZip(buffer, logger) {
+  logger.info("Detected renderer bundle format");
+  const bundle = await loadRendererBundle(buffer);
+  const manifest = bundle.manifest ?? {};
+
+  const results = {};
+  for (const target of ["banner", "icon"]) {
+    const targetData = bundle[target];
+    if (!targetData?.layout) continue;
+
+    logger.info(`Loaded ${target} from renderer bundle`);
+    results[target] = {
+      tplImages: targetData.tplImages ?? {},
+      layout: targetData.layout,
+      anim: targetData.startAnim ?? targetData.loopAnim ?? null,
+      animStart: targetData.startAnim ?? null,
+      animLoop: targetData.loopAnim ?? null,
+      animEntries: [],
+      fonts: targetData.fonts ?? {},
+      renderLayout: targetData.layout,
+    };
+  }
+
+  if (bundle.audioWav) {
+    const audio = decodeWavToPcm16(bundle.audioWav);
+    if (audio) {
+      const manifestAudio = manifest.audio ?? {};
+      audio.loopFlag = manifestAudio.loopFlag ?? false;
+      audio.loopStart = manifestAudio.loopStart ?? 0;
+      audio.durationSeconds = manifestAudio.durationSeconds ?? 0;
+      results.audio = audio;
+      logger.info("Loaded audio from renderer bundle");
+    }
+  }
+
+  logger.success("=== Done! ===");
+  return { wad: { titleId: manifest.titleId ?? null }, results };
+}
+
 export async function processZipBundle(buffer, loggerInput) {
   const logger = withLogger(loggerInput);
 
   logger.info("=== Parsing ZIP Bundle ===");
   const JSZip = await loadJSZip();
   const zip = await JSZip.loadAsync(buffer);
+
+  // Detect renderer bundle (has banner/layout.json or icon/layout.json)
+  if (zip.file("banner/layout.json") || zip.file("icon/layout.json")) {
+    return processRendererBundleZip(buffer, logger);
+  }
 
   // Collect all .arc files from the ZIP
   const arcEntries = Object.entries(zip.files).filter(

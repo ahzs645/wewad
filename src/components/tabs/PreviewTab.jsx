@@ -14,6 +14,7 @@ export function PreviewTab({
   bannerAnimOverride, setBannerAnimOverride,
   bannerDiscType, setBannerDiscType, showDiscTypeOption,
   iconAnimOverride, setIconAnimOverride,
+  iconScene, setIconScene, showIconSceneOption,
   iconRenderState, setIconRenderState, iconRenderStateOptions,
   titleLocale, setTitleLocale, availableTitleLocales,
   bannerPaneStateGroups, bannerPaneStateSelections, setBannerPaneStateSelections,
@@ -263,6 +264,20 @@ export function PreviewTab({
               </select>
             </div>
           ) : null}
+          {showIconSceneOption ? (
+            <div className="state-control">
+              <label htmlFor="icon-scene">Icon Scene</label>
+              <select
+                id="icon-scene"
+                value={iconScene}
+                onChange={(event) => setIconScene(event.target.value)}
+              >
+                <option value="auto">Auto (GC Icon)</option>
+                <option value="gc">GC Icon</option>
+                <option value="update">Wii Console Update</option>
+              </select>
+            </div>
+          ) : null}
           {iconPaneStateGroups.map((group) => {
             const controlId = `icon-pane-state-${normalizeDomId(group.id)}`;
             const parsedValue = Number.parseInt(String(iconPaneStateSelections[group.id]), 10);
@@ -419,7 +434,7 @@ export function PreviewTab({
               </div>
               <div>
                 <span className="key">WAD Type:</span>{" "}
-                <span className="val">0x{parsed.wad.wadType.toString(16)}</span>
+                <span className="val">{parsed.wad.wadType != null ? `0x${parsed.wad.wadType.toString(16)}` : "N/A"}</span>
               </div>
               <div>
                 <span className="key">Contents:</span>{" "}
