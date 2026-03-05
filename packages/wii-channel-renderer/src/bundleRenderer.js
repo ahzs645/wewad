@@ -22,17 +22,34 @@ import { BannerRenderer } from "./wadRenderer/BannerRenderer.js";
 // ---------------------------------------------------------------------------
 
 function resolveIconViewport(layout) {
-  if (!layout?.panes) return null;
-  for (const pane of layout.panes) {
-    const normalized = pane.name
-      .replace(/([a-z])([A-Z])/g, "$1_$2")
-      .replace(/([A-Z]+)([A-Z][a-z])/g, "$1_$2")
-      .toLowerCase();
-    if (normalized.includes("icon") && normalized.includes("bg")) {
-      return { width: Math.round(pane.size.w), height: Math.round(pane.size.h) };
-    }
-  }
-  return null;
+  if (!layout?.panes) return { width: 128, height: 96 };
+
+  const picturePanes = layout.panes.filter((pane) => pane.type === "pic1");
+
+  const camelToSnake = (name) => name.replace(/([a-z])([A-Z])/g, "$1_$2");
+  const explicitViewportPane =
+    picturePanes.find((pane) => /^ch\d+$/i.test(pane.name)) ??
+    picturePanes.find((pane) =>
+      /(?:^|_)(?:tv|icon|cork|frame|bg|back|base|board)(?:_|$)/i.test(camelToSnake(pane.name)),
+    );
+
+  const fallbackViewportPane = picturePanes
+    .filter((pane) => pane.visible !== false)
+    .filter((pane) => (pane.alpha ?? 255) > 0)
+    .filter((pane) => Math.abs(pane.size?.w ?? 0) >= 64 && Math.abs(pane.size?.h ?? 0) >= 32)
+    .sort((a, b) => {
+      const aArea = Math.abs(a.size?.w ?? 0) * Math.abs(a.size?.h ?? 0);
+      const bArea = Math.abs(b.size?.w ?? 0) * Math.abs(b.size?.h ?? 0);
+      return bArea - aArea;
+    })[0];
+
+  const iconPane = explicitViewportPane ?? fallbackViewportPane;
+  if (!iconPane) return { width: 128, height: 96 };
+
+  return {
+    width: Math.max(1, Math.round(Math.abs(iconPane.size?.w ?? 128))),
+    height: Math.max(1, Math.round(Math.abs(iconPane.size?.h ?? 96))),
+  };
 }
 
 // ---------------------------------------------------------------------------
@@ -137,17 +154,18 @@ function buildIconSceneOverrides(scene) {
 
 function resolveAnimFromEntries(data, animOverrideId) {
   if (!animOverrideId) {
-    return { startAnim: data.startAnim, loopAnim: data.loopAnim, playbackMode: null };
+    return { startAnim: data.startAnim, loopAnim: data.loopAnim, playbackMode: null, renderLayout: null };
   }
   const entry = (data.animEntries ?? []).find((e) => e.id === animOverrideId);
   if (!entry?.anim) {
-    return { startAnim: data.startAnim, loopAnim: data.loopAnim, playbackMode: null };
+    return { startAnim: data.startAnim, loopAnim: data.loopAnim, playbackMode: null, renderLayout: null };
   }
   const loops = (entry.anim.flags & 1) !== 0;
   return {
     startAnim: null,
     loopAnim: entry.anim,
     playbackMode: loops ? "loop" : "once",
+    renderLayout: entry.renderLayout ?? null,
   };
 }
 
@@ -192,15 +210,16 @@ export function createRendererFromBundle(canvas, bundle, target, settings = {}) 
   const resolved = resolveAnimFromEntries(data, settings.animOverride);
   const { startAnim, loopAnim } = resolved;
 
+  // Use the animation entry's layout if it has one, otherwise the main layout
+  const baseLayout = resolved.renderLayout ?? rawLayout;
+
   // Resolve layout & aspect for icon targets
-  let layout = rawLayout;
+  let layout = baseLayout;
   let refAspect = undefined;
   if (target === "icon") {
-    const viewport = resolveIconViewport(rawLayout);
-    if (viewport) {
-      layout = { ...rawLayout, width: viewport.width, height: viewport.height };
-      refAspect = viewport.width / viewport.height;
-    }
+    const viewport = resolveIconViewport(baseLayout);
+    layout = { ...baseLayout, width: viewport.width, height: viewport.height };
+    refAspect = viewport.width / viewport.height;
   }
 
   canvas.width = layout.width ?? meta.width;
