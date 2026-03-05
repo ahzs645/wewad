@@ -120,6 +120,30 @@ async function loadFonts(zip, prefix) {
 // Load a single target (banner or icon)
 // ---------------------------------------------------------------------------
 
+async function loadAnimEntries(zip, prefix) {
+  const meta = await readJson(zip, `${prefix}/anim-entries.json`);
+  if (!meta || !Array.isArray(meta)) return [];
+
+  const entries = [];
+  for (let i = 0; i < meta.length; i++) {
+    const entry = meta[i];
+    const anim = await readJson(zip, `${prefix}/anims/${i}.json`);
+    const layout = await readJson(zip, `${prefix}/anims/${i}-layout.json`);
+    entries.push({
+      id: entry.id,
+      path: entry.path,
+      role: entry.role ?? null,
+      state: entry.state ?? null,
+      frameSize: entry.frameSize ?? 0,
+      paneCount: entry.paneCount ?? 0,
+      anim: anim ?? null,
+      layout: layout ?? undefined,
+      renderLayout: layout ?? undefined,
+    });
+  }
+  return entries;
+}
+
 async function loadTarget(zip, prefix) {
   // Check if this target exists in the bundle
   const layoutFile = zip.file(`${prefix}/layout.json`);
@@ -130,6 +154,7 @@ async function loadTarget(zip, prefix) {
   const loopAnim = await readJson(zip, `${prefix}/anim-loop.json`);
   const tplImages = await loadTextures(zip, prefix);
   const fonts = await loadFonts(zip, prefix);
+  const animEntries = await loadAnimEntries(zip, prefix);
 
   return {
     layout,
@@ -137,6 +162,7 @@ async function loadTarget(zip, prefix) {
     loopAnim,
     tplImages,
     fonts,
+    animEntries,
   };
 }
 

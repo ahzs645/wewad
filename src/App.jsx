@@ -245,8 +245,11 @@ export default function App() {
   // Disc Channel icon has two scenes: N_GCIcon (normal) and N_DiscUpdateIcon
   // (system update). On real Wii only one shows at a time.
   const showIconSceneOption = useMemo(() => {
-    const panes = parsed?.results?.icon?.renderLayout?.panes;
-    if (!panes) return false;
+    const iconResult = parsed?.results?.icon;
+    if (!iconResult) return false;
+    // Check both renderLayout and raw layout panes for the disc channel icon scenes
+    const panes = iconResult.renderLayout?.panes ?? iconResult.layout?.panes ?? [];
+    if (panes.length === 0) return false;
     const names = new Set(panes.map((p) => p.name));
     return names.has("N_DiscUpdateIcon") && names.has("N_GCIcon");
   }, [parsed]);

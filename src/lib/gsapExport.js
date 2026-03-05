@@ -412,4 +412,30 @@ async function serializeTarget(zip, prefix, result, animSelection, iconViewport,
   if (result.fonts) {
     await serializeFonts(zip, prefix, result.fonts);
   }
+
+  // All animation entries (for multi-animation bundles)
+  if (result.animEntries?.length > 0) {
+    const entriesMeta = result.animEntries.map((entry, i) => ({
+      id: entry.id,
+      path: entry.path,
+      role: entry.role ?? null,
+      state: entry.state ?? null,
+      frameSize: entry.frameSize ?? 0,
+      paneCount: entry.paneCount ?? 0,
+      flags: entry.anim?.flags ?? 0,
+      hasLayout: Boolean(entry.renderLayout || entry.layout),
+    }));
+    zip.file(`${prefix}/anim-entries.json`, JSON.stringify(entriesMeta));
+
+    for (let i = 0; i < result.animEntries.length; i++) {
+      const entry = result.animEntries[i];
+      if (entry.anim) {
+        zip.file(`${prefix}/anims/${i}.json`, JSON.stringify(entry.anim));
+      }
+      const entryLayout = entry.renderLayout || entry.layout;
+      if (entryLayout) {
+        zip.file(`${prefix}/anims/${i}-layout.json`, JSON.stringify(entryLayout));
+      }
+    }
+  }
 }

@@ -218,14 +218,29 @@ async function processRendererBundleZip(buffer, logger) {
     const targetData = bundle[target];
     if (!targetData?.layout) continue;
 
-    logger.info(`Loaded ${target} from renderer bundle`);
+    const animEntries = targetData.animEntries ?? [];
+    logger.info(`Loaded ${target} from renderer bundle (${animEntries.length} animation entries)`);
+
+    // Infer primary anim/animStart/animLoop from entries if available
+    let anim = targetData.startAnim ?? targetData.loopAnim ?? null;
+    let animStart = targetData.startAnim ?? null;
+    let animLoop = targetData.loopAnim ?? null;
+
+    if (!anim && animEntries.length > 0) {
+      const loopEntry = animEntries.find((e) => e.role === "loop");
+      const startEntry = animEntries.find((e) => e.role === "start");
+      animLoop = loopEntry?.anim ?? null;
+      animStart = startEntry?.anim ?? null;
+      anim = animLoop ?? animStart ?? animEntries[0]?.anim ?? null;
+    }
+
     results[target] = {
       tplImages: targetData.tplImages ?? {},
       layout: targetData.layout,
-      anim: targetData.startAnim ?? targetData.loopAnim ?? null,
-      animStart: targetData.startAnim ?? null,
-      animLoop: targetData.loopAnim ?? null,
-      animEntries: [],
+      anim,
+      animStart,
+      animLoop,
+      animEntries,
       fonts: targetData.fonts ?? {},
       renderLayout: targetData.layout,
     };
