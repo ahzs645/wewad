@@ -3,7 +3,7 @@
 WeWAD now includes a separate reusable rendering package:
 
 - Package path (in this repo): `packages/wii-channel-renderer`
-- Package name: `@wewad/wii-channel-renderer`
+- Package name: `@firstform/wii-channel-renderer`
 
 This package is framework-agnostic and can be imported by other projects to parse/render Wii channel banners and icons.
 
@@ -12,7 +12,7 @@ This package is framework-agnostic and can be imported by other projects to pars
 From npm (after publishing):
 
 ```bash
-npm install @wewad/wii-channel-renderer
+npm install @firstform/wii-channel-renderer
 ```
 
 From this repository (without publishing):
@@ -35,20 +35,20 @@ import {
   parseBRLYT,
   parseBRLAN,
   parseTPL,
-} from "@wewad/wii-channel-renderer";
+} from "@firstform/wii-channel-renderer";
 ```
 
 Optional helpers:
 
 ```js
-import { loadRendererBundle } from "@wewad/wii-channel-renderer/bundle-loader";
-import { exportBundle } from "@wewad/wii-channel-renderer/export-bundle";
+import { loadRendererBundle } from "@firstform/wii-channel-renderer/bundle-loader";
+import { exportBundle } from "@firstform/wii-channel-renderer/export-bundle";
 ```
 
 ## Render banner + icon from a WAD
 
 ```js
-import { processWAD, BannerRenderer } from "@wewad/wii-channel-renderer";
+import { processWAD, BannerRenderer } from "@firstform/wii-channel-renderer";
 
 const parsed = await processWAD(await wadFile.arrayBuffer());
 

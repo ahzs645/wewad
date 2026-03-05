@@ -2,5 +2,6 @@ node_modules
 dist
 *.wad
 tmp-*.mjs
+debug_*.mjs
 customizemii-master
 .codex

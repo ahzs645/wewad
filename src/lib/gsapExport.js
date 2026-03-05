@@ -6,7 +6,7 @@
  * and loads this bundle to replay animations on Canvas 2D with GSAP.
  */
 
-import { loadJSZip, imageDataToPngBlob, tplImageToImageData, createWavArrayBuffer } from "@wewad/wii-channel-renderer/export-bundle";
+import { loadJSZip, imageDataToPngBlob, tplImageToImageData, createWavArrayBuffer } from "@firstform/wii-channel-renderer/export-bundle";
 
 // ---------------------------------------------------------------------------
 // Icon viewport helper (duplicated to avoid circular import from utils/)
@@ -135,14 +135,14 @@ banner/icon animation using the WeWAD BannerRenderer.
 
 1. Install the renderer package and GSAP:
    \`\`\`
-   npm install @wewad/wii-channel-renderer gsap
+   npm install @firstform/wii-channel-renderer gsap
    \`\`\`
 
 2. Load the bundle and create a renderer:
 
    \`\`\`js
-   import { BannerRenderer } from "@wewad/wii-channel-renderer";
-   import { loadRendererBundle } from "@wewad/wii-channel-renderer/bundle-loader";
+   import { BannerRenderer } from "@firstform/wii-channel-renderer";
+   import { loadRendererBundle } from "@firstform/wii-channel-renderer/bundle-loader";
 
    // Load the bundle ZIP
    const response = await fetch("/assets/my-bundle.zip");
@@ -172,8 +172,8 @@ banner/icon animation using the WeWAD BannerRenderer.
 
 \`\`\`jsx
 import { useRef, useEffect } from "react";
-import { BannerRenderer } from "@wewad/wii-channel-renderer";
-import { loadRendererBundle } from "@wewad/wii-channel-renderer/bundle-loader";
+import { BannerRenderer } from "@firstform/wii-channel-renderer";
+import { loadRendererBundle } from "@firstform/wii-channel-renderer/bundle-loader";
 
 function WiiBanner({ bundleUrl, aspectRatio = 4 / 3 }) {
   const canvasRef = useRef(null);

@@ -1,5 +1,5 @@
 {
-  "name": "@wewad/wii-channel-renderer",
+  "name": "@firstform/wii-channel-renderer",
   "version": "0.1.0",
   "description": "Standalone Wii channel banner/icon parser and canvas renderer used by WeWAD",
   "type": "module",

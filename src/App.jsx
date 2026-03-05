@@ -5,8 +5,8 @@ import {
   processArchive,
   processWAD,
   processZipBundle,
-} from "@wewad/wii-channel-renderer";
-import { downloadBlob, exportBundle, loadBundle, revokeBundle } from "@wewad/wii-channel-renderer/export-bundle";
+} from "@firstform/wii-channel-renderer";
+import { downloadBlob, exportBundle, loadBundle, revokeBundle } from "@firstform/wii-channel-renderer/export-bundle";
 import { exportGsapBundle } from "./lib/gsapExport";
 
 import { TABS, WEATHER_CONDITION_OPTIONS } from "./constants";

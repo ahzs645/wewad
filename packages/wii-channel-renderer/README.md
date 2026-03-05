@@ -1,4 +1,4 @@
-# @wewad/wii-channel-renderer
+# @firstform/wii-channel-renderer
 
 Standalone Wii channel rendering engine extracted from WeWAD.
 
@@ -7,7 +7,7 @@ It parses `.wad` / `.arc` assets and renders Wii banner/icon animations to Canva
 ## Install
 
 ```bash
-npm install @wewad/wii-channel-renderer
+npm install @firstform/wii-channel-renderer
 ```
 
 ## What you get
@@ -21,7 +21,7 @@ npm install @wewad/wii-channel-renderer
 ## Basic usage
 
 ```js
-import { processWAD, BannerRenderer } from "@wewad/wii-channel-renderer";
+import { processWAD, BannerRenderer } from "@firstform/wii-channel-renderer";
 
 const wadBytes = await file.arrayBuffer();
 const parsed = await processWAD(wadBytes);
@@ -86,8 +86,8 @@ if (icon) {
 Optional helpers are exported as subpaths:
 
 ```js
-import { loadRendererBundle } from "@wewad/wii-channel-renderer/bundle-loader";
-import { exportBundle } from "@wewad/wii-channel-renderer/export-bundle";
+import { loadRendererBundle } from "@firstform/wii-channel-renderer/bundle-loader";
+import { exportBundle } from "@firstform/wii-channel-renderer/export-bundle";
 ```
 
 These are useful when you want to serialize parsed data into a reusable ZIP and load it later.

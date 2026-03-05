@@ -1,4 +1,4 @@
-import { interpolateKeyframes } from "@wewad/wii-channel-renderer";
+import { interpolateKeyframes } from "@firstform/wii-channel-renderer";
 import {
   normalizeRenderState,
   resolveAutoRenderState,
