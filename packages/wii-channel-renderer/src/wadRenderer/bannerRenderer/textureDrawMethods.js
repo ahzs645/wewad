@@ -1,0 +1,433 @@
+import { resolveWrapMode, isTiledWrapMode } from "./renderColorUtils.js";
+
+export function getWrappedSurface(
+  texture,
+  textureName,
+  sourceRect,
+  wrapModeX,
+  wrapModeY,
+  tileWidth,
+  tileHeight,
+  targetWidth,
+  targetHeight,
+) {
+  const repeatX = wrapModeX !== "clamp";
+  const repeatY = wrapModeY !== "clamp";
+  const src = sourceRect ?? { x: 0, y: 0, width: texture.width, height: texture.height };
+  const safeTileWidth = Math.max(1, Math.round(tileWidth));
+  const safeTileHeight = Math.max(1, Math.round(tileHeight));
+  const safeTargetWidth = Math.max(1, Math.round(targetWidth));
+  const safeTargetHeight = Math.max(1, Math.round(targetHeight));
+  const mirrorX = wrapModeX === "mirror";
+  const mirrorY = wrapModeY === "mirror";
+  const tileWidthWithMirror = safeTileWidth * (mirrorX ? 2 : 1);
+  const tileHeightWithMirror = safeTileHeight * (mirrorY ? 2 : 1);
+  const key = [
+    textureName,
+    src.x,
+    src.y,
+    src.width,
+    src.height,
+    wrapModeX,
+    wrapModeY,
+    safeTileWidth,
+    safeTileHeight,
+    safeTargetWidth,
+    safeTargetHeight,
+  ].join(":");
+
+  const cached = this.patternTextureCache.get(key);
+  if (cached) {
+    // Refresh insertion order for LRU eviction.
+    this.patternTextureCache.delete(key);
+    this.patternTextureCache.set(key, cached);
+    return cached;
+  }
+
+  const surface = document.createElement("canvas");
+
+  if (repeatX && repeatY) {
+    surface.width = tileWidthWithMirror;
+    surface.height = tileHeightWithMirror;
+  } else if (repeatX) {
+    surface.width = tileWidthWithMirror;
+    surface.height = safeTargetHeight;
+  } else {
+    surface.width = safeTargetWidth;
+    surface.height = tileHeightWithMirror;
+  }
+
+  const drawContext = surface.getContext("2d");
+  const cellWidth = repeatX ? safeTileWidth : surface.width;
+  const cellHeight = repeatY ? safeTileHeight : surface.height;
+  const drawCell = (x, y, flipX, flipY) => {
+    drawContext.save();
+    drawContext.translate(x + (flipX ? cellWidth : 0), y + (flipY ? cellHeight : 0));
+    drawContext.scale(flipX ? -1 : 1, flipY ? -1 : 1);
+    drawContext.drawImage(texture, src.x, src.y, src.width, src.height, 0, 0, cellWidth, cellHeight);
+    drawContext.restore();
+  };
+
+  drawCell(0, 0, false, false);
+  if (mirrorX) {
+    drawCell(cellWidth, 0, true, false);
+  }
+  if (mirrorY) {
+    drawCell(0, cellHeight, false, true);
+  }
+  if (mirrorX && mirrorY) {
+    drawCell(cellWidth, cellHeight, true, true);
+  }
+
+  this.patternTextureCache.set(key, surface);
+  while (this.patternTextureCache.size > this.patternTextureCacheLimit) {
+    const oldestKey = this.patternTextureCache.keys().next().value;
+    if (oldestKey == null) {
+      break;
+    }
+    this.patternTextureCache.delete(oldestKey);
+  }
+  return surface;
+}
+
+export function drawPaneTextureWithVerticalClamp(context, binding, pane, width, height) {
+  const texture = binding.texture;
+  const textureSRT = binding.textureSRT ?? null;
+  const texCoordIndex = binding.texCoordIndex ?? 0;
+  const transformed = this.getTransformedTexCoords(pane, textureSRT, texCoordIndex);
+  if (!transformed) {
+    return false;
+  }
+
+  const eps = 1e-6;
+  const topDeltaT = Math.abs(transformed.tl.t - transformed.tr.t);
+  const bottomDeltaT = Math.abs(transformed.bl.t - transformed.br.t);
+  if (topDeltaT > eps || bottomDeltaT > eps) {
+    return false;
+  }
+
+  const tTop = (transformed.tl.t + transformed.tr.t) * 0.5;
+  const tBottom = (transformed.bl.t + transformed.br.t) * 0.5;
+  if (!Number.isFinite(tTop) || !Number.isFinite(tBottom) || Math.abs(tBottom - tTop) <= eps) {
+    return false;
+  }
+
+  const wrapModeS = resolveWrapMode(binding.wrapS);
+  const wrapModeT = resolveWrapMode(binding.wrapT);
+  const repeatX = wrapModeS !== "clamp";
+  const repeatY = wrapModeT !== "clamp";
+  if (!repeatX || repeatY) {
+    return false;
+  }
+
+  // Only use segmented clamp mapping when vertical coordinates are actually outside [0, 1].
+  if (Math.min(tTop, tBottom) >= 0 && Math.max(tTop, tBottom) <= 1) {
+    return false;
+  }
+
+  const baseSourceRect =
+    this.getSourceRectForPane(pane, texture, {
+      forceNormalized: true,
+      repeatX: true,
+      repeatY: true,
+      textureSRT,
+      texCoordIndex,
+    }) ?? { x: 0, y: 0, width: texture.width, height: texture.height };
+
+  const spans = this.getTexCoordSpans(pane, textureSRT, texCoordIndex);
+  const sSpan = spans?.spanS ?? 1;
+  const tileWidth = Math.abs(width) / Math.max(1e-6, sSpan);
+  const paneTop = -height / 2;
+  const textureHeight = texture.height;
+
+  const clamp01 = (value) => Math.max(0, Math.min(1, value));
+  const tAtV = (v) => tTop + (tBottom - tTop) * v;
+
+  const drawSegment = (vStart, vEnd, sourceY, sourceHeight) => {
+    const segVStart = Math.max(0, Math.min(1, vStart));
+    const segVEnd = Math.max(0, Math.min(1, vEnd));
+    if (segVEnd - segVStart <= 1e-6) {
+      return;
+    }
+
+    const destY = paneTop + segVStart * height;
+    const destHeight = (segVEnd - segVStart) * height;
+    if (destHeight <= 0.25) {
+      return;
+    }
+
+    const safeSourceHeight = Math.max(1, sourceHeight);
+    const segmentSourceRect = {
+      x: baseSourceRect.x,
+      y: Math.max(0, Math.min(textureHeight - 1, sourceY)),
+      width: baseSourceRect.width,
+      height: Math.min(textureHeight, safeSourceHeight),
+    };
+
+    const surface = this.getWrappedSurface(
+      texture,
+      binding.textureName,
+      segmentSourceRect,
+      wrapModeS,
+      "clamp",
+      tileWidth,
+      destHeight,
+      width,
+      destHeight,
+    );
+
+    const pattern = context.createPattern(surface, "repeat-x");
+    if (!pattern) {
+      return;
+    }
+    context.save();
+    context.translate(-width / 2, destY);
+    context.fillStyle = pattern;
+    context.fillRect(0, 0, width, destHeight);
+    context.restore();
+  };
+
+  const drawEdgeSegment = (vStart, vEnd, edge) => {
+    const sourceY = edge <= 0 ? 0 : textureHeight - 1;
+    drawSegment(vStart, vEnd, sourceY, 1);
+  };
+
+  const drawMappedSegment = (vStart, vEnd) => {
+    if (vEnd - vStart <= 1e-6) {
+      return;
+    }
+    const tStart = clamp01(tAtV(vStart));
+    const tEnd = clamp01(tAtV(vEnd));
+    const yStart = tStart * textureHeight;
+    const yEnd = tEnd * textureHeight;
+    const sourceTop = Math.max(0, Math.min(textureHeight - 1, Math.floor(Math.min(yStart, yEnd))));
+    const sourceBottom = Math.max(sourceTop + 1, Math.min(textureHeight, Math.ceil(Math.max(yStart, yEnd))));
+    drawSegment(vStart, vEnd, sourceTop, sourceBottom - sourceTop);
+  };
+
+  const deltaT = tBottom - tTop;
+  const vAt0 = clamp01((0 - tTop) / deltaT);
+  const vAt1 = clamp01((1 - tTop) / deltaT);
+
+  if (deltaT > 0) {
+    let mappedStart = 0;
+    if (tTop < 0) {
+      drawEdgeSegment(0, vAt0, 0);
+      mappedStart = vAt0;
+    }
+
+    let mappedEnd = 1;
+    if (tBottom > 1) {
+      mappedEnd = vAt1;
+    }
+
+    drawMappedSegment(mappedStart, mappedEnd);
+
+    if (mappedEnd < 1) {
+      drawEdgeSegment(mappedEnd, 1, 1);
+    }
+    return true;
+  }
+
+  let mappedStart = 0;
+  if (tTop > 1) {
+    drawEdgeSegment(0, vAt1, 1);
+    mappedStart = vAt1;
+  }
+
+  let mappedEnd = 1;
+  if (tBottom < 0) {
+    mappedEnd = vAt0;
+  }
+
+  drawMappedSegment(mappedStart, mappedEnd);
+
+  if (mappedEnd < 1) {
+    drawEdgeSegment(mappedEnd, 1, 0);
+  }
+
+  return true;
+}
+
+// Renders a pane where both S and T axes use clamp mode and UVs extend outside
+// [0,1].  The texture is drawn in its correct position within the pane, and
+// edge pixels are extended (clamped) to fill the surrounding regions.
+export function drawPaneTextureWithClampedUVs(context, binding, pane, width, height) {
+  const texture = binding.texture;
+  const textureSRT = binding.textureSRT ?? null;
+  const texCoordIndex = binding.texCoordIndex ?? 0;
+  const transformed = this.getTransformedTexCoords(pane, textureSRT, texCoordIndex);
+  if (!transformed) return false;
+
+  const wrapModeS = resolveWrapMode(binding.wrapS);
+  const wrapModeT = resolveWrapMode(binding.wrapT);
+  if (wrapModeS !== "clamp" || wrapModeT !== "clamp") return false;
+
+  const sMin = Math.min(transformed.tl.s, transformed.tr.s, transformed.bl.s, transformed.br.s);
+  const sMax = Math.max(transformed.tl.s, transformed.tr.s, transformed.bl.s, transformed.br.s);
+  const tMin = Math.min(transformed.tl.t, transformed.tr.t, transformed.bl.t, transformed.br.t);
+  const tMax = Math.max(transformed.tl.t, transformed.tr.t, transformed.bl.t, transformed.br.t);
+
+  // Only needed when UVs extend significantly outside [0,1] on at least one axis.
+  if (sMin >= -0.01 && sMax <= 1.01 && tMin >= -0.01 && tMax <= 1.01) return false;
+
+  const sSpan = sMax - sMin;
+  const tSpan = tMax - tMin;
+  if (sSpan < 1e-6 || tSpan < 1e-6) return false;
+
+  const absW = Math.abs(width);
+  const absH = Math.abs(height);
+  const tw = texture.width;
+  const th = texture.height;
+
+  // Map UV [0,1] → pane pixel coords (from top-left of pane).
+  const texL = ((0 - sMin) / sSpan) * absW;
+  const texR = ((1 - sMin) / sSpan) * absW;
+  const texT = ((0 - tMin) / tSpan) * absH;
+  const texB = ((1 - tMin) / tSpan) * absH;
+  const texW = texR - texL;
+  const texH = texB - texT;
+
+  if (texW < 0.25 || texH < 0.25) return false;
+
+  const pad = this._seamPad || 0;
+  const ox = -absW / 2 - pad;
+  const oy = -absH / 2 - pad;
+  const pw = absW + 2 * pad;
+  const ph = absH + 2 * pad;
+
+  context.save();
+
+  // 1) Center: draw the actual texture.
+  context.drawImage(texture, 0, 0, tw, th, ox + texL, oy + texT, texW, texH);
+
+  // 2) Left clamp: stretch left-edge column.
+  if (texL > 0.5) {
+    context.drawImage(texture, 0, 0, 1, th, ox, oy + texT, texL, texH);
+  }
+  // 3) Right clamp: stretch right-edge column.
+  if (texR < pw - 0.5) {
+    context.drawImage(texture, tw - 1, 0, 1, th, ox + texR, oy + texT, pw - texR, texH);
+  }
+  // 4) Top clamp: stretch top-edge row (full width including clamped corners).
+  if (texT > 0.5) {
+    context.drawImage(texture, 0, 0, tw, 1, ox + texL, oy, texW, texT);
+    if (texL > 0.5) {
+      context.drawImage(texture, 0, 0, 1, 1, ox, oy, texL, texT);
+    }
+    if (texR < pw - 0.5) {
+      context.drawImage(texture, tw - 1, 0, 1, 1, ox + texR, oy, pw - texR, texT);
+    }
+  }
+  // 5) Bottom clamp: stretch bottom-edge row (full width including clamped corners).
+  if (texB < ph - 0.5) {
+    context.drawImage(texture, 0, th - 1, tw, 1, ox + texL, oy + texB, texW, ph - texB);
+    if (texL > 0.5) {
+      context.drawImage(texture, 0, th - 1, 1, 1, ox, oy + texB, texL, ph - texB);
+    }
+    if (texR < pw - 0.5) {
+      context.drawImage(texture, tw - 1, th - 1, 1, 1, ox + texR, oy + texB, pw - texR, ph - texB);
+    }
+  }
+
+  context.restore();
+  return true;
+}
+
+export function drawPaneTexture(context, binding, pane, width, height) {
+  const texture = binding.texture;
+  const wrapModeS = resolveWrapMode(binding.wrapS);
+  const wrapModeT = resolveWrapMode(binding.wrapT);
+  const repeatX = isTiledWrapMode(binding.wrapS);
+  const repeatY = isTiledWrapMode(binding.wrapT);
+  const textureSRT = binding.textureSRT ?? null;
+  const texCoordIndex = binding.texCoordIndex ?? 0;
+
+  // Detect tex coord flipping (e.g., mirror/reflection panes use T: 1→0).
+  // getSourceRectForPane takes min/max of tex coords, losing directionality,
+  // so we must detect and apply the flip via a canvas transform.
+  const transformed = this.getTransformedTexCoords(pane, textureSRT, texCoordIndex);
+  let flipS = false;
+  let flipT = false;
+  if (transformed) {
+    const leftS = (transformed.tl.s + transformed.bl.s) * 0.5;
+    const rightS = (transformed.tr.s + transformed.br.s) * 0.5;
+    flipS = rightS < leftS;
+    const topT = (transformed.tl.t + transformed.tr.t) * 0.5;
+    const bottomT = (transformed.bl.t + transformed.br.t) * 0.5;
+    flipT = bottomT < topT;
+  }
+
+  if (flipS || flipT) {
+    context.save();
+    context.scale(flipS ? -1 : 1, flipT ? -1 : 1);
+  }
+
+  if (this.drawPaneTextureWithClampedUVs(context, binding, pane, width, height)) {
+    if (flipS || flipT) context.restore();
+    return;
+  }
+
+  if (this.drawPaneTextureWithVerticalClamp(context, binding, pane, width, height)) {
+    if (flipS || flipT) context.restore();
+    return;
+  }
+
+  const sourceRect = this.getSourceRectForPane(pane, texture, {
+    forceNormalized: repeatX || repeatY,
+    repeatX,
+    repeatY,
+    textureSRT,
+    texCoordIndex,
+  });
+  if (repeatX || repeatY) {
+    const spans = this.getTexCoordSpans(pane, textureSRT, texCoordIndex);
+    const sSpan = repeatX ? spans?.spanS ?? 1 : 1;
+    const tSpan = repeatY ? spans?.spanT ?? 1 : 1;
+    const tileWidth = repeatX ? Math.abs(width) / sSpan : Math.abs(width);
+    const tileHeight = repeatY ? Math.abs(height) / tSpan : Math.abs(height);
+    const surface = this.getWrappedSurface(
+      texture,
+      binding.textureName,
+      sourceRect,
+      wrapModeS,
+      wrapModeT,
+      tileWidth,
+      tileHeight,
+      width,
+      height,
+    );
+    const repeatMode = repeatX && repeatY ? "repeat" : repeatX ? "repeat-x" : "repeat-y";
+    const pattern = context.createPattern(surface, repeatMode);
+    if (pattern) {
+      context.save();
+      context.translate(-width / 2, -height / 2);
+      context.fillStyle = pattern;
+      const rPad = this._seamPad || 0;
+      context.fillRect(-rPad, -rPad, width + 2 * rPad, height + 2 * rPad);
+      context.restore();
+      if (flipS || flipT) context.restore();
+      return;
+    }
+  }
+
+  const pad = this._seamPad || 0;
+  if (sourceRect) {
+    context.drawImage(
+      texture,
+      sourceRect.x,
+      sourceRect.y,
+      sourceRect.width,
+      sourceRect.height,
+      -width / 2 - pad,
+      -height / 2 - pad,
+      width + 2 * pad,
+      height + 2 * pad,
+    );
+    if (flipS || flipT) context.restore();
+    return;
+  }
+
+  context.drawImage(texture, -width / 2 - pad, -height / 2 - pad, width + 2 * pad, height + 2 * pad);
+  if (flipS || flipT) context.restore();
+}

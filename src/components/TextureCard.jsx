@@ -1,5 +1,5 @@
 import { useRef, useEffect } from "react";
-import { TPL_FORMATS } from "../lib/wadRenderer";
+import { TPL_FORMATS } from "@wewad/wii-channel-renderer";
 
 export function TextureCard({ entry }) {
   const canvasRef = useRef(null);

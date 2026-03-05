@@ -133,18 +133,16 @@ banner/icon animation using the WeWAD BannerRenderer.
 
 ### Setup
 
-1. Copy the \`src/lib/wadRenderer/\` folder from the WeWAD project into your project.
-
-2. Install GSAP (optional, for smooth playback):
+1. Install the renderer package and GSAP:
    \`\`\`
-   npm install gsap
+   npm install @wewad/wii-channel-renderer gsap
    \`\`\`
 
-3. Load the bundle and create a renderer:
+2. Load the bundle and create a renderer:
 
    \`\`\`js
-   import { BannerRenderer } from "./lib/wadRenderer";
-   import { loadRendererBundle } from "./lib/bundleLoader";
+   import { BannerRenderer } from "@wewad/wii-channel-renderer";
+   import { loadRendererBundle } from "@wewad/wii-channel-renderer/bundle-loader";
 
    // Load the bundle ZIP
    const response = await fetch("/assets/my-bundle.zip");
@@ -174,8 +172,8 @@ banner/icon animation using the WeWAD BannerRenderer.
 
 \`\`\`jsx
 import { useRef, useEffect } from "react";
-import { BannerRenderer } from "./lib/wadRenderer";
-import { loadRendererBundle } from "./lib/bundleLoader";
+import { BannerRenderer } from "@wewad/wii-channel-renderer";
+import { loadRendererBundle } from "@wewad/wii-channel-renderer/bundle-loader";
 
 function WiiBanner({ bundleUrl, aspectRatio = 4 / 3 }) {
   const canvasRef = useRef(null);
@@ -280,6 +278,7 @@ export async function exportGsapBundle({
   iconAnimSelection,
   rendererOptions = {},
   exportAspect = "4:3",
+  exportAllAnimations = true,
   onProgress,
 }) {
   onProgress?.("loading", 0, 1);
@@ -321,7 +320,7 @@ export async function exportGsapBundle({
   const bannerResult = parsed.results?.banner;
   if (bannerResult && bannerAnimSelection?.anim) {
     onProgress?.("banner-textures", 0, 1);
-    await serializeTarget(zip, "banner", bannerResult, bannerAnimSelection, null, (current, total) =>
+    await serializeTarget(zip, "banner", bannerResult, bannerAnimSelection, null, exportAllAnimations, (current, total) =>
       onProgress?.("banner-textures", current, total),
     );
 
@@ -345,7 +344,7 @@ export async function exportGsapBundle({
   if (iconResult && iconAnimSelection?.anim) {
     onProgress?.("icon-textures", 0, 1);
     const iconViewport = resolveIconViewport(iconResult.renderLayout);
-    await serializeTarget(zip, "icon", iconResult, iconAnimSelection, iconViewport, (current, total) =>
+    await serializeTarget(zip, "icon", iconResult, iconAnimSelection, iconViewport, exportAllAnimations, (current, total) =>
       onProgress?.("icon-textures", current, total),
     );
 
@@ -381,7 +380,7 @@ export async function exportGsapBundle({
 // Serialize a single target (banner or icon)
 // ---------------------------------------------------------------------------
 
-async function serializeTarget(zip, prefix, result, animSelection, iconViewport, onTextureProgress) {
+async function serializeTarget(zip, prefix, result, animSelection, iconViewport, includeAllAnims, onTextureProgress) {
   // For icons, override layout dimensions to the icon viewport (128x96),
   // matching how the main app clones the layout with viewport dimensions.
   // The BannerRenderer uses layout.width/height to size its rendering area.
@@ -414,7 +413,7 @@ async function serializeTarget(zip, prefix, result, animSelection, iconViewport,
   }
 
   // All animation entries (for multi-animation bundles)
-  if (result.animEntries?.length > 0) {
+  if (includeAllAnims && result.animEntries?.length > 0) {
     const entriesMeta = result.animEntries.map((entry, i) => ({
       id: entry.id,
       path: entry.path,

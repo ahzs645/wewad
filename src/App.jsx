@@ -5,7 +5,7 @@ import {
   processArchive,
   processWAD,
   processZipBundle,
-} from "./lib/wadRenderer";
+} from "@wewad/wii-channel-renderer";
 import { downloadBlob, exportBundle, loadBundle, revokeBundle } from "./lib/exportBundle";
 import { exportGsapBundle } from "./lib/gsapExport";
 
@@ -91,6 +91,7 @@ export default function App() {
   const [isExporting, setIsExporting] = useState(false);
   const [exportProgress, setExportProgress] = useState("");
   const [exportAspect, setExportAspect] = useState("4:3");
+  const [exportAnimMode, setExportAnimMode] = useState("all");
   const [bundlePreview, setBundlePreview] = useState(null);
   const [bundlePreviewSection, setBundlePreviewSection] = useState("snapshots");
 
@@ -659,6 +660,7 @@ export default function App() {
           paneStateSelections: bannerPaneStateSelections,
         },
         exportAspect,
+        exportAllAnimations: exportAnimMode === "all",
         onProgress: (stage, current, total) => {
           const labels = {
             loading: "Loading zip library...",
@@ -682,7 +684,7 @@ export default function App() {
     } finally {
       setTimeout(() => { setIsExporting(false); setExportProgress(""); }, 2000);
     }
-  }, [parsed, isExporting, selectedFileName, bannerAnimSelection, iconAnimSelection, exportAspect, tevQuality, titleLocale, bannerPaneStateSelections]);
+  }, [parsed, isExporting, selectedFileName, bannerAnimSelection, iconAnimSelection, exportAspect, exportAnimMode, tevQuality, titleLocale, bannerPaneStateSelections]);
 
   const handleLoadBundleZip = useCallback(async (file) => {
     if (!file) return;
@@ -977,6 +979,7 @@ export default function App() {
               {activeTab === "export" ? (
                 <ExportTab
                   exportAspect={exportAspect} setExportAspect={setExportAspect}
+                  exportAnimMode={exportAnimMode} setExportAnimMode={setExportAnimMode}
                   isExporting={isExporting} exportProgress={exportProgress}
                   parsed={parsed}
                   handleExportBundle={handleExportBundle}

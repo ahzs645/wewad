@@ -1,4 +1,4 @@
-import { interpolateKeyframes } from "../lib/wadRenderer";
+import { interpolateKeyframes } from "@wewad/wii-channel-renderer";
 import {
   normalizeRenderState,
   resolveAutoRenderState,

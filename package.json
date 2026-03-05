@@ -9,6 +9,7 @@
     "preview": "vite preview"
   },
   "dependencies": {
+    "@wewad/wii-channel-renderer": "file:packages/wii-channel-renderer",
     "gsap": "^3.14.2",
     "react": "^18.3.1",
     "react-dom": "^18.3.1"

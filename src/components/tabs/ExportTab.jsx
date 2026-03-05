@@ -3,6 +3,7 @@ import { normalizeDomId } from "../../utils/misc";
 
 export function ExportTab({
   exportAspect, setExportAspect,
+  exportAnimMode, setExportAnimMode,
   isExporting, exportProgress,
   parsed,
   handleExportBundle,
@@ -69,6 +70,22 @@ export function ExportTab({
             </select>
             <span className="export-option-hint">
               Only applies to snapshot/frame exports. Renderer bundle uses native resolution (aspect set at runtime).
+            </span>
+          </div>
+          <div className="export-option-row">
+            <label htmlFor="export-anim-mode">Renderer Bundle Animations</label>
+            <select
+              id="export-anim-mode"
+              value={exportAnimMode}
+              onChange={(event) => setExportAnimMode(event.target.value)}
+            >
+              <option value="all">All animations</option>
+              <option value="selected">Selected only</option>
+            </select>
+            <span className="export-option-hint">
+              {exportAnimMode === "all"
+                ? "Includes all animation entries — full animation switching when re-opening the bundle."
+                : "Only the currently selected animation is included in the bundle."}
             </span>
           </div>
           {hasStateSettings && (
