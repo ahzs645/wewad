@@ -214,11 +214,10 @@ export function createRendererFromBundle(canvas, bundle, target, settings = {}) 
   const baseLayout = resolved.renderLayout ?? rawLayout;
 
   // Resolve layout & aspect for icon targets
-  // Always use the main layout for viewport sizing to keep consistent icon dimensions
   let layout = baseLayout;
   let refAspect = undefined;
   if (target === "icon") {
-    const viewport = resolveIconViewport(rawLayout);
+    const viewport = resolveIconViewport(baseLayout);
     layout = { ...baseLayout, width: viewport.width, height: viewport.height };
     refAspect = viewport.width / viewport.height;
   }
