@@ -521,7 +521,7 @@ export function renderFrame(frame) {
     this.canvas.width = pixelWidth;
     this.canvas.height = pixelHeight;
   }
-  if (this.canvas.style) {
+  if (this.canvas.style && !this.canvas.dataset.noStyleResize) {
     this.canvas.style.width = `${outputWidth}px`;
     this.canvas.style.height = `${outputHeight}px`;
   }

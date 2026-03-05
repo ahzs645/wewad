@@ -30,7 +30,7 @@ function resolveIconViewport(layout) {
   const explicitViewportPane =
     picturePanes.find((pane) => /^ch\d+$/i.test(pane.name)) ??
     picturePanes.find((pane) =>
-      /(?:^|_)(?:tv|icon|cork|frame|bg|back|base|board)(?:_|$)/i.test(camelToSnake(pane.name)),
+      /(?:^|_)(?:tv|icon|cork|frame|bg|back|base|board)(?:_|\d|$)/i.test(camelToSnake(pane.name)),
     );
 
   const fallbackViewportPane = picturePanes
@@ -214,10 +214,11 @@ export function createRendererFromBundle(canvas, bundle, target, settings = {}) 
   const baseLayout = resolved.renderLayout ?? rawLayout;
 
   // Resolve layout & aspect for icon targets
+  // Always use the main layout for viewport sizing to keep consistent icon dimensions
   let layout = baseLayout;
   let refAspect = undefined;
   if (target === "icon") {
-    const viewport = resolveIconViewport(baseLayout);
+    const viewport = resolveIconViewport(rawLayout);
     layout = { ...baseLayout, width: viewport.width, height: viewport.height };
     refAspect = viewport.width / viewport.height;
   }
