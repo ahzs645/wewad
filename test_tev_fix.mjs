@@ -50,19 +50,19 @@ async function main() {
   try {
     // Import parsers and TEV evaluator via Vite SSR
     const { parseWAD } = await server.ssrLoadModule(
-      "/src/lib/wadRenderer/parsers/wad.js"
+      "/packages/wii-channel-renderer/src/wadRenderer/parsers/wad.js"
     );
     const { parseU8 } = await server.ssrLoadModule(
-      "/src/lib/wadRenderer/parsers/u8.js"
+      "/packages/wii-channel-renderer/src/wadRenderer/parsers/u8.js"
     );
     const { parseBRLYT } = await server.ssrLoadModule(
-      "/src/lib/wadRenderer/parsers/brlyt.js"
+      "/packages/wii-channel-renderer/src/wadRenderer/parsers/brlyt.js"
     );
     const { decryptWadContents } = await server.ssrLoadModule(
-      "/src/lib/wadRenderer/pipeline/decryption.js"
+      "/packages/wii-channel-renderer/src/wadRenderer/pipeline/decryption.js"
     );
     const { evaluateTevStagesForPixel } = await server.ssrLoadModule(
-      "/src/lib/wadRenderer/bannerRenderer/tevEvaluator.js"
+      "/packages/wii-channel-renderer/src/wadRenderer/bannerRenderer/tevEvaluator.js"
     );
 
     const logger = {

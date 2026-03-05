@@ -6,7 +6,7 @@ if (!globalThis.crypto) globalThis.crypto = webcrypto;
 if (!globalThis.crypto.subtle && webcrypto.subtle) globalThis.crypto.subtle = webcrypto.subtle;
 
 const server = await createServer({ server: { middlewareMode: true }, appType: "custom" });
-const { evaluateTevStagesForPixel, evaluateTevPipeline } = await server.ssrLoadModule("/src/lib/wadRenderer/bannerRenderer/tevEvaluator.js");
+const { evaluateTevStagesForPixel, evaluateTevPipeline } = await server.ssrLoadModule("/packages/wii-channel-renderer/src/wadRenderer/bannerRenderer/tevEvaluator.js");
 
 // P_ShopLogo_00 material data (from debug_icon.mjs output)
 const shopLogoMat = {

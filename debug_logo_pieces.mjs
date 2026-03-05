@@ -1,5 +1,5 @@
 import { readFileSync } from "fs";
-import { processWAD } from "./src/lib/wadRenderer/pipeline/process.js";
+import { processWAD } from "@wewad/wii-channel-renderer";
 
 const wadPath = "/Users/ahmadjalil/github/wewad/New Folder With Items/Wii Shop Channel (World) (v20) (Channel).wad";
 const buf = readFileSync(wadPath);

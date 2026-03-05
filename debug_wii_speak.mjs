@@ -19,11 +19,11 @@ const WAD_PATH = "/Users/ahmadjalil/github/wewad/New Folder With Items/Wii Speak
 
 async function main() {
   const server = await createServer({ server: { middlewareMode: true }, appType: "custom" });
-  const { parseWAD } = await server.ssrLoadModule("/src/lib/wadRenderer/parsers/wad.js");
-  const { parseU8 } = await server.ssrLoadModule("/src/lib/wadRenderer/parsers/u8.js");
-  const { parseBRLYT } = await server.ssrLoadModule("/src/lib/wadRenderer/parsers/brlyt.js");
-  const { parseBRLAN } = await server.ssrLoadModule("/src/lib/wadRenderer/parsers/brlan.js");
-  const { decryptWadContents } = await server.ssrLoadModule("/src/lib/wadRenderer/pipeline/decryption.js");
+  const { parseWAD } = await server.ssrLoadModule("/packages/wii-channel-renderer/src/wadRenderer/parsers/wad.js");
+  const { parseU8 } = await server.ssrLoadModule("/packages/wii-channel-renderer/src/wadRenderer/parsers/u8.js");
+  const { parseBRLYT } = await server.ssrLoadModule("/packages/wii-channel-renderer/src/wadRenderer/parsers/brlyt.js");
+  const { parseBRLAN } = await server.ssrLoadModule("/packages/wii-channel-renderer/src/wadRenderer/parsers/brlan.js");
+  const { decryptWadContents } = await server.ssrLoadModule("/packages/wii-channel-renderer/src/wadRenderer/pipeline/decryption.js");
 
   const logger = {
     info: () => {},

@@ -39,15 +39,15 @@ async function main() {
   const server = await createServer({ server: { middlewareMode: true }, appType: "custom" });
 
   // Load all required modules via Vite SSR
-  const { parseWAD } = await server.ssrLoadModule("/src/lib/wadRenderer/parsers/wad.js");
-  const { parseU8 } = await server.ssrLoadModule("/src/lib/wadRenderer/parsers/u8.js");
-  const { parseBRLYT } = await server.ssrLoadModule("/src/lib/wadRenderer/parsers/brlyt.js");
-  const { parseBRLAN } = await server.ssrLoadModule("/src/lib/wadRenderer/parsers/brlan.js");
-  const { parseTPL } = await server.ssrLoadModule("/src/lib/wadRenderer/parsers/tpl.js");
-  const { TPL_FORMATS, ANIM_TYPES } = await server.ssrLoadModule("/src/lib/wadRenderer/parsers/constants.js");
-  const { decryptWadContents } = await server.ssrLoadModule("/src/lib/wadRenderer/pipeline/decryption.js");
-  const { parseResourceSet, extractTargetResources } = await server.ssrLoadModule("/src/lib/wadRenderer/pipeline/resourceExtraction.js");
-  const { createRenderableLayout } = await server.ssrLoadModule("/src/lib/wadRenderer/pipeline/layout.js");
+  const { parseWAD } = await server.ssrLoadModule("/packages/wii-channel-renderer/src/wadRenderer/parsers/wad.js");
+  const { parseU8 } = await server.ssrLoadModule("/packages/wii-channel-renderer/src/wadRenderer/parsers/u8.js");
+  const { parseBRLYT } = await server.ssrLoadModule("/packages/wii-channel-renderer/src/wadRenderer/parsers/brlyt.js");
+  const { parseBRLAN } = await server.ssrLoadModule("/packages/wii-channel-renderer/src/wadRenderer/parsers/brlan.js");
+  const { parseTPL } = await server.ssrLoadModule("/packages/wii-channel-renderer/src/wadRenderer/parsers/tpl.js");
+  const { TPL_FORMATS, ANIM_TYPES } = await server.ssrLoadModule("/packages/wii-channel-renderer/src/wadRenderer/parsers/constants.js");
+  const { decryptWadContents } = await server.ssrLoadModule("/packages/wii-channel-renderer/src/wadRenderer/pipeline/decryption.js");
+  const { parseResourceSet, extractTargetResources } = await server.ssrLoadModule("/packages/wii-channel-renderer/src/wadRenderer/pipeline/resourceExtraction.js");
+  const { createRenderableLayout } = await server.ssrLoadModule("/packages/wii-channel-renderer/src/wadRenderer/pipeline/layout.js");
   const {
     resolveAutoRenderState,
     findStateAnimationEntry,
@@ -57,11 +57,11 @@ async function main() {
   } = await server.ssrLoadModule("/src/utils/renderState.js");
   const { resolveAnimationSelection, buildPaneAnimationMap, buildPaneChainResolver, getAnimatedPaneState } = await server.ssrLoadModule("/src/utils/animation.js");
   const { resolveIconViewport } = await server.ssrLoadModule("/src/utils/layout.js");
-  const { interpolateKeyframes } = await server.ssrLoadModule("/src/lib/wadRenderer/animations.js");
-  const { sampleAnimationEntryWithDataType, sampleDiscreteAnimationEntry, sampleAnimationEntry } = await server.ssrLoadModule("/src/lib/wadRenderer/bannerRenderer/animationSampling.js");
+  const { interpolateKeyframes } = await server.ssrLoadModule("/packages/wii-channel-renderer/src/wadRenderer/animations.js");
+  const { sampleAnimationEntryWithDataType, sampleDiscreteAnimationEntry, sampleAnimationEntry } = await server.ssrLoadModule("/packages/wii-channel-renderer/src/wadRenderer/bannerRenderer/animationSampling.js");
 
   // TEV-related imports
-  const { evaluateTevPipeline, isTevIdentityPassthrough, isTevModulatePattern, getDefaultTevStages, getModulateTevStages } = await server.ssrLoadModule("/src/lib/wadRenderer/bannerRenderer/tevEvaluator.js");
+  const { evaluateTevPipeline, isTevIdentityPassthrough, isTevModulatePattern, getDefaultTevStages, getModulateTevStages } = await server.ssrLoadModule("/packages/wii-channel-renderer/src/wadRenderer/bannerRenderer/tevEvaluator.js");
 
   const logger = {
     info: () => {},

@@ -7,8 +7,8 @@ if (!globalThis.crypto) globalThis.crypto = webcrypto;
 if (!globalThis.crypto.subtle && webcrypto.subtle) globalThis.crypto.subtle = webcrypto.subtle;
 
 const server = await createServer({ server: { middlewareMode: true }, appType: "custom" });
-const { processWAD } = await server.ssrLoadModule("/src/lib/wadRenderer/pipeline/process.js");
-const paneAnimValues = await server.ssrLoadModule("/src/lib/wadRenderer/bannerRenderer/paneAnimValues.js");
+const { processWAD } = await server.ssrLoadModule("/packages/wii-channel-renderer/src/wadRenderer/pipeline/process.js");
+const paneAnimValues = await server.ssrLoadModule("/packages/wii-channel-renderer/src/wadRenderer/bannerRenderer/paneAnimValues.js");
 
 const wadBuffer = readFileSync("New Folder With Items/Wii Shop Channel (World) (v20) (Channel).wad");
 const ab = wadBuffer.buffer.slice(wadBuffer.byteOffset, wadBuffer.byteOffset + wadBuffer.byteLength);

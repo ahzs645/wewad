@@ -9,13 +9,13 @@ import { resolve } from "node:path";
 
 const ROOT = "/Users/ahmadjalil/github/wewad";
 
-const { parseWAD } = await import(resolve(ROOT, "src/lib/wadRenderer/parsers/wad.js"));
-const { parseU8 } = await import(resolve(ROOT, "src/lib/wadRenderer/parsers/u8.js"));
-const { parseBRLYT } = await import(resolve(ROOT, "src/lib/wadRenderer/parsers/brlyt.js"));
-const { parseTPL } = await import(resolve(ROOT, "src/lib/wadRenderer/parsers/tpl.js"));
-const { parseBRLAN } = await import(resolve(ROOT, "src/lib/wadRenderer/parsers/brlan.js"));
-const { TPL_FORMATS } = await import(resolve(ROOT, "src/lib/wadRenderer/parsers/constants.js"));
-const { decryptWadContents } = await import(resolve(ROOT, "src/lib/wadRenderer/pipeline/decryption.js"));
+const { parseWAD } = await import(resolve(ROOT, "packages/wii-channel-renderer/src/wadRenderer/parsers/wad.js"));
+const { parseU8 } = await import(resolve(ROOT, "packages/wii-channel-renderer/src/wadRenderer/parsers/u8.js"));
+const { parseBRLYT } = await import(resolve(ROOT, "packages/wii-channel-renderer/src/wadRenderer/parsers/brlyt.js"));
+const { parseTPL } = await import(resolve(ROOT, "packages/wii-channel-renderer/src/wadRenderer/parsers/tpl.js"));
+const { parseBRLAN } = await import(resolve(ROOT, "packages/wii-channel-renderer/src/wadRenderer/parsers/brlan.js"));
+const { TPL_FORMATS } = await import(resolve(ROOT, "packages/wii-channel-renderer/src/wadRenderer/parsers/constants.js"));
+const { decryptWadContents } = await import(resolve(ROOT, "packages/wii-channel-renderer/src/wadRenderer/pipeline/decryption.js"));
 
 // ---------------------------------------------------------------------------
 // Loggers

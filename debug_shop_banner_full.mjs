@@ -27,7 +27,7 @@ function hr(title) {
 async function main() {
   const server = await createServer({ server: { middlewareMode: true }, appType: "custom" });
 
-  const { processWAD } = await server.ssrLoadModule("/src/lib/wadRenderer/pipeline/process.js");
+  const { processWAD } = await server.ssrLoadModule("/packages/wii-channel-renderer/src/wadRenderer/pipeline/process.js");
 
   const WAD_PATH = "/Users/ahmadjalil/github/wewad/New Folder With Items/Wii Shop Channel (World) (v20) (Channel).wad";
   const rawBuffer = readFileSync(WAD_PATH);
