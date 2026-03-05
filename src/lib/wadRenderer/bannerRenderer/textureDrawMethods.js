@@ -249,6 +249,91 @@ export function drawPaneTextureWithVerticalClamp(context, binding, pane, width, 
   return true;
 }
 
+// Renders a pane where both S and T axes use clamp mode and UVs extend outside
+// [0,1].  The texture is drawn in its correct position within the pane, and
+// edge pixels are extended (clamped) to fill the surrounding regions.
+export function drawPaneTextureWithClampedUVs(context, binding, pane, width, height) {
+  const texture = binding.texture;
+  const textureSRT = binding.textureSRT ?? null;
+  const texCoordIndex = binding.texCoordIndex ?? 0;
+  const transformed = this.getTransformedTexCoords(pane, textureSRT, texCoordIndex);
+  if (!transformed) return false;
+
+  const wrapModeS = resolveWrapMode(binding.wrapS);
+  const wrapModeT = resolveWrapMode(binding.wrapT);
+  if (wrapModeS !== "clamp" || wrapModeT !== "clamp") return false;
+
+  const sMin = Math.min(transformed.tl.s, transformed.tr.s, transformed.bl.s, transformed.br.s);
+  const sMax = Math.max(transformed.tl.s, transformed.tr.s, transformed.bl.s, transformed.br.s);
+  const tMin = Math.min(transformed.tl.t, transformed.tr.t, transformed.bl.t, transformed.br.t);
+  const tMax = Math.max(transformed.tl.t, transformed.tr.t, transformed.bl.t, transformed.br.t);
+
+  // Only needed when UVs extend significantly outside [0,1] on at least one axis.
+  if (sMin >= -0.01 && sMax <= 1.01 && tMin >= -0.01 && tMax <= 1.01) return false;
+
+  const sSpan = sMax - sMin;
+  const tSpan = tMax - tMin;
+  if (sSpan < 1e-6 || tSpan < 1e-6) return false;
+
+  const absW = Math.abs(width);
+  const absH = Math.abs(height);
+  const tw = texture.width;
+  const th = texture.height;
+
+  // Map UV [0,1] → pane pixel coords (from top-left of pane).
+  const texL = ((0 - sMin) / sSpan) * absW;
+  const texR = ((1 - sMin) / sSpan) * absW;
+  const texT = ((0 - tMin) / tSpan) * absH;
+  const texB = ((1 - tMin) / tSpan) * absH;
+  const texW = texR - texL;
+  const texH = texB - texT;
+
+  if (texW < 0.25 || texH < 0.25) return false;
+
+  const pad = this._seamPad || 0;
+  const ox = -absW / 2 - pad;
+  const oy = -absH / 2 - pad;
+  const pw = absW + 2 * pad;
+  const ph = absH + 2 * pad;
+
+  context.save();
+
+  // 1) Center: draw the actual texture.
+  context.drawImage(texture, 0, 0, tw, th, ox + texL, oy + texT, texW, texH);
+
+  // 2) Left clamp: stretch left-edge column.
+  if (texL > 0.5) {
+    context.drawImage(texture, 0, 0, 1, th, ox, oy + texT, texL, texH);
+  }
+  // 3) Right clamp: stretch right-edge column.
+  if (texR < pw - 0.5) {
+    context.drawImage(texture, tw - 1, 0, 1, th, ox + texR, oy + texT, pw - texR, texH);
+  }
+  // 4) Top clamp: stretch top-edge row (full width including clamped corners).
+  if (texT > 0.5) {
+    context.drawImage(texture, 0, 0, tw, 1, ox + texL, oy, texW, texT);
+    if (texL > 0.5) {
+      context.drawImage(texture, 0, 0, 1, 1, ox, oy, texL, texT);
+    }
+    if (texR < pw - 0.5) {
+      context.drawImage(texture, tw - 1, 0, 1, 1, ox + texR, oy, pw - texR, texT);
+    }
+  }
+  // 5) Bottom clamp: stretch bottom-edge row (full width including clamped corners).
+  if (texB < ph - 0.5) {
+    context.drawImage(texture, 0, th - 1, tw, 1, ox + texL, oy + texB, texW, ph - texB);
+    if (texL > 0.5) {
+      context.drawImage(texture, 0, th - 1, 1, 1, ox, oy + texB, texL, ph - texB);
+    }
+    if (texR < pw - 0.5) {
+      context.drawImage(texture, tw - 1, th - 1, 1, 1, ox + texR, oy + texB, pw - texR, ph - texB);
+    }
+  }
+
+  context.restore();
+  return true;
+}
+
 export function drawPaneTexture(context, binding, pane, width, height) {
   const texture = binding.texture;
   const wrapModeS = resolveWrapMode(binding.wrapS);
@@ -276,6 +361,11 @@ export function drawPaneTexture(context, binding, pane, width, height) {
   if (flipS || flipT) {
     context.save();
     context.scale(flipS ? -1 : 1, flipT ? -1 : 1);
+  }
+
+  if (this.drawPaneTextureWithClampedUVs(context, binding, pane, width, height)) {
+    if (flipS || flipT) context.restore();
+    return;
   }
 
   if (this.drawPaneTextureWithVerticalClamp(context, binding, pane, width, height)) {

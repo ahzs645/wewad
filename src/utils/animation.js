@@ -317,12 +317,13 @@ export function resolveAnimationSelection(targetResult, selectedState, animOverr
   if (animOverrideId) {
     const entry = targetResult.animEntries?.find((e) => e.id === animOverrideId);
     if (entry?.anim) {
+      const loops = (entry.anim.flags & 1) !== 0;
       return {
         anim: entry.anim,
         startAnim: null,
         loopAnim: entry.anim,
         renderState: null,
-        playbackMode: "loop",
+        playbackMode: loops ? "loop" : "once",
         renderLayout: entry.renderLayout ?? null,
       };
     }

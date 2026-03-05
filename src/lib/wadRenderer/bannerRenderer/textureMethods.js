@@ -747,7 +747,11 @@ export function getSourceRectForPane(pane, texture, options = {}) {
   let { sValues, tValues } = values;
 
   const maxAbs = Math.max(...sValues.map((value) => Math.abs(value)), ...tValues.map((value) => Math.abs(value)));
-  const normalizedCoords = forceNormalized || maxAbs <= 2;
+  // BRLYT tex coords are always normalized (0-1 = full texture, values outside for
+  // clamp/tile).  Only treat as pixel coords if values exceed half the texture size,
+  // which is a strong signal they were pre-multiplied by an earlier stage.
+  const minDim = Math.min(texture.width, texture.height);
+  const normalizedCoords = forceNormalized || maxAbs < minDim * 0.5;
 
   if (normalizedCoords) {
     sValues = sValues.map((value) => value * texture.width);

@@ -150,12 +150,39 @@ export default function App() {
     overrides.set("W_Wii", false);
     overrides.set("W_GC", false);
 
-    if (bannerDiscType !== "auto") {
-      // Show the master disc container (N_DVD0 is visible=false by default).
+    if (bannerDiscType === "all") {
+      // Show all disc types simultaneously (Wii+GC visible by default, enable DVD too).
       overrides.set("N_DVD0", true);
+      overrides.set("N_Unknown", false);
+      overrides.set("UnknownDisk", false);
+      overrides.set("ShadeWii_00", false);
+      overrides.set("N_Ref0_00", false);
+      overrides.set("N_RefUnknown", false);
+      overrides.set("RefUnknown", false);
+    } else if (bannerDiscType === "none") {
+      // Hide everything disc-related.
+      overrides.set("N_DVD0", false);
+      overrides.set("N_Wii0", false);
+      overrides.set("N_GC0", false);
+      overrides.set("N_Shade0", false);
+      overrides.set("N_Ref0", false);
+      overrides.set("N_Unknown", false);
+      overrides.set("N_Ref0_00", false);
+      overrides.set("ShadeWii_00", false);
+    } else if (bannerDiscType === "auto") {
+      // Layout defaults: Wii+GC visible, DVD hidden. Just clean up junk panes.
+      overrides.set("N_Unknown", false);
+      overrides.set("UnknownDisk", false);
+      overrides.set("ShadeWii_00", false);
+      overrides.set("N_Ref0_00", false);
+      overrides.set("N_RefUnknown", false);
+      overrides.set("RefUnknown", false);
+    } else {
       const wii = bannerDiscType === "wii";
       const gc = bannerDiscType === "gc";
       const dvd = bannerDiscType === "dvd";
+      // Show the master disc container (N_DVD0 is visible=false by default).
+      overrides.set("N_DVD0", dvd);
       // Disc meshes
       overrides.set("DVDDisk", dvd);
       overrides.set("N_Wii0", wii);
@@ -256,7 +283,7 @@ export default function App() {
       const startFrames = phaseMode === "loopOnly" ? 0 : (sel.startAnim?.frameSize ?? 0);
       const loopFrames = phaseMode === "startOnly" ? 0 : (sel.loopAnim?.frameSize ?? sel.anim?.frameSize ?? 0);
       if (startFrames + loopFrames <= 0) return null;
-      return { id, label, startFrames, loopFrames };
+      return { id, label, startFrames, loopFrames, playbackMode: sel.playbackMode ?? "loop" };
     };
     const tracks = [];
     if (previewDisplay !== "icon") {

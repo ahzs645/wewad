@@ -531,7 +531,12 @@ export function parseBRLYT(buffer, loggerInput) {
           origin: paneOrigin,
           alpha: paneAlpha,
           visible: (paneFlags & 0x01) !== 0,
-          widescreenAffected: (paneFlags & 0x02) !== 0,
+          // pan1/pic1/txt1 flags:
+          // 0x01 visible, 0x02 influenced alpha, 0x04 widescreen adjust.
+          influencedAlpha: (paneFlags & 0x02) !== 0,
+          widescreen: (paneFlags & 0x04) !== 0,
+          // Backward-compat aliases used by older debug scripts.
+          widescreenAffected: (paneFlags & 0x04) !== 0,
           userFlag: (paneFlags & 0x04) !== 0,
           parent: paneParentStack.length > 0 ? paneParentStack[paneParentStack.length - 1] : null,
           translate: { x: transX, y: transY, z: transZ },

@@ -6,7 +6,7 @@ const PHASE_MODES = [
   { value: "loopOnly", label: "Loop Only" },
 ];
 
-function TrackRow({ id, label, startFrames, loopFrames, isPlaying, showLabel, onTogglePlay, onSeek, elemRef }) {
+function TrackRow({ id, label, startFrames, loopFrames, playbackMode, isPlaying, showLabel, onTogglePlay, onSeek, elemRef }) {
   const trackRef = useRef(null);
   const [isDragging, setIsDragging] = useState(false);
 
@@ -61,7 +61,9 @@ function TrackRow({ id, label, startFrames, loopFrames, isPlaying, showLabel, on
         {startFrames > 0 ? (
           <span className="timeline-phase-label start">Start ({startFrames}f)</span>
         ) : null}
-        <span className="timeline-phase-label loop">Loop ({loopFrames}f)</span>
+        <span className={`timeline-phase-label ${playbackMode === "once" || playbackMode === "hold" ? "once" : "loop"}`}>
+          {playbackMode === "once" || playbackMode === "hold" ? "Once" : "Loop"} ({loopFrames}f)
+        </span>
         <span
           className="timeline-counter"
           ref={(el) => { elemRef.current[`${id}-counter`] = el; }}
@@ -79,7 +81,7 @@ function TrackRow({ id, label, startFrames, loopFrames, isPlaying, showLabel, on
         {startFrames > 0 ? (
           <div className="timeline-segment start" style={{ width: `${startPercent}%` }} />
         ) : null}
-        <div className="timeline-segment loop" style={{ width: `${100 - startPercent}%` }} />
+        <div className={`timeline-segment ${playbackMode === "once" || playbackMode === "hold" ? "once" : "loop"}`} style={{ width: `${100 - startPercent}%` }} />
         <div
           className="timeline-playhead"
           ref={(el) => { elemRef.current[`${id}-playhead`] = el; }}
@@ -113,7 +115,8 @@ export const PlaybackTimeline = forwardRef(function PlaybackTimeline({
       const percent = total > 0 ? (clamped / total) * 100 : 0;
       if (playhead) playhead.style.left = `${percent}%`;
       if (counter) {
-        const phase = track.startFrames > 0 && clamped < track.startFrames ? "Start" : "Loop";
+        const isOnce = track.playbackMode === "once" || track.playbackMode === "hold";
+        const phase = track.startFrames > 0 && clamped < track.startFrames ? "Start" : (isOnce ? "Once" : "Loop");
         const localFrame = clamped < track.startFrames ? clamped : clamped - track.startFrames;
         const phaseTotal = clamped < track.startFrames ? track.startFrames : track.loopFrames;
         counter.textContent = `${phase} ${Math.floor(localFrame)} / ${Math.floor(phaseTotal)}`;
@@ -148,6 +151,7 @@ export const PlaybackTimeline = forwardRef(function PlaybackTimeline({
           label={track.label}
           startFrames={track.startFrames}
           loopFrames={track.loopFrames}
+          playbackMode={track.playbackMode}
           isPlaying={track.isPlaying}
           showLabel={showLabel}
           onTogglePlay={onTogglePlay}

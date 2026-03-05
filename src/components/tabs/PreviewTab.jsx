@@ -171,9 +171,10 @@ export function PreviewTab({
                 <option value="auto">Auto</option>
                 {parsed.results.banner.animEntries.map((entry) => {
                   const fileName = entry.path.split("/").pop().replace(/\.[^.]+$/, "");
+                  const loopLabel = (entry.anim?.flags & 1) ? "loop" : "once";
                   return (
                     <option key={entry.id} value={entry.id}>
-                      {fileName} ({entry.frameSize}f)
+                      {fileName} ({entry.frameSize}f, {loopLabel})
                     </option>
                   );
                 })}
@@ -189,6 +190,8 @@ export function PreviewTab({
                 onChange={(event) => setBannerDiscType(event.target.value)}
               >
                 <option value="auto">Auto</option>
+                <option value="all">All</option>
+                <option value="none">None</option>
                 <option value="wii">Wii Disc</option>
                 <option value="gc">GameCube Disc</option>
                 <option value="dvd">DVD</option>
@@ -250,9 +253,10 @@ export function PreviewTab({
                 <option value="auto">Auto</option>
                 {parsed.results.icon.animEntries.map((entry) => {
                   const fileName = entry.path.split("/").pop().replace(/\.[^.]+$/, "");
+                  const loopLabel = (entry.anim?.flags & 1) ? "loop" : "once";
                   return (
                     <option key={entry.id} value={entry.id}>
-                      {fileName} ({entry.frameSize}f)
+                      {fileName} ({entry.frameSize}f, {loopLabel})
                     </option>
                   );
                 })}

@@ -1047,6 +1047,10 @@ button.primary:hover {
   color: var(--accent-primary);
 }
 
+.timeline-phase-label.once {
+  color: var(--accent-secondary, var(--accent-primary));
+}
+
 .timeline-track {
   position: relative;
   display: flex;
@@ -1087,6 +1091,16 @@ button.primary:hover {
 }
 
 .timeline-segment.loop:first-child {
+  border-radius: 3px;
+}
+
+.timeline-segment.once {
+  background: var(--accent-secondary, var(--accent-primary));
+  opacity: 0.35;
+  border-radius: 0 3px 3px 0;
+}
+
+.timeline-segment.once:first-child {
   border-radius: 3px;
 }
 

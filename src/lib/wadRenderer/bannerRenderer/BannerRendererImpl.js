@@ -92,7 +92,7 @@ export class BannerRenderer {
     this.lastTime = 0;
     const requestedFps = Number.isFinite(options.fps) ? options.fps : 60;
     this.fps = Math.max(1, Math.min(240, requestedFps));
-    this.playbackMode = options.playbackMode === "hold" ? "hold" : "loop";
+    this.playbackMode = options.playbackMode === "hold" || options.playbackMode === "once" ? "hold" : "loop";
     this.useGsap = options.useGsap ?? true;
     this.onFrame = options.onFrame ?? (() => {});
     this.subframePlayback = options.subframePlayback !== false;
@@ -156,6 +156,12 @@ export class BannerRenderer {
       parseAspectRatio(options.displayAspectRatio ?? options.displayAspect),
       null,
     );
+    this.applyPaneWidescreenFlags = options.applyPaneWidescreenFlags !== false;
+    this.widescreenPaneScaleX = Number.isFinite(options.widescreenPaneScaleX) && options.widescreenPaneScaleX > 0
+      ? options.widescreenPaneScaleX
+      : 0.82;
+    this.currentDisplayScaleX = 1;
+    this.currentWidescreen = false;
     this.perspectiveEnabled = options.perspectiveEnabled === true;
     this.perspectiveDistance = Number.isFinite(options.perspectiveDistance)
       ? Math.max(64, options.perspectiveDistance)
