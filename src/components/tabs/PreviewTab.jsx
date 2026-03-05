@@ -1,3 +1,4 @@
+import { useCallback, useMemo, useState } from "react";
 import { DISPLAY_ASPECT_OPTIONS, TITLE_LOCALE_LABELS, WEATHER_CONDITION_OPTIONS } from "../../constants";
 import { normalizeDomId } from "../../utils/misc";
 import { PlaybackTimeline } from "../PlaybackTimeline";
@@ -39,6 +40,76 @@ export function PreviewTab({
   onTrackTogglePlay,
   onTrackSeek,
 }) {
+  const [showSettingsJson, setShowSettingsJson] = useState(false);
+  const [copiedSettings, setCopiedSettings] = useState(false);
+
+  const settingsJson = useMemo(() => {
+    const settings = {};
+
+    // Banner settings
+    const banner = {};
+    banner.displayAspect = previewDisplayAspect || "4:3";
+    banner.tevQuality = tevQuality || "fast";
+    if (bannerRenderStateOptions.length > 0) {
+      banner.renderState = bannerRenderState === "auto" ? null : bannerRenderState;
+    }
+    if (bannerAnimOverride) {
+      banner.animOverride = bannerAnimOverride;
+    }
+    if (showDiscTypeOption) {
+      banner.discType = bannerDiscType || "auto";
+    }
+    if (bannerPaneStateGroups.length > 0) {
+      const selections = {};
+      for (const group of bannerPaneStateGroups) {
+        selections[group.id] = bannerPaneStateSelections[group.id] ?? null;
+      }
+      banner.paneStateSelections = selections;
+    }
+    if (availableTitleLocales.length > 1) {
+      banner.titleLocale = titleLocale === "auto" ? null : titleLocale;
+    }
+    settings.banner = banner;
+
+    // Icon settings
+    const icon = {};
+    if (iconRenderStateOptions.length > 0) {
+      icon.renderState = iconRenderState === "auto" ? null : iconRenderState;
+    }
+    if (iconAnimOverride) {
+      icon.animOverride = iconAnimOverride;
+    }
+    if (showIconSceneOption) {
+      icon.scene = iconScene || "auto";
+    }
+    if (iconPaneStateGroups.length > 0) {
+      const selections = {};
+      for (const group of iconPaneStateGroups) {
+        selections[group.id] = iconPaneStateSelections[group.id] ?? null;
+      }
+      icon.paneStateSelections = selections;
+    }
+    if (Object.keys(icon).length > 0) settings.icon = icon;
+
+    return JSON.stringify(settings, null, 2);
+  }, [
+    previewDisplayAspect, tevQuality,
+    bannerRenderState, bannerRenderStateOptions, bannerAnimOverride,
+    bannerDiscType, showDiscTypeOption,
+    bannerPaneStateGroups, bannerPaneStateSelections,
+    iconRenderState, iconRenderStateOptions, iconAnimOverride,
+    iconScene, showIconSceneOption,
+    iconPaneStateGroups, iconPaneStateSelections,
+    titleLocale, availableTitleLocales,
+  ]);
+
+  const copySettingsJson = useCallback(() => {
+    navigator.clipboard.writeText(settingsJson).then(() => {
+      setCopiedSettings(true);
+      setTimeout(() => setCopiedSettings(false), 2000);
+    });
+  }, [settingsJson]);
+
   return (
     <div className="tab-content active">
       <div className="banner-display">
@@ -320,6 +391,25 @@ export function PreviewTab({
                   </option>
                 ))}
               </select>
+            </div>
+          ) : null}
+        </div>
+        <div className="settings-json-section">
+          <button
+            type="button"
+            className="settings-json-toggle"
+            onClick={() => setShowSettingsJson((prev) => !prev)}
+          >
+            {showSettingsJson ? "Hide" : "Show"} Renderer Settings JSON
+          </button>
+          {showSettingsJson ? (
+            <div className="settings-json-panel">
+              <div className="settings-json-actions">
+                <button type="button" onClick={copySettingsJson}>
+                  {copiedSettings ? "Copied!" : "Copy JSON"}
+                </button>
+              </div>
+              <pre className="settings-json-code">{settingsJson}</pre>
             </div>
           ) : null}
         </div>

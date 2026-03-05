@@ -7,6 +7,7 @@
  */
 
 import { loadJSZip, imageDataToPngBlob, tplImageToImageData, createWavArrayBuffer } from "@firstform/wii-channel-renderer/export-bundle";
+import { collectRenderStateOptions } from "../utils/renderState";
 
 // ---------------------------------------------------------------------------
 // Icon viewport helper (duplicated to avoid circular import from utils/)
@@ -24,6 +25,145 @@ function resolveIconViewport(layout) {
     }
   }
   return null;
+}
+
+// ---------------------------------------------------------------------------
+// Build available options metadata for a target (banner or icon)
+// ---------------------------------------------------------------------------
+
+function buildTargetOptions(targetResult) {
+  if (!targetResult) return null;
+
+  const options = {};
+
+  // Available animations (from animEntries)
+  const animEntries = targetResult.animEntries ?? [];
+  if (animEntries.length > 0) {
+    options.availableAnimations = animEntries.map((entry) => ({
+      id: entry.id,
+      path: entry.path,
+      name: entry.path?.split("/").pop()?.replace(/\.[^.]+$/, "") ?? entry.id,
+      frameSize: entry.frameSize ?? 0,
+      loops: Boolean(entry.anim?.flags & 1),
+      role: entry.role ?? null,
+      state: entry.state ?? null,
+    }));
+  }
+
+  // Available render states (RSO groups)
+  const renderStates = collectRenderStateOptions(targetResult);
+  if (renderStates.length > 0) {
+    options.availableRenderStates = renderStates;
+  }
+
+  // Available pane state groups
+  const paneStateGroups = collectPaneStateGroups(targetResult);
+  if (paneStateGroups.length > 0) {
+    options.availablePaneStateGroups = paneStateGroups;
+  }
+
+  // Available title locales
+  const titleLocales = collectTitleLocales(targetResult);
+  if (titleLocales.length > 0) {
+    options.availableTitleLocales = titleLocales;
+  }
+
+  // Feature detection
+  const features = detectFeatures(targetResult);
+  if (Object.keys(features).length > 0) {
+    options.features = features;
+  }
+
+  return Object.keys(options).length > 0 ? options : null;
+}
+
+function collectPaneStateGroups(targetResult) {
+  const panes = targetResult?.renderLayout?.panes ?? [];
+  const groupsByKey = new Map();
+
+  for (const pane of panes) {
+    if (pane?.type !== "pan1" && pane?.type !== "bnd1") continue;
+    if (Number.isInteger(pane?.materialIndex) && pane.materialIndex >= 0) continue;
+
+    const match = String(pane?.name ?? "").match(/^(.*?)(\d+)$/);
+    if (!match) continue;
+
+    const baseName = match[1];
+    const index = Number.parseInt(match[2], 10);
+    const key = `${pane.parent ?? "__root__"}|${baseName}`;
+
+    let entry = groupsByKey.get(key);
+    if (!entry) {
+      entry = { parentName: pane.parent ?? null, baseName, options: new Map() };
+      groupsByKey.set(key, entry);
+    }
+    if (!entry.options.has(index)) {
+      entry.options.set(index, pane.name);
+    }
+  }
+
+  const groups = [];
+  for (const entry of groupsByKey.values()) {
+    if (entry.options.size < 2) continue;
+    const options = [...entry.options.entries()]
+      .sort((a, b) => a[0] - b[0])
+      .map(([index, paneName]) => ({ index, paneName }));
+    const parentPart = entry.parentName ?? "__root__";
+    const basePart = entry.baseName || "state";
+    groups.push({
+      id: `${parentPart}::${basePart}`,
+      label: entry.parentName ? `${entry.parentName}/${basePart}` : basePart,
+      options,
+    });
+  }
+
+  return groups.sort((a, b) => a.label.localeCompare(b.label, undefined, { numeric: true }));
+}
+
+function collectTitleLocales(targetResult) {
+  const LOCALE_CODES = ["JP", "NE", "GE", "SP", "IT", "FR", "US", "KR", "CN"];
+  const LOCALE_PATTERN = new RegExp(
+    `(?:^|_)(${LOCALE_CODES.join("|")})(?:_|[0-9]|$)`,
+  );
+  const locales = new Set();
+
+  const tryExtract = (name) => {
+    if (!name) return;
+    const match = name.match(LOCALE_PATTERN);
+    if (match && LOCALE_CODES.includes(match[1])) locales.add(match[1]);
+  };
+
+  for (const group of targetResult?.renderLayout?.groups ?? []) {
+    tryExtract(group?.name);
+  }
+  for (const pane of targetResult?.renderLayout?.panes ?? []) {
+    tryExtract(pane?.name);
+  }
+
+  return [...locales].sort((a, b) => LOCALE_CODES.indexOf(a) - LOCALE_CODES.indexOf(b));
+}
+
+function detectFeatures(targetResult) {
+  const features = {};
+  const paneNames = new Set((targetResult?.renderLayout?.panes ?? []).map((p) => p.name));
+
+  // Disc Channel disc-type panes
+  if (paneNames.has("WiiDisk") && paneNames.has("GCDisk") && paneNames.has("DVDDisk")) {
+    features.hasDiscType = true;
+    features.discTypes = ["auto", "all", "none", "wii", "gc", "dvd"];
+  }
+
+  // Disc Channel icon scene (GC icon vs system update)
+  if (paneNames.has("N_GCIcon") && paneNames.has("N_DiscUpdateIcon")) {
+    features.hasIconScene = true;
+    features.iconScenes = [
+      { value: "auto", label: "Auto (GC Icon)" },
+      { value: "gc", label: "GC Icon" },
+      { value: "update", label: "Wii Console Update" },
+    ];
+  }
+
+  return features;
 }
 
 // ---------------------------------------------------------------------------
@@ -337,6 +477,11 @@ export async function exportGsapBundle({
         playbackMode: bannerAnimSelection.playbackMode ?? "loop",
       },
     };
+
+    const bannerOptions = buildTargetOptions(bannerResult);
+    if (bannerOptions) {
+      manifest.banner.options = bannerOptions;
+    }
   }
 
   // --- Icon ---
@@ -361,6 +506,11 @@ export async function exportGsapBundle({
         playbackMode: iconAnimSelection.playbackMode ?? "loop",
       },
     };
+
+    const iconOptions = buildTargetOptions(iconResult);
+    if (iconOptions) {
+      manifest.icon.options = iconOptions;
+    }
   }
 
   // --- Manifest ---

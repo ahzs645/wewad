@@ -834,6 +834,74 @@ canvas {
   box-shadow: var(--shadow-focus);
 }
 
+/* ──────────────────────────────────────────────────────────── Settings JSON */
+.settings-json-section {
+  margin-top: 12px;
+  text-align: center;
+}
+
+.settings-json-toggle {
+  font-size: 0.78rem;
+  color: var(--text-secondary);
+  background: none;
+  border: 1px solid var(--border-subtle);
+  border-radius: 8px;
+  padding: 4px 12px;
+  cursor: pointer;
+}
+
+.settings-json-toggle:hover {
+  border-color: var(--accent-primary);
+  color: var(--text-primary);
+}
+
+.settings-json-panel {
+  margin-top: 8px;
+  border: 1px solid var(--border-subtle);
+  border-radius: 10px;
+  padding: 8px 12px;
+  background: var(--bg-overlay-light);
+  text-align: left;
+}
+
+[data-theme="light"] .settings-json-panel {
+  background: var(--bg-input);
+}
+
+.settings-json-actions {
+  display: flex;
+  justify-content: flex-end;
+  margin-bottom: 6px;
+}
+
+.settings-json-actions button {
+  font-size: 0.75rem;
+  padding: 3px 10px;
+  border: 1px solid var(--border-subtle);
+  border-radius: 6px;
+  background: var(--bg-secondary);
+  color: var(--text-secondary);
+  cursor: pointer;
+}
+
+.settings-json-actions button:hover {
+  border-color: var(--accent-primary);
+  color: var(--text-primary);
+}
+
+.settings-json-code {
+  margin: 0;
+  padding: 8px;
+  border-radius: 6px;
+  background: var(--bg-secondary);
+  color: var(--text-primary);
+  font-size: 0.75rem;
+  line-height: 1.5;
+  overflow-x: auto;
+  white-space: pre;
+  font-family: "SF Mono", "Fira Code", "Cascadia Code", monospace;
+}
+
 /* ──────────────────────────────────────────────────────────── Custom weather */
 .custom-weather-settings {
   margin-top: 12px;
