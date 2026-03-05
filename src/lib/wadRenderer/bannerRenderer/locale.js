@@ -1,4 +1,4 @@
-export const TITLE_LOCALE_CODES = ["JP", "NE", "GE", "SP", "IT", "FR", "US", "KR"];
+export const TITLE_LOCALE_CODES = ["JP", "NE", "GE", "SP", "IT", "FR", "US", "KR", "CN"];
 
 const TITLE_LOCALE_ALIASES = new Map([
   ["JP", "JP"],
@@ -27,6 +27,9 @@ const TITLE_LOCALE_ALIASES = new Map([
   ["KR", "KR"],
   ["KOR", "KR"],
   ["KO", "KR"],
+  ["CN", "CN"],
+  ["CHN", "CN"],
+  ["ZH", "CN"],
 ]);
 
 export function normalizeTitleLocaleCode(code) {
@@ -79,6 +82,9 @@ export function detectPreferredTitleLocale() {
   if (lower.startsWith("ko")) {
     return "KR";
   }
+  if (lower.startsWith("zh")) {
+    return "CN";
+  }
   return "US";
 }
 
@@ -87,12 +93,12 @@ export function extractTitleLocaleCode(name) {
     return null;
   }
 
-  let match = name.match(/^N_title(JP|NE|GE|SP|IT|FR|US|KR)_/);
+  let match = name.match(/^N_title(JP|NE|GE|SP|IT|FR|US|KR|CN)_/);
   if (match) {
     return match[1];
   }
 
-  match = name.match(/^title_(JP|NE|GE|SP|IT|FR|US|KR)_/);
+  match = name.match(/^title_(JP|NE|GE|SP|IT|FR|US|KR|CN)_/);
   if (match) {
     return match[1];
   }
@@ -121,13 +127,13 @@ export function extractTitleLocaleCode(name) {
     }
   }
 
-  match = name.match(/^(JP|NE|GE|SP|IT|FR|US|KR)_/);
+  match = name.match(/^(JP|NE|GE|SP|IT|FR|US|KR|CN)_/);
   if (match) {
     return match[1];
   }
 
   match = String(name).match(
-    /(?:^|_)(JP|NE|GE|SP|IT|FR|US|KR|JPN|NED|DUT|NL|GER|DEU|DE|SPA|ES|ESP|ITA|FRA|ENG|EN|USA|KOR|KO)(?:_|[0-9]|$)/i,
+    /(?:^|_)(JP|NE|GE|SP|IT|FR|US|KR|CN|JPN|NED|DUT|NL|GER|DEU|DE|SPA|ES|ESP|ITA|FRA|ENG|EN|USA|KOR|KO|CHN|ZH)(?:_|[0-9]|$)/i,
   );
   if (match) {
     return normalizeTitleLocaleCode(match[1]);

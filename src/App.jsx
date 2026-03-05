@@ -241,6 +241,18 @@ export default function App() {
     };
   }, [bannerDiscPaneNames, titleLocale]);
 
+  // Hide the Disc Channel "system update" icon scene — on real Wii this only
+  // shows during firmware updates, not during normal operation.
+  const iconPaneVisibilityOverrides = useMemo(() => {
+    const panes = parsed?.results?.icon?.renderLayout?.panes;
+    if (!panes) return null;
+    const names = new Set(panes.map((p) => p.name));
+    if (names.has("N_DiscUpdateIcon") && names.has("N_GCIcon")) {
+      return new Map([["N_DiscUpdateIcon", false]]);
+    }
+    return null;
+  }, [parsed]);
+
   const iconAnimSelection = useMemo(() => {
     const selection = resolveAnimationSelection(parsed?.results?.icon, effectiveIconRenderState, iconAnimOverride);
     if (!selection.anim || !selection.renderState) return selection;
@@ -798,6 +810,7 @@ export default function App() {
           renderState: iconAnimSelection.renderState,
           playbackMode: iconPhaseOpts.playbackMode,
           paneStateSelections: customWeatherData ? null : iconPaneStateSelections,
+          paneVisibilityOverrides: iconPaneVisibilityOverrides,
           titleLocale: requestedLocale,
           customWeather: customWeatherData,
           customNews: customNewsData,
@@ -840,6 +853,7 @@ export default function App() {
     stopRenderers, bannerAnimSelection, iconAnimSelection, titleLocale,
     bannerPaneStateSelections, iconPaneStateSelections, customWeatherData, customNewsData,
     previewDisplayAspect, tevQuality, phaseMode, bannerPaneVisibilityOverrides, bannerAlphaMaskPanes, bannerTextOverrides,
+    iconPaneVisibilityOverrides,
   ]);
 
   // Start frame sync
@@ -962,6 +976,19 @@ export default function App() {
                   handleLoadBundleZip={handleLoadBundleZip}
                   bundlePreview={bundlePreview}
                   bundlePreviewSection={bundlePreviewSection} setBundlePreviewSection={setBundlePreviewSection}
+                  tevQuality={tevQuality} setTevQuality={setTevQuality}
+                  bannerAnimOverride={bannerAnimOverride} setBannerAnimOverride={setBannerAnimOverride}
+                  bannerDiscType={bannerDiscType} setBannerDiscType={setBannerDiscType}
+                  showDiscTypeOption={bannerDiscPaneNames != null}
+                  iconAnimOverride={iconAnimOverride} setIconAnimOverride={setIconAnimOverride}
+                  titleLocale={titleLocale} setTitleLocale={setTitleLocale}
+                  availableTitleLocales={availableTitleLocales}
+                  bannerPaneStateGroups={bannerPaneStateGroups}
+                  bannerPaneStateSelections={bannerPaneStateSelections}
+                  setBannerPaneStateSelections={setBannerPaneStateSelections}
+                  iconPaneStateGroups={iconPaneStateGroups}
+                  iconPaneStateSelections={iconPaneStateSelections}
+                  setIconPaneStateSelections={setIconPaneStateSelections}
                 />
               ) : null}
 

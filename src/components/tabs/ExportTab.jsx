@@ -1,3 +1,6 @@
+import { TITLE_LOCALE_LABELS } from "../../constants";
+import { normalizeDomId } from "../../utils/misc";
+
 export function ExportTab({
   exportAspect, setExportAspect,
   isExporting, exportProgress,
@@ -8,7 +11,19 @@ export function ExportTab({
   handleLoadBundleZip,
   bundlePreview,
   bundlePreviewSection, setBundlePreviewSection,
+  tevQuality, setTevQuality,
+  bannerAnimOverride, setBannerAnimOverride,
+  bannerDiscType, setBannerDiscType, showDiscTypeOption,
+  iconAnimOverride, setIconAnimOverride,
+  titleLocale, setTitleLocale, availableTitleLocales,
+  bannerPaneStateGroups, bannerPaneStateSelections, setBannerPaneStateSelections,
+  iconPaneStateGroups, iconPaneStateSelections, setIconPaneStateSelections,
 }) {
+  const bannerAnimEntries = parsed?.results?.banner?.animEntries ?? [];
+  const iconAnimEntries = parsed?.results?.icon?.animEntries ?? [];
+  const hasStateSettings = bannerAnimEntries.length > 2 || iconAnimEntries.length > 1
+    || showDiscTypeOption || (availableTitleLocales?.length ?? 0) > 1
+    || bannerPaneStateGroups?.length > 0 || iconPaneStateGroups?.length > 0;
   return (
     <div className="tab-content active">
       <div className="section-title">Export Bundle</div>
@@ -56,6 +71,154 @@ export function ExportTab({
               Only applies to snapshot/frame exports. Renderer bundle uses native resolution (aspect set at runtime).
             </span>
           </div>
+          {hasStateSettings && (
+            <div className="export-state-settings">
+              <div className="export-settings-label">Channel Settings</div>
+              <div className="state-settings">
+                <div className="state-control">
+                  <label htmlFor="export-tev-quality">TEV Quality</label>
+                  <select
+                    id="export-tev-quality"
+                    value={tevQuality}
+                    onChange={(event) => setTevQuality(event.target.value)}
+                  >
+                    <option value="fast">Fast</option>
+                    <option value="accurate">Accurate</option>
+                  </select>
+                </div>
+                {bannerAnimEntries.length > 2 && (
+                  <div className="state-control">
+                    <label htmlFor="export-banner-anim">Animation</label>
+                    <select
+                      id="export-banner-anim"
+                      value={bannerAnimOverride ?? "auto"}
+                      onChange={(event) => setBannerAnimOverride(event.target.value === "auto" ? null : event.target.value)}
+                    >
+                      <option value="auto">Auto</option>
+                      {bannerAnimEntries.map((entry) => {
+                        const fileName = entry.path.split("/").pop().replace(/\.[^.]+$/, "");
+                        const loopLabel = (entry.anim?.flags & 1) ? "loop" : "once";
+                        return (
+                          <option key={entry.id} value={entry.id}>
+                            {fileName} ({entry.frameSize}f, {loopLabel})
+                          </option>
+                        );
+                      })}
+                    </select>
+                  </div>
+                )}
+                {showDiscTypeOption && (
+                  <div className="state-control">
+                    <label htmlFor="export-banner-disc-type">Disc Type</label>
+                    <select
+                      id="export-banner-disc-type"
+                      value={bannerDiscType}
+                      onChange={(event) => setBannerDiscType(event.target.value)}
+                    >
+                      <option value="auto">Auto</option>
+                      <option value="all">All</option>
+                      <option value="none">None</option>
+                      <option value="wii">Wii Disc</option>
+                      <option value="gc">GameCube Disc</option>
+                      <option value="dvd">DVD</option>
+                    </select>
+                  </div>
+                )}
+                {bannerPaneStateGroups.map((group) => {
+                  const controlId = `export-banner-pane-state-${normalizeDomId(group.id)}`;
+                  const parsedValue = Number.parseInt(String(bannerPaneStateSelections[group.id]), 10);
+                  const value = Number.isFinite(parsedValue) ? String(parsedValue) : "auto";
+                  return (
+                    <div className="state-control" key={`export-banner-pane-group-${group.id}`}>
+                      <label htmlFor={controlId}>Banner {group.label}</label>
+                      <select
+                        id={controlId}
+                        value={value}
+                        onChange={(event) => {
+                          const next = event.target.value === "auto"
+                            ? null
+                            : Number.parseInt(event.target.value, 10);
+                          setBannerPaneStateSelections((previous) => ({ ...previous, [group.id]: next }));
+                        }}
+                      >
+                        <option value="auto">Auto</option>
+                        {group.options.map((option) => (
+                          <option key={`${group.id}-${option.index}`} value={String(option.index)}>
+                            {option.paneName}
+                          </option>
+                        ))}
+                      </select>
+                    </div>
+                  );
+                })}
+                {iconAnimEntries.length > 1 && (
+                  <div className="state-control">
+                    <label htmlFor="export-icon-anim">Icon Animation</label>
+                    <select
+                      id="export-icon-anim"
+                      value={iconAnimOverride ?? "auto"}
+                      onChange={(event) => setIconAnimOverride(event.target.value === "auto" ? null : event.target.value)}
+                    >
+                      <option value="auto">Auto</option>
+                      {iconAnimEntries.map((entry) => {
+                        const fileName = entry.path.split("/").pop().replace(/\.[^.]+$/, "");
+                        const loopLabel = (entry.anim?.flags & 1) ? "loop" : "once";
+                        return (
+                          <option key={entry.id} value={entry.id}>
+                            {fileName} ({entry.frameSize}f, {loopLabel})
+                          </option>
+                        );
+                      })}
+                    </select>
+                  </div>
+                )}
+                {iconPaneStateGroups.map((group) => {
+                  const controlId = `export-icon-pane-state-${normalizeDomId(group.id)}`;
+                  const parsedValue = Number.parseInt(String(iconPaneStateSelections[group.id]), 10);
+                  const value = Number.isFinite(parsedValue) ? String(parsedValue) : "auto";
+                  return (
+                    <div className="state-control" key={`export-icon-pane-group-${group.id}`}>
+                      <label htmlFor={controlId}>Icon {group.label}</label>
+                      <select
+                        id={controlId}
+                        value={value}
+                        onChange={(event) => {
+                          const next = event.target.value === "auto"
+                            ? null
+                            : Number.parseInt(event.target.value, 10);
+                          setIconPaneStateSelections((previous) => ({ ...previous, [group.id]: next }));
+                        }}
+                      >
+                        <option value="auto">Auto</option>
+                        {group.options.map((option) => (
+                          <option key={`${group.id}-${option.index}`} value={String(option.index)}>
+                            {option.paneName}
+                          </option>
+                        ))}
+                      </select>
+                    </div>
+                  );
+                })}
+                {(availableTitleLocales?.length ?? 0) > 1 && (
+                  <div className="state-control">
+                    <label htmlFor="export-title-locale">Locale</label>
+                    <select
+                      id="export-title-locale"
+                      value={titleLocale}
+                      onChange={(event) => setTitleLocale(event.target.value)}
+                    >
+                      <option value="auto">Auto</option>
+                      {availableTitleLocales.map((localeCode) => (
+                        <option key={localeCode} value={localeCode}>
+                          {TITLE_LOCALE_LABELS[localeCode] ?? localeCode}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                )}
+              </div>
+            </div>
+          )}
         </div>
 
         <div className="export-preview-section">

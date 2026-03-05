@@ -28,9 +28,10 @@ export const TITLE_LOCALE_LABELS = {
   FR: "French (FR)",
   US: "English (US)",
   KR: "Korean (KR)",
+  CN: "Chinese (CN)",
 };
 
-export const TITLE_LOCALE_ORDER = ["JP", "NE", "GE", "SP", "IT", "FR", "US", "KR"];
+export const TITLE_LOCALE_ORDER = ["JP", "NE", "GE", "SP", "IT", "FR", "US", "KR", "CN"];
 
 export const WEATHER_CONDITION_OPTIONS = [
   { value: "clear", label: "Clear" },
