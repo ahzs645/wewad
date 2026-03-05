@@ -105,8 +105,13 @@ function drawPaneWithResolvedState(renderer, context, pane, paneState, localPane
     if (chainPane !== pane && chainState.propagatesVisibility && chainState.visible === false) {
       visible = false;
     }
-    if (chainPane === pane || chainState.propagatesAlpha) {
+    // NW4R reference: render_alpha = GetInfluencedAlpha() ? parent_alpha * self : self
+    // influencedByParentAlpha=true means this pane inherits accumulated parent alpha.
+    // influencedByParentAlpha=false means this pane resets to its own alpha only.
+    if (chainState.influencedByParentAlpha) {
       alpha *= chainState.alpha;
+    } else {
+      alpha = chainState.alpha;
     }
 
     context.translate(chainState.tx, -chainState.ty);

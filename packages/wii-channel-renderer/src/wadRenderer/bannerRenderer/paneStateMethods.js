@@ -37,11 +37,15 @@ export function getLocalPaneState(pane, frame) {
   const digitVisibilityOverride = this.getCustomWeatherDigitVisibility?.(pane) ?? null;
   // User-provided pane visibility overrides (e.g., disc type selection).
   const userVisOverride = this.paneVisibilityOverrides?.get(pane.name) ?? null;
+  // Pane state selection: force selected option visible (e.g. textT0 in News Channel).
+  const paneStateVisOverride = this.getPaneStateVisibilityOverride?.(pane) ?? null;
   const visibilityOverride = digitVisibilityOverride != null
     ? digitVisibilityOverride
     : userVisOverride != null
       ? userVisOverride
-      : (this.getCustomWeatherVisibilityOverride?.(pane) ?? null);
+      : paneStateVisOverride != null
+        ? paneStateVisOverride
+        : (this.getCustomWeatherVisibilityOverride?.(pane) ?? null);
   const hasAnimatedAlpha = animValues.alpha != null;
   // On real Wii, the system menu sets locale-matching panes visible (they're
   // visible=false in the BRLYT since the layout doesn't know the console language).
@@ -62,9 +66,12 @@ export function getLocalPaneState(pane, frame) {
   // animation may have alpha=0 at the frozen frame since these panes were originally
   // hidden and replaced by Canvas 2D text.
   const alpha = digitVisibilityOverride === true ? 1 : (isVisible ? animatedAlpha * materialAlphaFactor : 0);
-  // BRLYT pane flag bit 0x02 is widescreen/aspect metadata, not alpha inheritance.
-  // Keep alpha propagation explicit to drawable pane types.
-  const propagatesAlpha = pane.type === "pic1" || pane.type === "txt1" || pane.type === "bnd1" || pane.type === "wnd1";
+  // NW4R reference: Pane::Render() checks GetInfluencedAlpha() on the CHILD pane
+  // to decide whether to multiply in the parent's alpha.
+  // GetInfluencedAlpha() = !GetBit(flags, FLAG_INFLUENCED_ALPHA) where bit is 0x02.
+  // So influencedAlpha=false (bit=0) → pane IS influenced → inherits parent alpha.
+  //    influencedAlpha=true  (bit=1) → pane NOT influenced → uses own alpha only.
+  const influencedByParentAlpha = !pane.influencedAlpha;
   const propagatesVisibility = true;
 
   // Custom weather overrides the texture index for digit panes to show the correct digit.
@@ -86,7 +93,7 @@ export function getLocalPaneState(pane, frame) {
     width,
     height,
     visible: isVisible,
-    propagatesAlpha,
+    influencedByParentAlpha,
     propagatesVisibility,
     vertexColors: mergeAnimatedVertexColors(pane, animValues.vertexColors),
     alpha: Math.max(0, Math.min(1, alpha)),

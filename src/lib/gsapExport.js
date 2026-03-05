@@ -6,7 +6,7 @@
  * and loads this bundle to replay animations on Canvas 2D with GSAP.
  */
 
-import { loadJSZip, imageDataToPngBlob, tplImageToImageData, createWavArrayBuffer } from "./exportBundle";
+import { loadJSZip, imageDataToPngBlob, tplImageToImageData, createWavArrayBuffer } from "@wewad/wii-channel-renderer/export-bundle";
 
 // ---------------------------------------------------------------------------
 // Icon viewport helper (duplicated to avoid circular import from utils/)

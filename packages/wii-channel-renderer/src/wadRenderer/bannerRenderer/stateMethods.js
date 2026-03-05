@@ -248,6 +248,32 @@ export function getAvailablePaneStateGroups() {
   }));
 }
 
+export function getPaneStateVisibilityOverride(pane) {
+  if (!this.activePaneStateSelections || Object.keys(this.activePaneStateSelections).length === 0) {
+    return null;
+  }
+
+  const memberships = this.paneStateMembershipByPaneName.get(pane.name);
+  if (!memberships || memberships.length === 0) {
+    return null;
+  }
+
+  for (const membership of memberships) {
+    const selectedIndex = this.activePaneStateSelections[membership.groupId];
+    if (!Number.isFinite(selectedIndex)) {
+      continue;
+    }
+    // This pane is a member of a group with an active selection.
+    // If this pane IS the selected option, force it visible (Wii RSO code
+    // would set the selected pane visible at runtime).
+    if (membership.index === selectedIndex) {
+      return true;
+    }
+  }
+
+  return null;
+}
+
 export function shouldRenderPaneForPaneState(pane) {
   if (!this.activePaneStateSelections || Object.keys(this.activePaneStateSelections).length === 0) {
     return true;
