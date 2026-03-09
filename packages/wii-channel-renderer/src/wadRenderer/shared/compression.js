@@ -1,3 +1,5 @@
+import { withLogger } from "./logger.js";
+
 // Decompress raw Nintendo LZ (no "LZ77" tag). Used for .LZ files.
 // Header: type(u8) + decompressed_size(u24 LE).
 export function decodeLzRaw(data) {
@@ -171,4 +173,93 @@ export function decodeYaz0(data) {
   }
 
   return out.buffer;
+}
+
+function readAsciiTag(buffer) {
+  if (!buffer || buffer.byteLength < 4) {
+    return "";
+  }
+
+  const bytes = new Uint8Array(buffer, 0, 4);
+  return String.fromCharCode(bytes[0], bytes[1], bytes[2], bytes[3]);
+}
+
+function matchesExpectedMagic(buffer, expectedMagic) {
+  if (!expectedMagic) {
+    return true;
+  }
+
+  const allowed = Array.isArray(expectedMagic) ? expectedMagic : [expectedMagic];
+  const tag = readAsciiTag(buffer);
+  return allowed.includes(tag);
+}
+
+// Strip common Wii/Nintendo wrappers so parsers can operate on the real payload.
+export function unwrapBinaryAsset(buffer, options = {}, loggerInput) {
+  const logger = withLogger(loggerInput);
+  const { expectedMagic = null, maxDepth = 8 } = options;
+  let sourceBuffer = buffer;
+
+  for (let depth = 0; depth < maxDepth; depth += 1) {
+    const tag = readAsciiTag(sourceBuffer);
+    if (!tag) {
+      return sourceBuffer;
+    }
+
+    if (tag === "IMD5") {
+      logger.info("Found IMD5 header, skipping 32 bytes");
+      sourceBuffer = sourceBuffer.slice(32);
+      continue;
+    }
+
+    if (tag === "Yaz0") {
+      logger.info("Found Yaz0 stream, decompressing");
+      sourceBuffer = decodeYaz0(new Uint8Array(sourceBuffer));
+      continue;
+    }
+
+    if (tag === "LZ77") {
+      logger.info("Found LZ77 stream, decompressing");
+
+      const attempts = [
+        { mode: "be", label: "big-endian" },
+        { mode: "le", label: "little-endian" },
+      ];
+
+      const candidates = [];
+      let lastError = null;
+      for (const attempt of attempts) {
+        try {
+          const decompressed = decodeLz77(new Uint8Array(sourceBuffer), attempt.mode);
+          candidates.push({ ...attempt, decompressed });
+        } catch (error) {
+          lastError = error;
+        }
+      }
+
+      const matchingCandidates = candidates.filter(({ decompressed }) =>
+        matchesExpectedMagic(decompressed, expectedMagic),
+      );
+
+      const selected =
+        matchingCandidates[0] ??
+        (matchingCandidates.length === 0 && !expectedMagic ? candidates[0] : null);
+
+      if (!selected) {
+        throw new Error(
+          expectedMagic
+            ? `Failed to decompress LZ77 stream to expected magic ${JSON.stringify(expectedMagic)}`
+            : `Failed to decompress LZ77 stream: ${lastError?.message ?? "unknown error"}`,
+        );
+      }
+
+      logger.info(`LZ77 decompressed using ${selected.label} size mode`);
+      sourceBuffer = selected.decompressed;
+      continue;
+    }
+
+    return sourceBuffer;
+  }
+
+  throw new Error("Exceeded wrapper recursion limit while unwrapping binary asset");
 }

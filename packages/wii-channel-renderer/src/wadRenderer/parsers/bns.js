@@ -1,4 +1,4 @@
-import { withLogger } from "../shared/index.js";
+import { unwrapBinaryAsset, withLogger } from "../shared/index.js";
 
 function readAscii(view, offset, length) {
   let value = "";
@@ -58,15 +58,7 @@ function decodeDspAdpcmChannel(source, dataOffset, sampleCount, coefficients, in
 
 export function parseBNS(buffer, loggerInput) {
   const logger = withLogger(loggerInput);
-  let sourceBuffer = buffer;
-
-  if (sourceBuffer.byteLength >= 32) {
-    const imd5View = new DataView(sourceBuffer, 0, Math.min(32, sourceBuffer.byteLength));
-    if (readAscii(imd5View, 0, 4) === "IMD5") {
-      logger.info("Found IMD5 header, skipping 32 bytes");
-      sourceBuffer = sourceBuffer.slice(32);
-    }
-  }
+  const sourceBuffer = unwrapBinaryAsset(buffer, { expectedMagic: "BNS " }, logger);
 
   const view = new DataView(sourceBuffer);
   const source = new Uint8Array(sourceBuffer);

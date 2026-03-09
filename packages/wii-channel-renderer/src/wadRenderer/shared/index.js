@@ -1,5 +1,5 @@
 export { BinaryReader, align } from "./binary.js";
-export { decodeLz77, decodeLzRaw, decodeYaz0 } from "./compression.js";
+export { decodeLz77, decodeLzRaw, decodeYaz0, unwrapBinaryAsset } from "./compression.js";
 export {
   WII_COMMON_KEYS,
   decryptAesCbcNoPadding,
