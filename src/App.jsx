@@ -54,6 +54,7 @@ export default function App() {
   const [phaseMode, setPhaseMode] = useState("full");
   const [startFrame, setStartFrame] = useState(0);
   const [startFrameInput, setStartFrameInput] = useState("0");
+  const [hasExplicitStartFrame, setHasExplicitStartFrame] = useState(false);
   const [selectedFileName, setSelectedFileName] = useState("");
   const [parsed, setParsed] = useState(null);
   const [hasAudio, setHasAudio] = useState(false);
@@ -359,9 +360,10 @@ export default function App() {
   }, [bannerAnimSelection, canCustomizeWeather, customWeatherData, startFrame]);
 
   const effectiveIconStartFrame = useMemo(() => {
-    if (!customWeatherData || !canCustomizeWeather) return startFrame;
-    return resolveCustomWeatherBannerFrame(iconAnimSelection, startFrame);
-  }, [canCustomizeWeather, customWeatherData, iconAnimSelection, startFrame]);
+    const baseFrame = hasExplicitStartFrame ? startFrame : 0;
+    if (!customWeatherData || !canCustomizeWeather) return baseFrame;
+    return resolveCustomWeatherBannerFrame(iconAnimSelection, baseFrame);
+  }, [canCustomizeWeather, customWeatherData, hasExplicitStartFrame, iconAnimSelection, startFrame]);
 
   const maxStartFrame = useMemo(() => {
     if (!parsed) return 959;
@@ -469,6 +471,7 @@ export default function App() {
         const suggestedFrame = suggestInitialFrame(result);
         setStartFrame(suggestedFrame);
         setStartFrameInput(String(suggestedFrame));
+        setHasExplicitStartFrame(false);
         setAnimStatus(`Frame ${suggestedFrame}`);
         setParsed(result);
 
@@ -573,6 +576,7 @@ export default function App() {
     const next = normalizeStartFrame(startFrameInput);
     setStartFrame(next);
     setStartFrameInput(String(next));
+    setHasExplicitStartFrame(true);
   }, [normalizeStartFrame, startFrameInput]);
 
   const useCurrentFrame = useCallback(() => {
@@ -580,6 +584,7 @@ export default function App() {
     const next = normalizeStartFrame(current);
     setStartFrame(next);
     setStartFrameInput(String(next));
+    setHasExplicitStartFrame(true);
   }, [normalizeStartFrame, startFrame]);
 
   const exportCanvas = useCallback((canvasRef, filename) => {

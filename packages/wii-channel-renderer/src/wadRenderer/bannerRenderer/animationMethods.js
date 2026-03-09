@@ -122,9 +122,13 @@ export function ensureGsapTimeline() {
   }
 
   const total = this.getTotalFrames();
-  const duration = Math.max(1e-3, total / this.fps);
-  const targetFrame = this.subframePlayback ? Math.max(0, total - 1e-4) : Math.max(0, total - 1);
-  this.gsapDriver.frame = this.frame;
+  const playbackStartFrame = 0;
+  const playbackLength = Math.max(1, total - playbackStartFrame);
+  const duration = Math.max(1e-3, playbackLength / this.fps);
+  const targetFrame = this.subframePlayback
+    ? Math.max(playbackStartFrame, total - 1e-4)
+    : Math.max(playbackStartFrame, total - 1);
+  this.gsapDriver.frame = playbackStartFrame;
 
   this.gsapTimeline = gsap.timeline({
     paused: true,
@@ -140,6 +144,12 @@ export function ensureGsapTimeline() {
     duration,
     ease: "none",
   });
+
+  const normalizedFrame = this.normalizeFrameForPlayback(this.frame);
+  const initialProgress = playbackLength <= 1
+    ? 0
+    : Math.max(0, Math.min(1, (normalizedFrame - playbackStartFrame) / playbackLength));
+  this.gsapTimeline.progress(initialProgress);
 }
 
 export function seekToFrame(globalFrame) {
