@@ -15,7 +15,6 @@ import { suggestInitialFrame, resolveAnimationSelection } from "./utils/animatio
 import { collectRenderStateOptions, mergeRelatedRsoAnimations } from "./utils/renderState";
 import { hasWeatherScene, hasNewsScene, resolveWeatherRenderState, resolveCustomWeatherBannerFrame } from "./utils/weather";
 import { getUsedTextureNames, resolveIconViewport, createRecentIconPreview } from "./utils/layout";
-import { createWavBuffer } from "./utils/audio";
 import { createAudioSyncController } from "./utils/audioSync";
 import { saveRecentWad } from "./utils/recentWads";
 import { sortTitleLocales, arePaneStateGroupsEqual, shallowEqualSelections, normalizePaneStateSelections } from "./utils/misc";
@@ -36,6 +35,7 @@ export default function App() {
   const fileInputRef = useRef(null);
   const bannerCanvasRef = useRef(null);
   const iconCanvasRef = useRef(null);
+  const previewAudioRef = useRef(null);
   const bannerRendererRef = useRef(null);
   const iconRendererRef = useRef(null);
   const bundleFileInputRef = useRef(null);
@@ -515,8 +515,8 @@ export default function App() {
 
     if (!freezeVisualPlayback && bannerRenderer) { bannerRenderer.play(); setBannerPlaying(true); }
     if (!freezeVisualPlayback && iconRenderer) { iconRenderer.play(); setIconPlaying(true); }
-    if (audioCtrl && bannerRenderer) {
-      const info = bannerRenderer.getPlaybackInfo();
+    if (audioCtrl) {
+      const info = bannerRenderer?.getPlaybackInfo?.() ?? iconRenderer?.getPlaybackInfo?.() ?? null;
       if (info) audioCtrl.seekToFrame(info.audioFrame ?? info.globalFrame);
       audioCtrl.play(audioCtrl.currentTime);
     }
@@ -727,7 +727,7 @@ export default function App() {
       return undefined;
     }
     const animationLoops = phaseMode !== "startOnly";
-    const controller = createAudioSyncController(null, audio, 60, { animationLoops });
+    const controller = createAudioSyncController(previewAudioRef.current, audio, 60, { animationLoops });
     audioSyncRef.current = controller;
     setHasAudio(Boolean(controller));
     return () => {
@@ -735,7 +735,7 @@ export default function App() {
       audioSyncRef.current = null;
       setHasAudio(false);
     };
-  }, [parsed, phaseMode]);
+  }, [activeTab, parsed, phaseMode]);
 
   // Main renderer setup
   useEffect(() => {
@@ -933,6 +933,7 @@ export default function App() {
                 <PreviewTab
                   previewDisplay={previewDisplay} setPreviewDisplay={setPreviewDisplay}
                   bannerCanvasRef={bannerCanvasRef} iconCanvasRef={iconCanvasRef}
+                  audioElementRef={previewAudioRef}
                   isPlaying={isPlaying} togglePlayback={togglePlayback} resetPlayback={resetPlayback}
                   exportCanvas={exportCanvas}
                   startFrameInput={startFrameInput} setStartFrameInput={setStartFrameInput}

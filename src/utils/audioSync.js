@@ -1,52 +1,37 @@
-let sharedContext = null;
-
-function getAudioContext() {
-  if (!sharedContext || sharedContext.state === "closed") {
-    sharedContext = new (window.AudioContext || window.webkitAudioContext)();
-  }
-  return sharedContext;
-}
-
-function buildAudioBuffer(bnsMetadata) {
-  const ctx = getAudioContext();
-  const channelCount = Math.max(1, bnsMetadata.channelCount ?? bnsMetadata.pcm16.length);
-  const sampleCount = Math.min(...bnsMetadata.pcm16.map((ch) => ch.length));
-  if (sampleCount <= 0) return null;
-
-  const buf = ctx.createBuffer(channelCount, sampleCount, bnsMetadata.sampleRate);
-  for (let ch = 0; ch < channelCount; ch++) {
-    const src = bnsMetadata.pcm16[ch] ?? bnsMetadata.pcm16[bnsMetadata.pcm16.length - 1];
-    const dest = buf.getChannelData(ch);
-    for (let i = 0; i < sampleCount; i++) {
-      dest[i] = (src[i] ?? 0) / 32768;
-    }
-  }
-  return buf;
-}
+import { createWavBuffer } from "./audio";
 
 export function createAudioSyncController(audioElement, bnsMetadata, fps = 60, { animationLoops = false } = {}) {
   if (!bnsMetadata?.pcm16?.length) return null;
 
-  const ctx = getAudioContext();
-  const audioBuffer = buildAudioBuffer(bnsMetadata);
-  if (!audioBuffer) return null;
+  const wavBuffer = createWavBuffer(bnsMetadata);
+  if (!wavBuffer) return null;
+
+  const blob = new Blob([wavBuffer], { type: "audio/wav" });
+  const objectUrl = URL.createObjectURL(blob);
+  const audio = audioElement ?? new Audio();
+  audio.preload = "auto";
+  audio.src = objectUrl;
+  audio.load();
 
   const sampleRate = bnsMetadata.sampleRate || 1;
   const loopFlag = Boolean(bnsMetadata.loopFlag);
-  const totalDuration = audioBuffer.duration;
+  const totalDuration = Math.max(
+    0,
+    Number.isFinite(bnsMetadata.durationSeconds)
+      ? bnsMetadata.durationSeconds
+      : (bnsMetadata.sampleCount ?? 0) / sampleRate,
+  );
   const rawLoopStartTime = loopFlag ? (bnsMetadata.loopStart || 0) / sampleRate : 0;
   const loopStartTime = Math.max(0, Math.min(rawLoopStartTime, totalDuration));
   const shouldLoop = loopFlag && animationLoops && loopStartTime < totalDuration;
   const loopAudioDuration = shouldLoop ? (totalDuration - loopStartTime) : 0;
 
-  let sourceNode = null;
-  let gainNode = ctx.createGain();
-  gainNode.connect(ctx.destination);
-
-  // Track playback start so we can compute current position
-  let playStartContextTime = 0;
-  let playStartOffset = 0;
+  let readyPromise = null;
+  let playToken = 0;
   let playing = false;
+  let shouldBePlaying = false;
+  let pausedOffset = 0;
+  let disposed = false;
 
   function normalizePlaybackTime(rawTime) {
     const time = Number.isFinite(rawTime) ? Math.max(0, rawTime) : 0;
@@ -60,10 +45,60 @@ export function createAudioSyncController(audioElement, bnsMetadata, fps = 60, {
     return loopStartTime + (overflow % loopAudioDuration);
   }
 
+  function isReady() {
+    return audio.readyState >= 1;
+  }
+
+  function ensureReady() {
+    if (isReady()) {
+      return Promise.resolve();
+    }
+    if (!readyPromise) {
+      readyPromise = new Promise((resolve, reject) => {
+        const cleanup = () => {
+          audio.removeEventListener("loadedmetadata", handleLoadedMetadata);
+          audio.removeEventListener("canplay", handleLoadedMetadata);
+          audio.removeEventListener("error", handleError);
+        };
+        const handleLoadedMetadata = () => {
+          cleanup();
+          resolve();
+        };
+        const handleError = () => {
+          cleanup();
+          reject(audio.error ?? new Error("Failed to load audio"));
+        };
+
+        audio.addEventListener("loadedmetadata", handleLoadedMetadata, { once: true });
+        audio.addEventListener("canplay", handleLoadedMetadata, { once: true });
+        audio.addEventListener("error", handleError, { once: true });
+        audio.load();
+      });
+    }
+    return readyPromise;
+  }
+
   function getCurrentTime() {
-    if (!playing) return normalizePlaybackTime(playStartOffset);
-    const elapsed = Math.max(0, ctx.currentTime - playStartContextTime);
-    return normalizePlaybackTime(playStartOffset + elapsed);
+    if (playing && Number.isFinite(audio.currentTime)) {
+      return normalizePlaybackTime(audio.currentTime);
+    }
+    return normalizePlaybackTime(pausedOffset);
+  }
+
+  function setCurrentTime(rawTime) {
+    const nextTime = normalizePlaybackTime(rawTime);
+    pausedOffset = nextTime;
+
+    if (!isReady()) {
+      return nextTime;
+    }
+
+    try {
+      audio.currentTime = nextTime;
+    } catch {
+      // Some runtimes reject seeks before metadata is fully ready.
+    }
+    return nextTime;
   }
 
   function getExpectedAudioTime(globalFrame) {
@@ -76,93 +111,112 @@ export function createAudioSyncController(audioElement, bnsMetadata, fps = 60, {
     return loopStartTime + (overflow % loopAudioDuration);
   }
 
-  function startSource(offset) {
-    stopSource();
-    if (ctx.state === "suspended") {
-      void ctx.resume();
-    }
+  async function play(offset) {
+    if (disposed) return;
 
-    sourceNode = ctx.createBufferSource();
-    sourceNode.buffer = audioBuffer;
+    const token = ++playToken;
+    shouldBePlaying = true;
+    const target = setCurrentTime(offset ?? pausedOffset);
 
-    if (shouldLoop) {
-      sourceNode.loop = true;
-      sourceNode.loopStart = loopStartTime;
-      sourceNode.loopEnd = totalDuration;
-    }
-
-    sourceNode.connect(gainNode);
-
-    const clampedOffset = normalizePlaybackTime(offset);
-    playStartOffset = clampedOffset;
-    playStartContextTime = ctx.currentTime;
-    sourceNode.start(0, clampedOffset);
-    playing = true;
-
-    const thisNode = sourceNode;
-    sourceNode.onended = () => {
-      if (sourceNode === thisNode) {
-        playStartOffset = getCurrentTime();
-        playing = false;
-        sourceNode = null;
+    try {
+      await ensureReady();
+      if (disposed || token !== playToken || !shouldBePlaying) return;
+      setCurrentTime(target);
+      await audio.play();
+      if (disposed || token !== playToken || !shouldBePlaying) {
+        audio.pause();
+        return;
       }
-    };
-  }
-
-  function stopSource() {
-    if (sourceNode) {
-      try { sourceNode.stop(); } catch (_) { /* already stopped */ }
-      sourceNode.disconnect();
-      sourceNode = null;
+      playing = true;
+    } catch {
+      if (token === playToken) {
+        playing = false;
+        shouldBePlaying = false;
+      }
     }
-    playing = false;
-  }
-
-  function play(offset) {
-    startSource(offset ?? 0);
   }
 
   function pause() {
-    if (playing) {
-      playStartOffset = getCurrentTime();
-    }
-    stopSource();
+    playToken += 1;
+    pausedOffset = getCurrentTime();
+    shouldBePlaying = false;
+    playing = false;
+    audio.pause();
   }
 
   function stop() {
-    stopSource();
-    playStartOffset = 0;
+    playToken += 1;
+    shouldBePlaying = false;
+    playing = false;
+    audio.pause();
+    setCurrentTime(0);
   }
 
   function seekToFrame(globalFrame) {
     const target = getExpectedAudioTime(globalFrame);
-    if (playing) {
-      startSource(target);
-    } else {
-      playStartOffset = target;
+    setCurrentTime(target);
+
+    if (shouldBePlaying && audio.paused && !disposed) {
+      void play(target);
     }
   }
 
   function syncFrame(globalFrame) {
-    if (!playing) return;
+    if (!shouldBePlaying || disposed) return;
+
     const expected = getExpectedAudioTime(globalFrame);
     const actual = getCurrentTime();
     let drift = Math.abs(actual - expected);
     if (shouldLoop && loopAudioDuration > 0 && actual >= loopStartTime && expected >= loopStartTime) {
       drift = Math.min(drift, Math.abs(loopAudioDuration - drift));
     }
+
     if (drift > 0.15) {
-      startSource(expected);
+      setCurrentTime(expected);
+    }
+
+    if (audio.paused) {
+      void play(expected);
     }
   }
 
-  function setVolume(v) {
-    gainNode.gain.value = Math.max(0, Math.min(1, v));
+  function setVolume(value) {
+    audio.volume = Math.max(0, Math.min(1, value));
   }
 
+  function handlePause() {
+    if (!shouldBePlaying) {
+      playing = false;
+      pausedOffset = getCurrentTime();
+    }
+  }
+
+  function handleEnded() {
+    if (shouldLoop && shouldBePlaying && !disposed) {
+      setCurrentTime(loopStartTime);
+      void play(loopStartTime);
+      return;
+    }
+
+    playing = false;
+    shouldBePlaying = false;
+    pausedOffset = totalDuration;
+  }
+
+  audio.addEventListener("pause", handlePause);
+  audio.addEventListener("ended", handleEnded);
+
   function dispose() {
-    stopSource();
-    gainNode.disconnect();
+    disposed = true;
+    playToken += 1;
+    shouldBePlaying = false;
+    playing = false;
+    audio.pause();
+    audio.removeEventListener("pause", handlePause);
+    audio.removeEventListener("ended", handleEnded);
+    audio.removeAttribute("src");
+    audio.load();
+    URL.revokeObjectURL(objectUrl);
   }
 
   return {

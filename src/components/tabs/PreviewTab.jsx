@@ -6,6 +6,7 @@ import { PlaybackTimeline } from "../PlaybackTimeline";
 export function PreviewTab({
   previewDisplay, setPreviewDisplay,
   bannerCanvasRef, iconCanvasRef,
+  audioElementRef,
   isPlaying, togglePlayback, resetPlayback,
   exportCanvas,
   startFrameInput, setStartFrameInput, maxStartFrame, applyStartFrame, useCurrentFrame,
@@ -508,7 +509,10 @@ export function PreviewTab({
         <div className="audio-section">
           <label>Channel Audio</label>
           {hasAudio ? (
-            <div className="audio-meta">{audioInfo}</div>
+            <>
+              <audio ref={audioElementRef} controls preload="auto" />
+              <div className="audio-meta">{audioInfo}</div>
+            </>
           ) : (
             <div className="empty-state">No channel audio decoded.</div>
           )}
