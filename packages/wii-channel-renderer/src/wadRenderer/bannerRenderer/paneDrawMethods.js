@@ -532,22 +532,14 @@ export function renderFrame(frame) {
 
   context.clearRect(0, 0, layoutWidth, layoutHeight);
 
-  const localPaneStates = new Map();
-  for (const pane of this.layout.panes) {
+  const localPaneStates = this.localPaneStates;
+  localPaneStates.clear();
+  for (const pane of this.allPanes) {
     localPaneStates.set(pane, this.getLocalPaneState(pane, frame));
   }
 
-  const renderablePanes = this.layout.panes.filter((pane) =>
-    pane.type === "pic1" || pane.type === "txt1" || pane.type === "wnd1"
-  );
-  const orderedRenderablePanes = this.getCustomWeatherOrderedPanes?.(renderablePanes) ?? renderablePanes;
-  const shouldUseWiiShopBackdropMask =
-    this.enableWiiShopBackdropMask === true &&
-    this.panesByName?.has("backCLs") &&
-    this.panesByName?.has("mask_01") &&
-    this.panesByName?.has("logo_base") &&
-    this.layout?.textures?.includes("logo_pic01.tpl") &&
-    this.layout?.textures?.includes("logo_pic02.tpl");
+  const orderedRenderablePanes = this.activeRenderablePanes ?? this.renderablePanes;
+  const shouldUseWiiShopBackdropMask = this.shouldUseWiiShopBackdropMask;
 
   let backdropContext = null;
   let hasBackdropContent = false;
@@ -594,22 +586,6 @@ export function renderFrame(frame) {
   };
 
   for (const pane of orderedRenderablePanes) {
-    if (!this.shouldRenderPaneForLocale(pane)) {
-      continue;
-    }
-    if (!this.shouldRenderPaneForState(pane)) {
-      continue;
-    }
-    if (!this.shouldRenderPaneForPaneState(pane)) {
-      continue;
-    }
-    if (!this.shouldRenderPaneForCustomWeather(pane)) {
-      continue;
-    }
-    if (!this.shouldRenderPaneForCustomNews?.(pane)) {
-      continue;
-    }
-
     const paneState = localPaneStates.get(pane);
     if (!paneState) {
       continue;

@@ -17,11 +17,22 @@ export function play() {
     }
   }
 
-  this.lastTime = performance.now();
+  const now = performance.now();
+  this.lastTime = now;
+  this.lastRenderTime = this.maxRenderFps > 0 ? now - (1000 / this.maxRenderFps) : now;
 
   const tick = (now) => {
     if (!this.playing) {
       return;
+    }
+
+    if (this.maxRenderFps > 0) {
+      const minRenderInterval = 1000 / this.maxRenderFps;
+      if ((now - this.lastRenderTime) < minRenderInterval) {
+        this.animationId = requestAnimationFrame(tick);
+        return;
+      }
+      this.lastRenderTime = now;
     }
 
     const delta = Math.max(0, now - this.lastTime);
@@ -54,6 +65,7 @@ export function stop() {
     cancelAnimationFrame(this.animationId);
     this.animationId = null;
   }
+  this.lastRenderTime = 0;
 }
 
 export function reset() {

@@ -90,8 +90,11 @@ export class BannerRenderer {
     this.playing = false;
     this.animationId = null;
     this.lastTime = 0;
+    this.lastRenderTime = 0;
     const requestedFps = Number.isFinite(options.fps) ? options.fps : 60;
     this.fps = Math.max(1, Math.min(240, requestedFps));
+    const requestedMaxRenderFps = Number.isFinite(options.maxRenderFps) ? options.maxRenderFps : 0;
+    this.maxRenderFps = Math.max(0, Math.min(240, requestedMaxRenderFps));
     this.playbackMode = options.playbackMode === "hold" || options.playbackMode === "once" ? "hold" : "loop";
     this.useGsap = options.useGsap ?? true;
     this.onFrame = options.onFrame ?? (() => {});
@@ -127,6 +130,12 @@ export class BannerRenderer {
 
     this.textureCanvases = {};
     this.textureFormats = {};
+    this.allPanes = Array.isArray(layout?.panes) ? layout.panes : [];
+    this.renderablePanes = this.allPanes.filter((pane) =>
+      pane?.type === "pic1" || pane?.type === "txt1" || pane?.type === "wnd1"
+    );
+    this.activeRenderablePanes = this.renderablePanes;
+    this.localPaneStates = new Map();
     this.panesByName = new Map();
     this.paneTransformChains = new Map();
     this.paneGroupNames = new Map();
@@ -180,7 +189,7 @@ export class BannerRenderer {
     this.enableWiiShopBackdropMask =
       options.enableWiiShopBackdropMask === true || options.wiiShopBackdropMask === true;
 
-    for (const pane of this.layout?.panes ?? []) {
+    for (const pane of this.allPanes) {
       if (!this.panesByName.has(pane.name)) {
         this.panesByName.set(pane.name, pane);
       }
@@ -250,12 +259,14 @@ export class BannerRenderer {
     if (strictTevOption == null) {
       this.strictTevEvaluation = this.tevQuality === "accurate" || this.strictMaterialMode;
     }
+    this.shouldUseWiiShopBackdropMask = Boolean(this.enableWiiShopBackdropMask && this.isWiiShopLayout);
 
     this.startFrame = this.normalizeFrameForPlayback(this.startFrame);
     this.frame = this.startFrame;
     this.prepareTextures();
     this.resolveCustomWeatherDigitTextureMap();
     this.prepareFonts();
+    this.rebuildRenderablePaneList();
   }
 }
 

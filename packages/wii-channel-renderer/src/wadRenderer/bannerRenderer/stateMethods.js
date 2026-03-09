@@ -80,6 +80,19 @@ export function getPaneGroupNames(paneName) {
   return this.paneGroupNames.get(paneName) ?? null;
 }
 
+export function rebuildRenderablePaneList() {
+  const orderedRenderablePanes = this.getCustomWeatherOrderedPanes?.(this.renderablePanes) ?? this.renderablePanes;
+  this.activeRenderablePanes = orderedRenderablePanes.filter((pane) => (
+    this.shouldRenderPaneForLocale(pane) &&
+    this.shouldRenderPaneForState(pane) &&
+    this.shouldRenderPaneForPaneState(pane) &&
+    this.shouldRenderPaneForCustomWeather(pane) &&
+    (this.shouldRenderPaneForCustomNews?.(pane) ?? true)
+  ));
+
+  return this.activeRenderablePanes;
+}
+
 export function collectRenderStates() {
   const states = new Set();
 

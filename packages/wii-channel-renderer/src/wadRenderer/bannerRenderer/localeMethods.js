@@ -118,6 +118,7 @@ export function getLocaleVisibilityOverride(pane) {
 export function setTitleLocale(localeCode) {
   this.titleLocalePreference = localeCode ?? null;
   this.activeTitleLocale = this.resolveActiveTitleLocale(localeCode);
+  this.rebuildRenderablePaneList?.();
   this.render();
 }
 

@@ -301,6 +301,14 @@ export function suggestInitialFrame(result) {
   return 0;
 }
 
+function inferPlaybackModeFromAnim(anim, fallback = "loop") {
+  if (!anim) {
+    return fallback;
+  }
+  const loops = (anim.flags & 1) !== 0;
+  return loops ? "loop" : "once";
+}
+
 export function resolveAnimationSelection(targetResult, selectedState, animOverrideId) {
   const explicitState = normalizeRenderState(selectedState);
   if (!targetResult) {
@@ -357,6 +365,18 @@ export function resolveAnimationSelection(targetResult, selectedState, animOverr
   }
 
   if (!explicitState) {
+    const defaultAnim = targetResult.anim ?? targetResult.animStart ?? targetResult.animLoop ?? null;
+    const hasDistinctLoopAnim = Boolean(targetResult.animLoop && targetResult.animLoop !== targetResult.animStart);
+    if (defaultAnim && !hasDistinctLoopAnim) {
+      return {
+        anim: defaultAnim,
+        startAnim: null,
+        loopAnim: defaultAnim,
+        renderState: autoState ?? null,
+        playbackMode: inferPlaybackModeFromAnim(defaultAnim),
+      };
+    }
+
     return {
       anim: targetResult.anim ?? null,
       startAnim: targetResult.animStart ?? null,
@@ -367,12 +387,16 @@ export function resolveAnimationSelection(targetResult, selectedState, animOverr
   }
 
   const selectedAnim = targetResult.animLoop ?? targetResult.animStart ?? targetResult.anim ?? null;
+  const playbackMode =
+    targetResult.animLoop || !selectedAnim
+      ? "loop"
+      : inferPlaybackModeFromAnim(selectedAnim);
 
   return {
     anim: selectedAnim,
     startAnim: null,
     loopAnim: selectedAnim,
     renderState: activeState,
-    playbackMode: "loop",
+    playbackMode,
   };
 }
