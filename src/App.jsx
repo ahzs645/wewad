@@ -515,8 +515,8 @@ export default function App() {
 
     if (!freezeVisualPlayback && bannerRenderer) { bannerRenderer.play(); setBannerPlaying(true); }
     if (!freezeVisualPlayback && iconRenderer) { iconRenderer.play(); setIconPlaying(true); }
-    if (audioCtrl) {
-      const info = bannerRenderer?.getPlaybackInfo() ?? iconRenderer?.getPlaybackInfo();
+    if (audioCtrl && bannerRenderer) {
+      const info = bannerRenderer.getPlaybackInfo();
       if (info) audioCtrl.seekToFrame(info.audioFrame ?? info.globalFrame);
       audioCtrl.play(audioCtrl.currentTime);
     }

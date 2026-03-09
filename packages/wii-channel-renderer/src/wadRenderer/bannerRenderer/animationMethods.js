@@ -135,6 +135,10 @@ export function ensureGsapTimeline() {
     repeat: -1,
     defaults: { ease: "none" },
     onUpdate: () => {
+      // Keep audio time monotonic across GSAP loop repeats so one-shot banner
+      // audio can continue playing even while the visual animation wraps.
+      const elapsedFrames = Math.max(0, this.gsapTimeline?.totalTime() * this.fps);
+      this.audioFrame = playbackStartFrame + elapsedFrames;
       this.applyFrame(this.gsapDriver.frame);
     },
   });
