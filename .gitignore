@@ -5,3 +5,4 @@ tmp-*.mjs
 debug_*.mjs
 customizemii-master
 .codex
+.DS_Store
