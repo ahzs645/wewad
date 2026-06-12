@@ -1,0 +1,85 @@
+/* ──────────────────────────────────────────────────────────── Responsive */
+@media (max-width: 768px) {
+  .app {
+    flex-direction: column;
+  }
+
+  .sidebar {
+    position: relative;
+    width: 100%;
+    min-width: 0;
+    height: auto;
+    max-height: none;
+    border-right: none;
+    border-bottom: 1px solid var(--border-subtle);
+    padding: 16px;
+  }
+
+  .main-content {
+    padding: 20px 16px;
+  }
+
+  .recent-wads {
+    display: none;
+  }
+
+  .tab-bar {
+    flex-wrap: wrap;
+    padding: 6px 12px;
+  }
+
+  .tab {
+    flex: 0 0 auto;
+    padding: 6px 12px;
+    font-size: 0.78rem;
+  }
+
+  header h1 {
+    font-size: 1.1rem;
+  }
+
+  .controls {
+    justify-content: stretch;
+  }
+
+  .controls button {
+    flex: 1 1 auto;
+  }
+
+  .frame-settings {
+    align-items: stretch;
+  }
+
+  .frame-settings input,
+  .frame-settings button {
+    flex: 1 1 120px;
+  }
+
+  .state-settings {
+    align-items: stretch;
+  }
+
+  .state-control {
+    flex: 1 1 100%;
+    justify-content: space-between;
+  }
+
+  .state-control select {
+    min-width: 0;
+    flex: 1 1 auto;
+  }
+
+  .custom-weather-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .phase-mode-toggle {
+    flex-wrap: wrap;
+  }
+
+  .phase-mode-option {
+    flex: 1 1 auto;
+    padding: 6px 10px;
+    font-size: 0.72rem;
+  }
+}

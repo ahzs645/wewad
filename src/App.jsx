@@ -6,14 +6,12 @@ import {
   processWAD,
   processZipBundle,
 } from "@firstform/wii-channel-renderer";
-import { downloadBlob, exportBundle, loadBundle, revokeBundle } from "@firstform/wii-channel-renderer/export-bundle";
-import { exportGsapBundle } from "./lib/gsapExport";
 
-import { TABS, WEATHER_CONDITION_OPTIONS } from "./constants";
+import { TABS } from "./constants";
 import { createArrayLogger, formatLayoutInfo, formatAnimationInfo, formatDuration } from "./utils/formatters";
 import { suggestInitialFrame, resolveAnimationSelection } from "./utils/animation";
 import { collectRenderStateOptions, mergeRelatedRsoAnimations } from "./utils/renderState";
-import { hasWeatherScene, hasNewsScene, resolveWeatherRenderState, resolveCustomWeatherBannerFrame } from "./utils/weather";
+import { resolveWeatherRenderState, resolveCustomWeatherBannerFrame } from "./utils/weather";
 import { getUsedTextureNames, resolveIconViewport, createRecentIconPreview } from "./utils/layout";
 import { createAudioSyncController } from "./utils/audioSync";
 import { saveRecentWad } from "./utils/recentWads";
@@ -21,6 +19,10 @@ import { sortTitleLocales, arePaneStateGroupsEqual, shallowEqualSelections, norm
 
 import { useTheme } from "./hooks/useTheme";
 import { useRecentWads } from "./hooks/useRecentWads";
+import { useCustomizationSettings } from "./hooks/useCustomizationSettings";
+import { useExportSettings } from "./hooks/useExportSettings";
+import { useRendererPlayback } from "./hooks/useRendererPlayback";
+import { useBundleExportActions } from "./hooks/useBundleExportActions";
 
 import { Sidebar } from "./components/Sidebar";
 import { PreviewTab } from "./components/tabs/PreviewTab";
@@ -47,9 +49,6 @@ export default function App() {
   const [activeTab, setActiveTab] = useState("preview");
   const [isDragOver, setIsDragOver] = useState(false);
   const [isProcessing, setIsProcessing] = useState(false);
-  const [bannerPlaying, setBannerPlaying] = useState(false);
-  const [iconPlaying, setIconPlaying] = useState(false);
-  const isPlaying = bannerPlaying || iconPlaying;
   const [animStatus, setAnimStatus] = useState("Frame 0");
   const [phaseMode, setPhaseMode] = useState("full");
   const [startFrame, setStartFrame] = useState(0);
@@ -74,27 +73,11 @@ export default function App() {
   const [bannerPaneStateSelections, setBannerPaneStateSelections] = useState({});
   const [iconPaneStateSelections, setIconPaneStateSelections] = useState({});
 
-  // --- Custom weather/news ---
-  const [useCustomWeather, setUseCustomWeather] = useState(false);
-  const [customCondition, setCustomCondition] = useState("partly_cloudy");
-  const [customCity, setCustomCity] = useState("Seattle");
-  const [customTelop, setCustomTelop] = useState("Partly cloudy with a chance of evening rain.");
-  const [customTimeLabel, setCustomTimeLabel] = useState("Updated 9:41 AM");
-  const [customTemperature, setCustomTemperature] = useState("72");
-  const [customTemperatureUnit, setCustomTemperatureUnit] = useState("F");
-  const [useCustomNews, setUseCustomNews] = useState(false);
-  const [customHeadlines, setCustomHeadlines] = useState("Breaking: Wii Channel banners now render in the browser\nNintendo announces new system update\nLocal weather: sunny skies expected all week");
-
   // --- Display & export ---
   const [previewDisplay, setPreviewDisplay] = useState("both");
   const [previewDisplayAspect, setPreviewDisplayAspect] = useState("4:3");
   const [tevQuality, setTevQuality] = useState("fast");
-  const [isExporting, setIsExporting] = useState(false);
-  const [exportProgress, setExportProgress] = useState("");
-  const [exportAspect, setExportAspect] = useState("4:3");
-  const [exportAnimMode, setExportAnimMode] = useState("all");
-  const [bundlePreview, setBundlePreview] = useState(null);
-  const [bundlePreviewSection, setBundlePreviewSection] = useState("snapshots");
+  const exportSettings = useExportSettings();
 
   // --- Custom hooks ---
   const { themePreference, setThemePreference } = useTheme();
@@ -116,15 +99,43 @@ export default function App() {
     [parsed],
   );
 
-  const effectiveIconRenderState = useMemo(() => {
-    if (!useCustomWeather) return iconRenderState;
-    return resolveWeatherRenderState(parsed?.results?.icon) ?? iconRenderState;
-  }, [iconRenderState, parsed, useCustomWeather]);
-
   const bannerAnimSelection = useMemo(
     () => resolveAnimationSelection(parsed?.results?.banner, bannerRenderState, bannerAnimOverride),
     [parsed, bannerRenderState, bannerAnimOverride],
   );
+
+  const customizationSettings = useCustomizationSettings({ parsed });
+  const {
+    weather: weatherCustomization,
+    news: newsCustomization,
+    resetCustomization,
+  } = customizationSettings;
+  const useCustomWeather = weatherCustomization.enabled;
+  const customWeatherData = weatherCustomization.data;
+  const canCustomizeWeather = weatherCustomization.canCustomize;
+  const customNewsData = newsCustomization.data;
+
+  const {
+    bannerPlaying,
+    iconPlaying,
+    isPlaying,
+    stopPlaybackState,
+    togglePlayback,
+    resetPlayback,
+    handleTrackTogglePlay,
+    handleTrackSeek,
+  } = useRendererPlayback({
+    bannerRendererRef,
+    iconRendererRef,
+    audioSyncRef,
+    customWeatherData,
+    canCustomizeWeather,
+  });
+
+  const effectiveIconRenderState = useMemo(() => {
+    if (!useCustomWeather) return iconRenderState;
+    return resolveWeatherRenderState(parsed?.results?.icon) ?? iconRenderState;
+  }, [iconRenderState, parsed, useCustomWeather]);
 
   // Detect whether the banner layout has Disc Channel disc-type panes.
   const bannerDiscPaneNames = useMemo(() => {
@@ -324,36 +335,6 @@ export default function App() {
   const hasStartAnim = timelineTracks.some((t) => t.startFrames > 0);
   const hasLoopAnim = timelineTracks.some((t) => t.loopFrames > 0);
 
-  const canCustomizeWeather = useMemo(
-    () => hasWeatherScene(parsed?.results?.banner?.renderLayout),
-    [parsed],
-  );
-
-  const customWeatherData = useMemo(() => {
-    if (!useCustomWeather || !canCustomizeWeather) return null;
-    const parsedTemperature = Number.parseInt(customTemperature, 10);
-    return {
-      enabled: true,
-      condition: customCondition,
-      city: customCity,
-      telop: WEATHER_CONDITION_OPTIONS.find((o) => o.value === customCondition)?.label ?? customCondition,
-      timeLabel: customTimeLabel,
-      temperature: Number.isFinite(parsedTemperature) ? parsedTemperature : null,
-      temperatureUnit: customTemperatureUnit,
-    };
-  }, [useCustomWeather, canCustomizeWeather, customCondition, customCity, customTimeLabel, customTemperature, customTemperatureUnit]);
-
-  const canCustomizeNews = useMemo(
-    () => hasNewsScene(parsed?.results?.icon?.renderLayout),
-    [parsed],
-  );
-
-  const customNewsData = useMemo(() => {
-    if (!useCustomNews || !canCustomizeNews) return null;
-    const headlines = customHeadlines.split("\n").map((l) => l.trim()).filter((l) => l.length > 0);
-    return headlines.length === 0 ? null : { enabled: true, headlines };
-  }, [useCustomNews, canCustomizeNews, customHeadlines]);
-
   const effectiveBannerStartFrame = useMemo(() => {
     if (!customWeatherData || !canCustomizeWeather) return startFrame;
     return resolveCustomWeatherBannerFrame(bannerAnimSelection, startFrame);
@@ -427,8 +408,7 @@ export default function App() {
 
       setSelectedFileName(file.name);
       setIsProcessing(true);
-      setBannerPlaying(false);
-      setIconPlaying(false);
+      stopPlaybackState();
       setAnimStatus("Frame 0");
       setPhaseMode("full");
       setActiveTab("preview");
@@ -444,7 +424,7 @@ export default function App() {
       setIconPaneStateGroups([]);
       setBannerPaneStateSelections({});
       setIconPaneStateSelections({});
-      setUseCustomWeather(false);
+      resetCustomization();
 
       stopRenderers();
 
@@ -490,87 +470,11 @@ export default function App() {
         setIsProcessing(false);
       }
     },
-    [stopRenderers, setRecentWads],
+    [resetCustomization, stopPlaybackState, stopRenderers, setRecentWads],
   );
 
   // Keep the ref in sync so the useRecentWads hook can call handleFile
   handleFileRef.current = handleFile;
-
-  const togglePlayback = useCallback(() => {
-    const bannerRenderer = bannerRendererRef.current;
-    const iconRenderer = iconRendererRef.current;
-    const audioCtrl = audioSyncRef.current;
-    const freezeVisualPlayback = Boolean(customWeatherData && canCustomizeWeather);
-
-    if (!bannerRenderer && !iconRenderer && !audioCtrl) return;
-
-    if (isPlaying) {
-      bannerRenderer?.stop();
-      iconRenderer?.stop();
-      audioCtrl?.pause();
-      setBannerPlaying(false);
-      setIconPlaying(false);
-      return;
-    }
-
-    if (!freezeVisualPlayback && bannerRenderer) { bannerRenderer.play(); setBannerPlaying(true); }
-    if (!freezeVisualPlayback && iconRenderer) { iconRenderer.play(); setIconPlaying(true); }
-    if (audioCtrl) {
-      const info = bannerRenderer?.getPlaybackInfo?.() ?? iconRenderer?.getPlaybackInfo?.() ?? null;
-      if (info) audioCtrl.seekToFrame(info.audioFrame ?? info.globalFrame);
-      audioCtrl.play(audioCtrl.currentTime);
-    }
-  }, [hasAudio, canCustomizeWeather, customWeatherData, isPlaying]);
-
-  const resetPlayback = useCallback(() => {
-    bannerRendererRef.current?.stop();
-    iconRendererRef.current?.stop();
-    bannerRendererRef.current?.reset();
-    iconRendererRef.current?.reset();
-    audioSyncRef.current?.stop();
-    setBannerPlaying(false);
-    setIconPlaying(false);
-  }, []);
-
-  const handleTrackTogglePlay = useCallback((trackId) => {
-    const audioCtrl = audioSyncRef.current;
-    if (trackId === "banner") {
-      const renderer = bannerRendererRef.current;
-      if (!renderer) return;
-      if (bannerPlaying) {
-        renderer.stop();
-        audioCtrl?.pause();
-        setBannerPlaying(false);
-      } else {
-        renderer.play();
-        if (audioCtrl) {
-          const info = renderer.getPlaybackInfo();
-          if (info) audioCtrl.seekToFrame(info.audioFrame ?? info.globalFrame);
-          audioCtrl.play(audioCtrl.currentTime);
-        }
-        setBannerPlaying(true);
-      }
-    } else if (trackId === "icon") {
-      const renderer = iconRendererRef.current;
-      if (!renderer) return;
-      if (iconPlaying) {
-        renderer.stop();
-        setIconPlaying(false);
-      } else {
-        renderer.play();
-        setIconPlaying(true);
-      }
-    }
-  }, [bannerPlaying, iconPlaying, hasAudio]);
-
-  const handleTrackSeek = useCallback((trackId, globalFrame) => {
-    if (trackId === "banner") {
-      bannerRendererRef.current?.seekToFrame(globalFrame);
-      audioSyncRef.current?.seekToFrame(globalFrame);
-    } else if (trackId === "icon") {
-      iconRendererRef.current?.seekToFrame(globalFrame);
-    }
-  }, []);
 
   const applyStartFrame = useCallback(() => {
     const next = normalizeStartFrame(startFrameInput);
@@ -596,111 +500,19 @@ export default function App() {
     link.click();
   }, []);
 
-  const handleExportBundle = useCallback(async (includeFrames = false) => {
-    if (!parsed || isExporting) return;
-    setIsExporting(true);
-    setExportProgress("Preparing...");
-
-    try {
-      const blob = await exportBundle({
-        parsed,
-        sourceFileName: selectedFileName,
-        bannerCanvas: bannerCanvasRef.current,
-        iconCanvas: iconCanvasRef.current,
-        options: { includeFrames, includeTextures: true, includeAudio: true, exportAspect },
-        BannerRenderer,
-        bannerAnimSelection,
-        iconAnimSelection,
-        rendererOptions: {
-          tevQuality,
-          titleLocale: titleLocale === "auto" ? undefined : titleLocale,
-          paneStateSelections: bannerPaneStateSelections,
-        },
-        onProgress: (stage, current, total) => {
-          const labels = {
-            loading: "Loading zip library...",
-            snapshots: "Capturing snapshots...",
-            textures: `Exporting textures (${current}/${total})...`,
-            audio: "Exporting audio...",
-            "banner-frames": `Rendering banner frames (${current}/${total})...`,
-            "icon-frames": `Rendering icon frames (${current}/${total})...`,
-            compressing: "Compressing zip...",
-            done: "Done!",
-          };
-          setExportProgress(labels[stage] ?? `${stage} ${current}/${total}`);
-        },
-      });
-
-      if (bundlePreview) revokeBundle(bundlePreview);
-      const preview = await loadBundle(blob);
-      setBundlePreview(preview);
-
-      const titleId = parsed.wad?.titleId ?? "export";
-      const safeName = selectedFileName
-        ? selectedFileName.replace(/\.wad$/i, "").replace(/[^a-zA-Z0-9_\-() [\]]/g, "_")
-        : titleId;
-      downloadBlob(blob, `${safeName}.zip`);
-    } catch (error) {
-      console.error("Export failed:", error);
-      setExportProgress(`Export failed: ${error.message}`);
-    } finally {
-      setTimeout(() => { setIsExporting(false); setExportProgress(""); }, 2000);
-    }
-  }, [parsed, isExporting, selectedFileName, bannerAnimSelection, iconAnimSelection, exportAspect, tevQuality, titleLocale, bannerPaneStateSelections, bundlePreview]);
-
-  const handleExportGsap = useCallback(async () => {
-    if (!parsed || isExporting) return;
-    setIsExporting(true);
-    setExportProgress("Preparing renderer bundle...");
-
-    try {
-      const blob = await exportGsapBundle({
-        parsed,
-        sourceFileName: selectedFileName,
-        bannerAnimSelection,
-        iconAnimSelection,
-        rendererOptions: {
-          tevQuality,
-          titleLocale: titleLocale === "auto" ? undefined : titleLocale,
-          paneStateSelections: bannerPaneStateSelections,
-        },
-        exportAspect,
-        exportAllAnimations: exportAnimMode === "all",
-        onProgress: (stage, current, total) => {
-          const labels = {
-            loading: "Loading zip library...",
-            "banner-textures": `Encoding banner textures (${current}/${total})...`,
-            "icon-textures": `Encoding icon textures (${current}/${total})...`,
-            compressing: "Compressing zip...",
-            done: "Done!",
-          };
-          setExportProgress(labels[stage] ?? `${stage} ${current}/${total}`);
-        },
-      });
-
-      const titleId = parsed.wad?.titleId ?? "export";
-      const safeName = selectedFileName
-        ? selectedFileName.replace(/\.wad$/i, "").replace(/[^a-zA-Z0-9_\-() [\]]/g, "_")
-        : titleId;
-      downloadBlob(blob, `${safeName}-renderer-bundle.zip`);
-    } catch (error) {
-      console.error("Renderer bundle export failed:", error);
-      setExportProgress(`Export failed: ${error.message}`);
-    } finally {
-      setTimeout(() => { setIsExporting(false); setExportProgress(""); }, 2000);
-    }
-  }, [parsed, isExporting, selectedFileName, bannerAnimSelection, iconAnimSelection, exportAspect, exportAnimMode, tevQuality, titleLocale, bannerPaneStateSelections]);
-
-  const handleLoadBundleZip = useCallback(async (file) => {
-    if (!file) return;
-    try {
-      if (bundlePreview) revokeBundle(bundlePreview);
-      const preview = await loadBundle(file);
-      setBundlePreview(preview);
-    } catch (error) {
-      console.error("Failed to load bundle:", error);
-    }
-  }, [bundlePreview]);
+  const exportActions = useBundleExportActions({
+    parsed,
+    selectedFileName,
+    bannerCanvasRef,
+    iconCanvasRef,
+    bundleFileInputRef,
+    exportSettings,
+    bannerAnimSelection,
+    iconAnimSelection,
+    tevQuality,
+    titleLocale,
+    bannerPaneStateSelections,
+  });
 
   // --- Effects ---
 
@@ -735,13 +547,12 @@ export default function App() {
       audioSyncRef.current = null;
       setHasAudio(false);
     };
-  }, [activeTab, parsed, phaseMode]);
+  }, [parsed, phaseMode]);
 
   // Main renderer setup
   useEffect(() => {
     stopRenderers();
-    setBannerPlaying(false);
-    setIconPlaying(false);
+    stopPlaybackState();
 
     if (!parsed || activeTab !== "preview") {
       return () => stopRenderers();
@@ -868,7 +679,7 @@ export default function App() {
     stopRenderers, bannerAnimSelection, iconAnimSelection, titleLocale,
     bannerPaneStateSelections, iconPaneStateSelections, customWeatherData, customNewsData,
     previewDisplayAspect, tevQuality, phaseMode, bannerPaneVisibilityOverrides, bannerAlphaMaskPanes, bannerTextOverrides,
-    iconPaneVisibilityOverrides, iconScene,
+    iconPaneVisibilityOverrides, iconScene, stopPlaybackState,
   ]);
 
   // Start frame sync
@@ -879,9 +690,8 @@ export default function App() {
     bannerRenderer?.setStartFrame(effectiveBannerStartFrame);
     iconRenderer?.setStartFrame(effectiveIconStartFrame);
     audioSyncRef.current?.stop();
-    setBannerPlaying(false);
-    setIconPlaying(false);
-  }, [effectiveBannerStartFrame, effectiveIconStartFrame, startFrame]);
+    stopPlaybackState();
+  }, [effectiveBannerStartFrame, effectiveIconStartFrame, startFrame, stopPlaybackState]);
 
   // Clamp start frame when max changes
   useEffect(() => {
@@ -931,82 +741,98 @@ export default function App() {
             <div className="render-area">
               {activeTab === "preview" ? (
                 <PreviewTab
-                  previewDisplay={previewDisplay} setPreviewDisplay={setPreviewDisplay}
-                  bannerCanvasRef={bannerCanvasRef} iconCanvasRef={iconCanvasRef}
-                  audioElementRef={previewAudioRef}
-                  isPlaying={isPlaying} togglePlayback={togglePlayback} resetPlayback={resetPlayback}
-                  exportCanvas={exportCanvas}
-                  startFrameInput={startFrameInput} setStartFrameInput={setStartFrameInput}
-                  maxStartFrame={maxStartFrame} applyStartFrame={applyStartFrame} useCurrentFrame={useCurrentFrame}
-                  previewDisplayAspect={previewDisplayAspect} setPreviewDisplayAspect={setPreviewDisplayAspect}
-                  tevQuality={tevQuality} setTevQuality={setTevQuality}
-                  bannerRenderState={bannerRenderState} setBannerRenderState={setBannerRenderState}
-                  bannerRenderStateOptions={bannerRenderStateOptions}
-                  bannerAnimOverride={bannerAnimOverride} setBannerAnimOverride={setBannerAnimOverride}
-                  bannerDiscType={bannerDiscType} setBannerDiscType={setBannerDiscType}
-                  showDiscTypeOption={bannerDiscPaneNames != null}
-                  iconAnimOverride={iconAnimOverride} setIconAnimOverride={setIconAnimOverride}
-                  iconScene={iconScene} setIconScene={setIconScene} showIconSceneOption={showIconSceneOption}
-                  iconRenderState={iconRenderState} setIconRenderState={setIconRenderState}
-                  iconRenderStateOptions={iconRenderStateOptions}
-                  titleLocale={titleLocale} setTitleLocale={setTitleLocale}
-                  availableTitleLocales={availableTitleLocales}
-                  bannerPaneStateGroups={bannerPaneStateGroups}
-                  bannerPaneStateSelections={bannerPaneStateSelections}
-                  setBannerPaneStateSelections={setBannerPaneStateSelections}
-                  iconPaneStateGroups={iconPaneStateGroups}
-                  iconPaneStateSelections={iconPaneStateSelections}
-                  setIconPaneStateSelections={setIconPaneStateSelections}
-                  useCustomWeather={useCustomWeather} setUseCustomWeather={setUseCustomWeather}
-                  customCondition={customCondition} setCustomCondition={setCustomCondition}
-                  customCity={customCity} setCustomCity={setCustomCity}
-                  customTelop={customTelop} setCustomTelop={setCustomTelop}
-                  customTimeLabel={customTimeLabel} setCustomTimeLabel={setCustomTimeLabel}
-                  customTemperature={customTemperature} setCustomTemperature={setCustomTemperature}
-                  customTemperatureUnit={customTemperatureUnit} setCustomTemperatureUnit={setCustomTemperatureUnit}
-                  useCustomNews={useCustomNews} setUseCustomNews={setUseCustomNews}
-                  customHeadlines={customHeadlines} setCustomHeadlines={setCustomHeadlines}
-                  animStatus={animStatus}
-                  hasAudio={hasAudio} audioInfo={audioInfo}
+                  preview={{ previewDisplay, setPreviewDisplay }}
+                  canvases={{
+                    bannerCanvasRef,
+                    iconCanvasRef,
+                    audioElementRef: previewAudioRef,
+                    exportCanvas,
+                  }}
+                  playback={{ isPlaying, togglePlayback, resetPlayback }}
+                  frameControls={{
+                    startFrameInput,
+                    setStartFrameInput,
+                    maxStartFrame,
+                    applyStartFrame,
+                    useCurrentFrame,
+                  }}
+                  displaySettings={{
+                    previewDisplayAspect,
+                    setPreviewDisplayAspect,
+                    tevQuality,
+                    setTevQuality,
+                  }}
+                  renderSettings={{
+                    bannerRenderState,
+                    setBannerRenderState,
+                    bannerRenderStateOptions,
+                    bannerAnimOverride,
+                    setBannerAnimOverride,
+                    bannerDiscType,
+                    setBannerDiscType,
+                    showDiscTypeOption: bannerDiscPaneNames != null,
+                    iconAnimOverride,
+                    setIconAnimOverride,
+                    iconScene,
+                    setIconScene,
+                    showIconSceneOption,
+                    iconRenderState,
+                    setIconRenderState,
+                    iconRenderStateOptions,
+                    titleLocale,
+                    setTitleLocale,
+                    availableTitleLocales,
+                    bannerPaneStateGroups,
+                    bannerPaneStateSelections,
+                    setBannerPaneStateSelections,
+                    iconPaneStateGroups,
+                    iconPaneStateSelections,
+                    setIconPaneStateSelections,
+                  }}
+                  customization={customizationSettings}
+                  status={{ animStatus, hasAudio, audioInfo }}
                   parsed={parsed}
-                  showWeatherOptions={canCustomizeWeather} showNewsOptions={canCustomizeNews}
-                  phaseMode={phaseMode} setPhaseMode={setPhaseMode}
-                  hasStartAnim={hasStartAnim} hasLoopAnim={hasLoopAnim}
-                  timelineRef={timelineRef}
-                  timelineTracks={timelineTracks.map(t => ({
-                    ...t,
-                    isPlaying: t.id === "banner" ? bannerPlaying : iconPlaying,
-                  }))}
-                  onTrackTogglePlay={handleTrackTogglePlay}
-                  onTrackSeek={handleTrackSeek}
+                  timeline={{
+                    phaseMode,
+                    setPhaseMode,
+                    hasStartAnim,
+                    hasLoopAnim,
+                    timelineRef,
+                    timelineTracks: timelineTracks.map(t => ({
+                      ...t,
+                      isPlaying: t.id === "banner" ? bannerPlaying : iconPlaying,
+                    })),
+                    onTrackTogglePlay: handleTrackTogglePlay,
+                    onTrackSeek: handleTrackSeek,
+                  }}
                 />
               ) : null}
 
               {activeTab === "export" ? (
                 <ExportTab
-                  exportAspect={exportAspect} setExportAspect={setExportAspect}
-                  exportAnimMode={exportAnimMode} setExportAnimMode={setExportAnimMode}
-                  isExporting={isExporting} exportProgress={exportProgress}
+                  exportState={exportSettings}
+                  exportActions={exportActions}
                   parsed={parsed}
-                  handleExportBundle={handleExportBundle}
-                  handleExportGsap={handleExportGsap}
-                  bundleFileInputRef={bundleFileInputRef}
-                  handleLoadBundleZip={handleLoadBundleZip}
-                  bundlePreview={bundlePreview}
-                  bundlePreviewSection={bundlePreviewSection} setBundlePreviewSection={setBundlePreviewSection}
-                  tevQuality={tevQuality} setTevQuality={setTevQuality}
-                  bannerAnimOverride={bannerAnimOverride} setBannerAnimOverride={setBannerAnimOverride}
-                  bannerDiscType={bannerDiscType} setBannerDiscType={setBannerDiscType}
-                  showDiscTypeOption={bannerDiscPaneNames != null}
-                  iconAnimOverride={iconAnimOverride} setIconAnimOverride={setIconAnimOverride}
-                  titleLocale={titleLocale} setTitleLocale={setTitleLocale}
-                  availableTitleLocales={availableTitleLocales}
-                  bannerPaneStateGroups={bannerPaneStateGroups}
-                  bannerPaneStateSelections={bannerPaneStateSelections}
-                  setBannerPaneStateSelections={setBannerPaneStateSelections}
-                  iconPaneStateGroups={iconPaneStateGroups}
-                  iconPaneStateSelections={iconPaneStateSelections}
-                  setIconPaneStateSelections={setIconPaneStateSelections}
+                  renderSettings={{
+                    tevQuality,
+                    setTevQuality,
+                    bannerAnimOverride,
+                    setBannerAnimOverride,
+                    bannerDiscType,
+                    setBannerDiscType,
+                    showDiscTypeOption: bannerDiscPaneNames != null,
+                    iconAnimOverride,
+                    setIconAnimOverride,
+                    titleLocale,
+                    setTitleLocale,
+                    availableTitleLocales,
+                    bannerPaneStateGroups,
+                    bannerPaneStateSelections,
+                    setBannerPaneStateSelections,
+                    iconPaneStateGroups,
+                    iconPaneStateSelections,
+                    setIconPaneStateSelections,
+                  }}
                 />
               ) : null}
 

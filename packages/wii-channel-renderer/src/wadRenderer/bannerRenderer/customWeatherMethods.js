@@ -513,8 +513,6 @@ function resolveUnitTextureIndices(renderer, textures, materials) {
   }
 }
 
-let _digitDebugLogged = false;
-
 export function getCustomWeatherPaneTextureIndex(paneName) {
   if (!this.customWeatherDigitMap || !this.isCustomWeatherEnabled()) {
     return null;
@@ -527,24 +525,19 @@ export function getCustomWeatherPaneTextureIndex(paneName) {
 
   const absTemp = Math.abs(temp);
   const { digits, unitF, unitC } = this.customWeatherDigitMap;
-  const textures = this.layout?.textures ?? [];
 
   let result = null;
-  let debugDigit = null;
 
   if (paneName === "kion_doF100") {
     if (absTemp >= 100) {
-      debugDigit = Math.floor(absTemp / 100) % 10;
-      result = digits[debugDigit] ?? null;
+      result = digits[Math.floor(absTemp / 100) % 10] ?? null;
     }
   } else if (paneName === "kion_doF10") {
     if (absTemp >= 10) {
-      debugDigit = Math.floor(absTemp / 10) % 10;
-      result = digits[debugDigit] ?? null;
+      result = digits[Math.floor(absTemp / 10) % 10] ?? null;
     }
   } else if (paneName === "kion_doF_do") {
-    debugDigit = absTemp % 10;
-    result = digits[debugDigit] ?? null;
+    result = digits[absTemp % 10] ?? null;
   } else if (paneName === "kion_doF_F") {
     const unit = String(this.customWeather?.temperatureUnit ?? "F").trim().toUpperCase();
     if (unit === "C" && unitC != null) {
@@ -552,19 +545,6 @@ export function getCustomWeatherPaneTextureIndex(paneName) {
     } else {
       result = unitF ?? null;
     }
-  }
-
-  // One-shot debug: log the first complete set of digit overrides
-  if (!_digitDebugLogged && paneName === "kion_doF_F") {
-    _digitDebugLogged = true;
-    const onesDigit = absTemp % 10;
-    const tensDigit = Math.floor(absTemp / 10) % 10;
-    console.warn(
-      `[WeWAD] Custom weather digit override — temp=${temp}:`,
-      `ones(${onesDigit})→tex[${digits[onesDigit]}]="${textures[digits[onesDigit]] ?? "?"}",`,
-      `tens(${tensDigit})→tex[${digits[tensDigit]}]="${textures[digits[tensDigit]] ?? "?"}",`,
-      `unit→tex[${result}]="${textures[result] ?? "?"}"`,
-    );
   }
 
   return result;

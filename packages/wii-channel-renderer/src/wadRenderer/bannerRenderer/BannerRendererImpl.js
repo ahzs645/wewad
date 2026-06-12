@@ -107,7 +107,14 @@ export class BannerRenderer {
       ? Math.max(64, Math.floor(options.patternTextureCacheLimit))
       : 512;
     this.textureMaskCache = new Map();
+    this.textureMaskCacheLimit = Number.isFinite(options.textureMaskCacheLimit)
+      ? Math.max(64, Math.floor(options.textureMaskCacheLimit))
+      : this.patternTextureCacheLimit;
     this.lumaAlphaTextureCache = new Map();
+    this.lumaAlphaTextureCacheLimit = Number.isFinite(options.lumaAlphaTextureCacheLimit)
+      ? Math.max(64, Math.floor(options.lumaAlphaTextureCacheLimit))
+      : this.patternTextureCacheLimit;
+    this._textureMaxIntensityCache = new Map();
     this.vertexColorModulationCache = new WeakMap();
     this.materialColorModulationCache = new WeakMap();
     this.textureSrtAnimationCache = new Map();
@@ -270,8 +277,34 @@ export class BannerRenderer {
   }
 }
 
+/**
+ * BannerRenderer gains most instance methods from these renderer modules at
+ * runtime. Keep this typedef in sync with the Object.assign list so editors can
+ * discover methods that are not declared directly on the class body.
+ *
+ * @typedef {typeof localeMethods
+ * & typeof animationMethods
+ * & typeof textureMethods
+ * & typeof stateMethods
+ * & typeof customNewsMethods
+ * & typeof customWeatherMethods
+ * & typeof transformMethods
+ * & typeof paneAnimValues
+ * & typeof paneStateMethods
+ * & typeof colorModulationMethods
+ * & typeof lumaEffectMethods
+ * & typeof textureDrawMethods
+ * & typeof paneDrawMethods
+ * & typeof playbackMethods
+ * & typeof tevMethods
+ * & typeof fontMethods} BannerRendererMixinMethods
+ */
+
+/** @type {BannerRenderer["prototype"] & BannerRendererMixinMethods} */
+const bannerRendererPrototype = BannerRenderer.prototype;
+
 Object.assign(
-  BannerRenderer.prototype,
+  bannerRendererPrototype,
   localeMethods,
   animationMethods,
   textureMethods,

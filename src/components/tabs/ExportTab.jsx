@@ -2,24 +2,33 @@ import { TITLE_LOCALE_LABELS } from "../../constants";
 import { normalizeDomId } from "../../utils/misc";
 
 export function ExportTab({
-  exportAspect, setExportAspect,
-  exportAnimMode, setExportAnimMode,
-  isExporting, exportProgress,
+  exportState,
+  exportActions,
   parsed,
-  handleExportBundle,
-  handleExportGsap,
-  bundleFileInputRef,
-  handleLoadBundleZip,
-  bundlePreview,
-  bundlePreviewSection, setBundlePreviewSection,
-  tevQuality, setTevQuality,
-  bannerAnimOverride, setBannerAnimOverride,
-  bannerDiscType, setBannerDiscType, showDiscTypeOption,
-  iconAnimOverride, setIconAnimOverride,
-  titleLocale, setTitleLocale, availableTitleLocales,
-  bannerPaneStateGroups, bannerPaneStateSelections, setBannerPaneStateSelections,
-  iconPaneStateGroups, iconPaneStateSelections, setIconPaneStateSelections,
+  renderSettings,
 }) {
+  const {
+    exportAspect, setExportAspect,
+    exportAnimMode, setExportAnimMode,
+    isExporting, exportProgress,
+    bundlePreview,
+    bundlePreviewSection, setBundlePreviewSection,
+  } = exportState;
+  const {
+    handleExportBundle,
+    handleExportGsap,
+    bundleFileInputRef,
+    handleLoadBundleZip,
+  } = exportActions;
+  const {
+    tevQuality, setTevQuality,
+    bannerAnimOverride, setBannerAnimOverride,
+    bannerDiscType, setBannerDiscType, showDiscTypeOption,
+    iconAnimOverride, setIconAnimOverride,
+    titleLocale, setTitleLocale, availableTitleLocales,
+    bannerPaneStateGroups, bannerPaneStateSelections, setBannerPaneStateSelections,
+    iconPaneStateGroups, iconPaneStateSelections, setIconPaneStateSelections,
+  } = renderSettings;
   const bannerAnimEntries = parsed?.results?.banner?.animEntries ?? [];
   const iconAnimEntries = parsed?.results?.icon?.animEntries ?? [];
   const hasStateSettings = bannerAnimEntries.length > 2 || iconAnimEntries.length > 1

@@ -8,24 +8,7 @@
 
 import { loadJSZip, imageDataToPngBlob, tplImageToImageData, createWavArrayBuffer } from "@firstform/wii-channel-renderer/export-bundle";
 import { collectRenderStateOptions } from "../utils/renderState";
-
-// ---------------------------------------------------------------------------
-// Icon viewport helper (duplicated to avoid circular import from utils/)
-// ---------------------------------------------------------------------------
-
-function resolveIconViewport(layout) {
-  if (!layout?.panes) return null;
-  for (const pane of layout.panes) {
-    const normalized = pane.name
-      .replace(/([a-z])([A-Z])/g, "$1_$2")
-      .replace(/([A-Z]+)([A-Z][a-z])/g, "$1_$2")
-      .toLowerCase();
-    if (normalized.includes("icon") && normalized.includes("bg")) {
-      return { width: Math.round(pane.size.w), height: Math.round(pane.size.h) };
-    }
-  }
-  return null;
-}
+import { resolveIconViewport } from "../utils/iconViewport";
 
 // ---------------------------------------------------------------------------
 // Build available options metadata for a target (banner or icon)

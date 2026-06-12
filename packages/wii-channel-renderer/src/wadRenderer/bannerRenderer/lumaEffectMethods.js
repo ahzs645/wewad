@@ -43,9 +43,6 @@ export function shouldTreatPaneAsLumaMask(pane, binding) {
 }
 
 function getMaxTextureIntensity(renderer, textureName) {
-  if (!renderer._textureMaxIntensityCache) {
-    renderer._textureMaxIntensityCache = new Map();
-  }
   const cached = renderer._textureMaxIntensityCache.get(textureName);
   if (cached !== undefined) {
     return cached;

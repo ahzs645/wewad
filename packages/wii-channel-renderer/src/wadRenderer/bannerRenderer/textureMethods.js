@@ -1,5 +1,27 @@
 import { isLikelyAlphaOnlyTitleMask } from "./locale.js";
 
+function getCachedCanvas(cache, key) {
+  const cached = cache.get(key);
+  if (!cached) {
+    return null;
+  }
+  cache.delete(key);
+  cache.set(key, cached);
+  return cached;
+}
+
+function setCachedCanvas(cache, key, canvas, limit) {
+  cache.set(key, canvas);
+  while (cache.size > limit) {
+    const oldestKey = cache.keys().next().value;
+    if (oldestKey == null) {
+      break;
+    }
+    cache.delete(oldestKey);
+  }
+  return canvas;
+}
+
 function mergeTextureSRT(base, animated) {
   if (!base && !animated) {
     return null;
@@ -41,7 +63,7 @@ export function getLumaAlphaTexture(textureName, options = {}) {
   const mode = options.mode ?? "threshold";
   const alphaScale = Number.isFinite(options.alphaScale) ? Math.max(0, options.alphaScale) : 1;
   const key = `${textureName}|luma-alpha|${mode}|scale:${alphaScale}`;
-  const cached = this.lumaAlphaTextureCache.get(key);
+  const cached = getCachedCanvas(this.lumaAlphaTextureCache, key);
   if (cached) {
     return cached;
   }
@@ -94,8 +116,7 @@ export function getLumaAlphaTexture(textureName, options = {}) {
   }
 
   context.putImageData(imageData, 0, 0);
-  this.lumaAlphaTextureCache.set(key, canvas);
-  return canvas;
+  return setCachedCanvas(this.lumaAlphaTextureCache, key, canvas, this.lumaAlphaTextureCacheLimit);
 }
 
 function clampByte(value, fallback = 0) {
@@ -241,7 +262,7 @@ export function getChromaKeyTexture(textureName, options = {}) {
     outlineStrength,
     maxOutlineAlpha,
   ].join("|");
-  const cached = this.textureMaskCache.get(key);
+  const cached = getCachedCanvas(this.textureMaskCache, key);
   if (cached) {
     return cached;
   }
@@ -295,14 +316,13 @@ export function getChromaKeyTexture(textureName, options = {}) {
   }
 
   context.putImageData(imageData, 0, 0);
-  this.textureMaskCache.set(key, canvas);
-  return canvas;
+  return setCachedCanvas(this.textureMaskCache, key, canvas, this.textureMaskCacheLimit);
 }
 
 export function getMaskedTexture(baseTextureName, maskTextureName, options = {}) {
   const invertMask = options.invertMask === true;
   const key = `${baseTextureName}|${maskTextureName}|inv:${invertMask ? 1 : 0}`;
-  const cached = this.textureMaskCache.get(key);
+  const cached = getCachedCanvas(this.textureMaskCache, key);
   if (cached) {
     return cached;
   }
@@ -334,8 +354,7 @@ export function getMaskedTexture(baseTextureName, maskTextureName, options = {})
   }
 
   context.putImageData(baseImageData, 0, 0);
-  this.textureMaskCache.set(key, canvas);
-  return canvas;
+  return setCachedCanvas(this.textureMaskCache, key, canvas, this.textureMaskCacheLimit);
 }
 
 export function getLumaRemapTexture(textureName, options = {}) {
@@ -346,7 +365,7 @@ export function getLumaRemapTexture(textureName, options = {}) {
   }
 
   const key = `${textureName}|luma-remap|${dark.r},${dark.g},${dark.b}|${light.r},${light.g},${light.b}`;
-  const cached = this.textureMaskCache.get(key);
+  const cached = getCachedCanvas(this.textureMaskCache, key);
   if (cached) {
     return cached;
   }
@@ -374,8 +393,7 @@ export function getLumaRemapTexture(textureName, options = {}) {
   }
 
   context.putImageData(imageData, 0, 0);
-  this.textureMaskCache.set(key, canvas);
-  return canvas;
+  return setCachedCanvas(this.textureMaskCache, key, canvas, this.textureMaskCacheLimit);
 }
 
 function shouldApplyLumaRemap(pane, textureName, material, format) {

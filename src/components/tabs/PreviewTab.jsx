@@ -4,43 +4,43 @@ import { normalizeDomId } from "../../utils/misc";
 import { PlaybackTimeline } from "../PlaybackTimeline";
 
 export function PreviewTab({
-  previewDisplay, setPreviewDisplay,
-  bannerCanvasRef, iconCanvasRef,
-  audioElementRef,
-  isPlaying, togglePlayback, resetPlayback,
-  exportCanvas,
-  startFrameInput, setStartFrameInput, maxStartFrame, applyStartFrame, useCurrentFrame,
-  previewDisplayAspect, setPreviewDisplayAspect,
-  tevQuality, setTevQuality,
-  bannerRenderState, setBannerRenderState, bannerRenderStateOptions,
-  bannerAnimOverride, setBannerAnimOverride,
-  bannerDiscType, setBannerDiscType, showDiscTypeOption,
-  iconAnimOverride, setIconAnimOverride,
-  iconScene, setIconScene, showIconSceneOption,
-  iconRenderState, setIconRenderState, iconRenderStateOptions,
-  titleLocale, setTitleLocale, availableTitleLocales,
-  bannerPaneStateGroups, bannerPaneStateSelections, setBannerPaneStateSelections,
-  iconPaneStateGroups, iconPaneStateSelections, setIconPaneStateSelections,
-  useCustomWeather, setUseCustomWeather,
-  customCondition, setCustomCondition,
-  customCity, setCustomCity,
-  customTelop, setCustomTelop,
-  customTimeLabel, setCustomTimeLabel,
-  customTemperature, setCustomTemperature,
-  customTemperatureUnit, setCustomTemperatureUnit,
-  useCustomNews, setUseCustomNews,
-  customHeadlines, setCustomHeadlines,
-  animStatus,
-  hasAudio, audioInfo,
+  preview,
+  canvases,
+  playback,
+  frameControls,
+  displaySettings,
+  renderSettings,
+  customization,
+  status,
   parsed,
-  showWeatherOptions, showNewsOptions,
-  phaseMode, setPhaseMode,
-  hasStartAnim, hasLoopAnim,
-  timelineRef,
-  timelineTracks,
-  onTrackTogglePlay,
-  onTrackSeek,
+  timeline,
 }) {
+  const { previewDisplay, setPreviewDisplay } = preview;
+  const { bannerCanvasRef, iconCanvasRef, audioElementRef, exportCanvas } = canvases;
+  const { isPlaying, togglePlayback, resetPlayback } = playback;
+  const { startFrameInput, setStartFrameInput, maxStartFrame, applyStartFrame, useCurrentFrame } = frameControls;
+  const { previewDisplayAspect, setPreviewDisplayAspect, tevQuality, setTevQuality } = displaySettings;
+  const {
+    bannerRenderState, setBannerRenderState, bannerRenderStateOptions,
+    bannerAnimOverride, setBannerAnimOverride,
+    bannerDiscType, setBannerDiscType, showDiscTypeOption,
+    iconAnimOverride, setIconAnimOverride,
+    iconScene, setIconScene, showIconSceneOption,
+    iconRenderState, setIconRenderState, iconRenderStateOptions,
+    titleLocale, setTitleLocale, availableTitleLocales,
+    bannerPaneStateGroups, bannerPaneStateSelections, setBannerPaneStateSelections,
+    iconPaneStateGroups, iconPaneStateSelections, setIconPaneStateSelections,
+  } = renderSettings;
+  const { weather, news } = customization;
+  const { animStatus, hasAudio, audioInfo } = status;
+  const {
+    phaseMode, setPhaseMode,
+    hasStartAnim, hasLoopAnim,
+    timelineRef,
+    timelineTracks,
+    onTrackTogglePlay,
+    onTrackSeek,
+  } = timeline;
   const [showSettingsJson, setShowSettingsJson] = useState(false);
   const [copiedSettings, setCopiedSettings] = useState(false);
 
@@ -414,24 +414,24 @@ export function PreviewTab({
             </div>
           ) : null}
         </div>
-        {showWeatherOptions ? (
+        {weather.canCustomize ? (
           <div className="custom-weather-settings">
             <label className="custom-weather-toggle">
               <input
                 type="checkbox"
-                checked={useCustomWeather}
-                onChange={(event) => setUseCustomWeather(event.target.checked)}
+                checked={weather.enabled}
+                onChange={(event) => weather.setEnabled(event.target.checked)}
               />
               <span>Use Custom Weather Data</span>
             </label>
-            {useCustomWeather ? (
+            {weather.enabled ? (
               <div className="custom-weather-grid">
                 <div className="state-control">
                   <label htmlFor="custom-weather-condition">Condition</label>
                   <select
                     id="custom-weather-condition"
-                    value={customCondition}
-                    onChange={(event) => setCustomCondition(event.target.value)}
+                    value={weather.condition}
+                    onChange={(event) => weather.setCondition(event.target.value)}
                   >
                     {WEATHER_CONDITION_OPTIONS.map((option) => (
                       <option key={option.value} value={option.value}>
@@ -446,12 +446,12 @@ export function PreviewTab({
                     <input
                       id="custom-weather-temp"
                       type="number"
-                      value={customTemperature}
-                      onChange={(event) => setCustomTemperature(event.target.value)}
+                      value={weather.temperature}
+                      onChange={(event) => weather.setTemperature(event.target.value)}
                     />
                     <select
-                      value={customTemperatureUnit}
-                      onChange={(event) => setCustomTemperatureUnit(event.target.value)}
+                      value={weather.temperatureUnit}
+                      onChange={(event) => weather.setTemperatureUnit(event.target.value)}
                     >
                       <option value="F">F</option>
                       <option value="C">C</option>
@@ -463,8 +463,8 @@ export function PreviewTab({
                   <input
                     id="custom-weather-city"
                     type="text"
-                    value={customCity}
-                    onChange={(event) => setCustomCity(event.target.value)}
+                    value={weather.city}
+                    onChange={(event) => weather.setCity(event.target.value)}
                   />
                 </div>
                 <div className="state-control">
@@ -472,33 +472,33 @@ export function PreviewTab({
                   <input
                     id="custom-weather-time"
                     type="text"
-                    value={customTimeLabel}
-                    onChange={(event) => setCustomTimeLabel(event.target.value)}
+                    value={weather.timeLabel}
+                    onChange={(event) => weather.setTimeLabel(event.target.value)}
                   />
                 </div>
               </div>
             ) : null}
           </div>
         ) : null}
-        {showNewsOptions ? (
+        {news.canCustomize ? (
           <div className="custom-weather-settings">
             <label className="custom-weather-toggle">
               <input
                 type="checkbox"
-                checked={useCustomNews}
-                onChange={(event) => setUseCustomNews(event.target.checked)}
+                checked={news.enabled}
+                onChange={(event) => news.setEnabled(event.target.checked)}
               />
               <span>Use Custom News Headlines</span>
             </label>
-            {useCustomNews ? (
+            {news.enabled ? (
               <div className="custom-weather-grid">
                 <div className="state-control">
                   <label htmlFor="custom-news-headlines">Headlines (one per line)</label>
                   <textarea
                     id="custom-news-headlines"
                     rows={4}
-                    value={customHeadlines}
-                    onChange={(event) => setCustomHeadlines(event.target.value)}
+                    value={news.headlines}
+                    onChange={(event) => news.setHeadlines(event.target.value)}
                   />
                 </div>
               </div>

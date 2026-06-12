@@ -113,6 +113,7 @@ export function dispose() {
   this.patternTextureCache.clear();
   this.textureMaskCache.clear();
   this.lumaAlphaTextureCache.clear();
+  this._textureMaxIntensityCache.clear();
   this.textureSrtAnimationCache.clear();
   this.tevResultCache.clear();
   this.materialColorModulationCache = new WeakMap();
