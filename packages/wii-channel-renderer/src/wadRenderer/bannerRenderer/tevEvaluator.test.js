@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { evaluateTevPipeline, evaluateTevStagesForPixel } from "./tevEvaluator.js";
+import { evaluateTevPipeline, evaluateTevStagesForPixel, getDefaultTevStages } from "./tevEvaluator.js";
 
 const rasColor = { r: 1, g: 1, b: 1, a: 1 };
 
@@ -87,6 +87,39 @@ describe("TEV evaluator", () => {
     );
 
     expect(rgbaBytes(result)).toEqual({ r: 77, g: 128, b: 204, a: 255 });
+  });
+
+  it("applies the NW4R 0-stage default (lerp C0->C1 by texture) including a non-zero C0", () => {
+    // A 0-stage material's default combiner is lerp(C0, C1, texture) * vertexColor.
+    // The old Canvas-2D heuristic only multiplied by C1, which drops the C0
+    // ("black"/fore color) tint on dark texels. With a non-zero C0 the default
+    // must blend dark texels toward C0 and light texels toward C1.
+    const material = {
+      color1: [255, 0, 0, 255],   // C0 ("black" color register) = red
+      color2: [0, 0, 255, 255],   // C1 ("white" color register) = blue
+      color3: [255, 255, 255, 255],
+      tevColors: [],
+    };
+    const texture = {
+      data: new Uint8ClampedArray([
+        0, 0, 0, 255,            // black texel -> should resolve to C0 (red)
+        255, 255, 255, 255,      // white texel -> should resolve to C1 (blue)
+      ]),
+      width: 2,
+      height: 1,
+    };
+    const ras = {
+      data: new Uint8ClampedArray([255, 255, 255, 255, 255, 255, 255, 255]),
+      width: 2,
+      height: 1,
+    };
+
+    const result = evaluateTevPipeline(getDefaultTevStages(), material, [texture], ras, 2, 1);
+
+    expect([...result.data]).toEqual([
+      255, 0, 0, 255,   // C0
+      0, 0, 255, 255,   // C1
+    ]);
   });
 
   it("evaluates full pixel buffers", () => {

@@ -1,13 +1,14 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   BannerRenderer,
+  createGlBannerRenderer,
   flattenTextures,
   processArchive,
   processWAD,
   processZipBundle,
 } from "@firstform/wii-channel-renderer";
 
-import { TABS } from "./constants";
+import { TABS, PREVIEW_QUALITY_OPTIONS, DEFAULT_PREVIEW_QUALITY, resolvePreviewQuality } from "./constants";
 import { createArrayLogger, formatLayoutInfo, formatAnimationInfo, formatDuration } from "./utils/formatters";
 import { suggestInitialFrame, resolveAnimationSelection } from "./utils/animation";
 import { collectRenderStateOptions, mergeRelatedRsoAnimations } from "./utils/renderState";
@@ -77,6 +78,9 @@ export default function App() {
   const [previewDisplay, setPreviewDisplay] = useState("both");
   const [previewDisplayAspect, setPreviewDisplayAspect] = useState("4:3");
   const [tevQuality, setTevQuality] = useState("fast");
+  const [previewQuality, setPreviewQuality] = useState(DEFAULT_PREVIEW_QUALITY);
+  const [bannerBackdropMask, setBannerBackdropMask] = useState(false);
+  const [rendererBackend, setRendererBackend] = useState("canvas");
   const exportSettings = useExportSettings();
 
   // --- Custom hooks ---
@@ -146,6 +150,23 @@ export default function App() {
       return names;
     }
     return null;
+  }, [parsed]);
+
+  // Detect the Wii Shop Channel banner layout (same heuristic the renderer uses).
+  // Only this layout has the mask_01/backdrop panes the backdrop-mask path needs,
+  // so the toggle is only surfaced here.
+  const showBackdropMaskOption = useMemo(() => {
+    const layout = parsed?.results?.banner?.renderLayout;
+    if (!layout?.panes) return false;
+    const names = new Set(layout.panes.map((p) => p.name));
+    const textures = layout.textures ?? [];
+    return (
+      names.has("backCLs") &&
+      names.has("mask_01") &&
+      names.has("logo_base") &&
+      textures.includes("logo_pic01.tpl") &&
+      textures.includes("logo_pic02.tpl")
+    );
   }, [parsed]);
 
   // Build pane visibility overrides for disc channel layouts.
@@ -561,6 +582,19 @@ export default function App() {
     const bannerResult = parsed.results.banner;
     const iconResult = parsed.results.icon;
     const requestedLocale = titleLocale === "auto" ? undefined : titleLocale;
+    const qualityPreset = resolvePreviewQuality(previewQuality);
+    // Pick the rendering backend. WebGL is experimental; fall back to Canvas if it
+    // throws (e.g. context creation fails) so the preview never breaks.
+    const makeRenderer = (canvas, rLayout, rAnim, rTpl, rOptions) => {
+      if (rendererBackend === "webgl") {
+        try {
+          return createGlBannerRenderer(canvas, rLayout, rAnim, rTpl, rOptions);
+        } catch (error) {
+          console.warn("WebGL backend unavailable, falling back to Canvas:", error);
+        }
+      }
+      return new BannerRenderer(canvas, rLayout, rAnim, rTpl, rOptions);
+    };
 
     const resolvePhaseModeOptions = (selection) => {
       if (phaseMode === "startOnly" && selection.startAnim) {
@@ -589,13 +623,16 @@ export default function App() {
 
     if (bannerResult && bannerCanvasRef.current) {
       const bannerPhaseOpts = resolvePhaseModeOptions(bannerAnimSelection);
-      const bannerRenderer = new BannerRenderer(
+      const bannerRenderer = makeRenderer(
         bannerCanvasRef.current,
         bannerResult.renderLayout,
         bannerPhaseOpts.anim,
         bannerResult.tplImages,
         {
           initialFrame: effectiveBannerStartFrame,
+          maxRenderFps: qualityPreset.maxRenderFps,
+          maxDevicePixelRatio: qualityPreset.maxDevicePixelRatio,
+          enableWiiShopBackdropMask: bannerBackdropMask,
           startAnim: bannerPhaseOpts.startAnim,
           loopAnim: bannerPhaseOpts.loopAnim,
           renderState: bannerAnimSelection.renderState,
@@ -624,13 +661,15 @@ export default function App() {
       const iconViewport = resolveIconViewport(effectiveIconRenderLayout);
       const iconLayout = { ...effectiveIconRenderLayout, width: iconViewport.width, height: iconViewport.height };
       const iconPhaseOpts = resolvePhaseModeOptions(iconAnimSelection);
-      const iconRenderer = new BannerRenderer(
+      const iconRenderer = makeRenderer(
         iconCanvasRef.current,
         iconLayout,
         iconPhaseOpts.anim,
         iconResult.tplImages,
         {
           initialFrame: effectiveIconStartFrame,
+          maxRenderFps: qualityPreset.maxRenderFps,
+          maxDevicePixelRatio: qualityPreset.maxDevicePixelRatio,
           startAnim: iconPhaseOpts.startAnim,
           loopAnim: iconPhaseOpts.loopAnim,
           renderState: iconAnimSelection.renderState,
@@ -678,7 +717,7 @@ export default function App() {
     activeTab, parsed, startFrame, effectiveBannerStartFrame, effectiveIconStartFrame,
     stopRenderers, bannerAnimSelection, iconAnimSelection, titleLocale,
     bannerPaneStateSelections, iconPaneStateSelections, customWeatherData, customNewsData,
-    previewDisplayAspect, tevQuality, phaseMode, bannerPaneVisibilityOverrides, bannerAlphaMaskPanes, bannerTextOverrides,
+    previewDisplayAspect, tevQuality, previewQuality, bannerBackdropMask, rendererBackend, phaseMode, bannerPaneVisibilityOverrides, bannerAlphaMaskPanes, bannerTextOverrides,
     iconPaneVisibilityOverrides, iconScene, stopPlaybackState,
   ]);
 
@@ -761,6 +800,10 @@ export default function App() {
                     setPreviewDisplayAspect,
                     tevQuality,
                     setTevQuality,
+                    previewQuality,
+                    setPreviewQuality,
+                    rendererBackend,
+                    setRendererBackend,
                   }}
                   renderSettings={{
                     bannerRenderState,
@@ -788,6 +831,9 @@ export default function App() {
                     iconPaneStateGroups,
                     iconPaneStateSelections,
                     setIconPaneStateSelections,
+                    bannerBackdropMask,
+                    setBannerBackdropMask,
+                    showBackdropMaskOption,
                   }}
                   customization={customizationSettings}
                   status={{ animStatus, hasAudio, audioInfo }}

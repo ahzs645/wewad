@@ -1,4 +1,4 @@
-import { evaluateTevPipeline, isTevIdentityPassthrough, isTevModulatePattern, getDefaultTevStages, getModulateTevStages } from "./tevEvaluator.js";
+import { evaluateTevPipeline, isTevIdentityPassthrough, isTevModulatePattern, getDefaultTevStages } from "./tevEvaluator.js";
 import { normalizePaneVertexColors } from "./renderColorUtils.js";
 
 // Resolve the effective TEV stages for a material.
@@ -9,6 +9,21 @@ function getEffectiveTevStages(material) {
     return stages;
   }
   return getDefaultTevStages();
+}
+
+// Detect whether a material's C0 ("black"/fore color register, our `color1`) is
+// non-trivial. The NW4R default combiner for a 0-stage material is
+// `lerp(C0, C1, texture) × vertexColor`. Our fast Canvas-2D heuristic only
+// multiplies the texture by C1, which equals that default *only when C0 is zero*.
+// When C0 is non-zero the dark areas of the texture must be tinted toward C0, so
+// such materials need the per-pixel TEV default. Keeping the heuristic for the
+// common C0=0 case avoids any perf/quality regression.
+function hasNonTrivialBlackColor(material) {
+  const c0 = material?.color1;
+  if (!Array.isArray(c0)) {
+    return false;
+  }
+  return (c0[0] | c0[1] | c0[2] | c0[3]) !== 0;
 }
 
 // Check whether an alpha compare setting always passes (trivial / no-op).
@@ -89,8 +104,12 @@ export function shouldUseTevPipeline(pane) {
     return true;
   }
 
-  // No explicit stages: use TEV pipeline only if alpha compare requires per-pixel processing.
-  if (needsAlphaCompare) {
+  // No explicit stages: NW4R synthesizes a default combiner of
+  // `lerp(C0, C1, texture) × vertexColor`. Route to the per-pixel TEV path when
+  // alpha compare needs it, or when C0 (the "black" color register) is non-trivial
+  // and the heuristic's C1-only multiply would be wrong. Plain C0=0 materials keep
+  // the faster, sharper Canvas-2D heuristic (which is exactly equivalent there).
+  if (needsAlphaCompare || hasNonTrivialBlackColor(material)) {
     return true;
   }
 
@@ -422,8 +441,11 @@ export function runTevPipeline(pane, paneState, width, height) {
   // Build material with animated color values applied (ref: ProcessHermiteKey mutates in-place).
   const material = buildAnimatedMaterial(this, pane, baseMaterial);
 
-  // Use explicit stages; modulate fallback (tex × ras) for materials routed here only for alpha compare.
-  const stages = material.tevStages?.length > 0 ? material.tevStages : getModulateTevStages();
+  // Use explicit stages, else the NW4R default combiner (lerp(C0,C1,tex) then
+  // × vertexColor, with chained alpha). For C0=0 materials this reduces to plain
+  // tex × ras (identical to the old modulate fallback); for non-zero C0 it adds
+  // the dark-area tint the heuristic path can't express.
+  const stages = material.tevStages?.length > 0 ? material.tevStages : getDefaultTevStages();
   const w = Math.max(1, Math.ceil(width));
   const h = Math.max(1, Math.ceil(height));
 

@@ -1,5 +1,5 @@
 import { useCallback, useMemo, useState } from "react";
-import { DISPLAY_ASPECT_OPTIONS, TITLE_LOCALE_LABELS, WEATHER_CONDITION_OPTIONS } from "../../constants";
+import { DISPLAY_ASPECT_OPTIONS, PREVIEW_QUALITY_OPTIONS, RENDERER_BACKEND_OPTIONS, TITLE_LOCALE_LABELS, WEATHER_CONDITION_OPTIONS } from "../../constants";
 import { normalizeDomId } from "../../utils/misc";
 import { PlaybackTimeline } from "../PlaybackTimeline";
 
@@ -19,7 +19,12 @@ export function PreviewTab({
   const { bannerCanvasRef, iconCanvasRef, audioElementRef, exportCanvas } = canvases;
   const { isPlaying, togglePlayback, resetPlayback } = playback;
   const { startFrameInput, setStartFrameInput, maxStartFrame, applyStartFrame, useCurrentFrame } = frameControls;
-  const { previewDisplayAspect, setPreviewDisplayAspect, tevQuality, setTevQuality } = displaySettings;
+  const {
+    previewDisplayAspect, setPreviewDisplayAspect,
+    tevQuality, setTevQuality,
+    previewQuality, setPreviewQuality,
+    rendererBackend, setRendererBackend,
+  } = displaySettings;
   const {
     bannerRenderState, setBannerRenderState, bannerRenderStateOptions,
     bannerAnimOverride, setBannerAnimOverride,
@@ -30,6 +35,7 @@ export function PreviewTab({
     titleLocale, setTitleLocale, availableTitleLocales,
     bannerPaneStateGroups, bannerPaneStateSelections, setBannerPaneStateSelections,
     iconPaneStateGroups, iconPaneStateSelections, setIconPaneStateSelections,
+    bannerBackdropMask, setBannerBackdropMask, showBackdropMaskOption,
   } = renderSettings;
   const { weather, news } = customization;
   const { animStatus, hasAudio, audioInfo } = status;
@@ -130,11 +136,11 @@ export function PreviewTab({
         <div className="canvas-wrapper">
           <div className={`canvas-container ${previewDisplay === "icon" ? "hidden" : ""}`}>
             <label>Banner</label>
-            <canvas ref={bannerCanvasRef} width="608" height="456" />
+            <canvas key={`banner-${rendererBackend}`} ref={bannerCanvasRef} width="608" height="456" />
           </div>
           <div className={`canvas-container ${previewDisplay === "banner" ? "hidden" : ""}`}>
             <label>Icon</label>
-            <canvas ref={iconCanvasRef} width="128" height="128" />
+            <canvas key={`icon-${rendererBackend}`} ref={iconCanvasRef} width="128" height="128" />
           </div>
         </div>
         <div className="controls">
@@ -216,6 +222,47 @@ export function PreviewTab({
               <option value="accurate">Accurate</option>
             </select>
           </div>
+          <div className="state-control">
+            <label htmlFor="preview-quality">Playback Performance</label>
+            <select
+              id="preview-quality"
+              value={previewQuality}
+              onChange={(event) => setPreviewQuality(event.target.value)}
+            >
+              {PREVIEW_QUALITY_OPTIONS.map((option) => (
+                <option key={option.value} value={option.value}>
+                  {option.label}
+                </option>
+              ))}
+            </select>
+          </div>
+          <div className="state-control">
+            <label htmlFor="renderer-backend">Renderer</label>
+            <select
+              id="renderer-backend"
+              value={rendererBackend}
+              onChange={(event) => setRendererBackend(event.target.value)}
+            >
+              {RENDERER_BACKEND_OPTIONS.map((option) => (
+                <option key={option.value} value={option.value}>
+                  {option.label}
+                </option>
+              ))}
+            </select>
+          </div>
+          {showBackdropMaskOption ? (
+            <div className="state-control">
+              <label htmlFor="banner-backdrop-mask">Backdrop Mask</label>
+              <select
+                id="banner-backdrop-mask"
+                value={bannerBackdropMask ? "on" : "off"}
+                onChange={(event) => setBannerBackdropMask(event.target.value === "on")}
+              >
+                <option value="off">Off</option>
+                <option value="on">On (Wii Shop)</option>
+              </select>
+            </div>
+          ) : null}
           {bannerRenderStateOptions.length > 0 ? (
             <div className="state-control">
               <label htmlFor="banner-state">Banner State</label>
