@@ -14,13 +14,28 @@ export const DISPLAY_ASPECT_OPTIONS = [
   { value: "native", label: "Native Layout" },
 ];
 
-// Live-preview performance caps. The renderer can draw at the full display
+// Live-preview performance presets. The renderer can draw at the full display
 // refresh rate and devicePixelRatio, but the banner/icon are software-rendered
 // (per-pixel TEV, 100+ panes), so on HiDPI or high-refresh displays that makes
-// interactive playback stutter. These caps bound the per-frame work without
-// changing animation timing (playback stays real-time accurate).
-export const PREVIEW_MAX_RENDER_FPS = 30;
-export const PREVIEW_MAX_DEVICE_PIXEL_RATIO = 2;
+// interactive playback stutter. Each preset bounds the per-frame work without
+// changing animation timing (playback stays real-time accurate): maxRenderFps
+// caps how often the canvas repaints, maxDevicePixelRatio caps the backing-store
+// resolution.
+export const PREVIEW_QUALITY_OPTIONS = [
+  { value: "smooth", label: "Smooth (60 fps)", maxRenderFps: 60, maxDevicePixelRatio: 2 },
+  { value: "balanced", label: "Balanced (30 fps)", maxRenderFps: 30, maxDevicePixelRatio: 2 },
+  { value: "performance", label: "Performance (20 fps)", maxRenderFps: 20, maxDevicePixelRatio: 1.5 },
+];
+
+export const DEFAULT_PREVIEW_QUALITY = "balanced";
+
+export function resolvePreviewQuality(value) {
+  return (
+    PREVIEW_QUALITY_OPTIONS.find((option) => option.value === value) ??
+    PREVIEW_QUALITY_OPTIONS.find((option) => option.value === DEFAULT_PREVIEW_QUALITY) ??
+    PREVIEW_QUALITY_OPTIONS[0]
+  );
+}
 
 export const RECENT_WAD_DB_NAME = "wewad";
 export const RECENT_WAD_STORE_NAME = "recentWads";
