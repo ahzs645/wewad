@@ -136,11 +136,11 @@ export function PreviewTab({
         <div className="canvas-wrapper">
           <div className={`canvas-container ${previewDisplay === "icon" ? "hidden" : ""}`}>
             <label>Banner</label>
-            <canvas ref={bannerCanvasRef} width="608" height="456" />
+            <canvas key={`banner-${rendererBackend}`} ref={bannerCanvasRef} width="608" height="456" />
           </div>
           <div className={`canvas-container ${previewDisplay === "banner" ? "hidden" : ""}`}>
             <label>Icon</label>
-            <canvas ref={iconCanvasRef} width="128" height="128" />
+            <canvas key={`icon-${rendererBackend}`} ref={iconCanvasRef} width="128" height="128" />
           </div>
         </div>
         <div className="controls">
