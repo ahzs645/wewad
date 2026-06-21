@@ -190,6 +190,9 @@ function resolveAnimFromEntries(data, animOverrideId) {
  * @param {string} [settings.titleLocale] - Title locale code (e.g. "US", "JP")
  * @param {object} [settings.paneStateSelections] - Pane state group selections
  * @param {number} [settings.fps] - Frames per second
+ * @param {number} [settings.maxRenderFps] - Cap on visible redraws/sec (0 = uncapped). Throttles both the manual and GSAP playback paths; lower it for small or numerous instances (e.g. menu thumbnails).
+ * @param {number} [settings.maxDevicePixelRatio] - Cap on the canvas backing-store resolution (default Infinity = full devicePixelRatio). Clamp to ~1–1.5 for small instances to cut per-frame paint/composite cost on HiDPI displays.
+ * @param {boolean} [settings.subframePlayback] - Interpolate between integer frames every tick (default true). Set false for cheaper, integer-stepped playback.
  * @param {boolean} [settings.useGsap] - Whether to use GSAP (default false)
  * @returns {{ renderer: BannerRenderer, layout: object, meta: object }}
  */
@@ -252,6 +255,12 @@ export function createRendererFromBundle(canvas, bundle, target, settings = {}) 
       displayAspect: settings.displayAspect ?? "4:3",
       referenceAspectRatio: refAspect,
       fps: settings.fps ?? 30,
+      // Performance knobs — forwarded so consumers can actually cap the work the
+      // renderer does. Left undefined when unset so the constructor's defaults
+      // (and any bundle manifest overrides spread below) still apply.
+      maxRenderFps: settings.maxRenderFps ?? undefined,
+      subframePlayback: settings.subframePlayback ?? undefined,
+      maxDevicePixelRatio: settings.maxDevicePixelRatio ?? undefined,
       useGsap: settings.useGsap ?? false,
       ...bundle.manifest.rendererOptions,
       renderState: settings.renderState ?? meta.animSelection?.renderState ?? null,

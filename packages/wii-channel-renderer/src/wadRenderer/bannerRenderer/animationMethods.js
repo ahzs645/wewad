@@ -139,6 +139,18 @@ export function ensureGsapTimeline() {
       // audio can continue playing even while the visual animation wraps.
       const elapsedFrames = Math.max(0, this.gsapTimeline?.totalTime() * this.fps);
       this.audioFrame = playbackStartFrame + elapsedFrames;
+      // GSAP fires onUpdate once per rAF tick (~display refresh rate). Honor
+      // `maxRenderFps` here so it throttles the visible redraw on the GSAP path
+      // exactly like it does on the manual playback loop — the driver frame keeps
+      // advancing smoothly; we just sample (and repaint) it at the capped rate.
+      if (this.maxRenderFps > 0) {
+        const now = performance.now();
+        const minInterval = 1000 / this.maxRenderFps;
+        if (this._gsapRenderClock && now - this._gsapRenderClock < minInterval) {
+          return;
+        }
+        this._gsapRenderClock = now;
+      }
       this.applyFrame(this.gsapDriver.frame);
     },
   });

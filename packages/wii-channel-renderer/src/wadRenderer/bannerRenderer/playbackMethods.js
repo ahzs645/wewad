@@ -66,6 +66,9 @@ export function stop() {
     this.animationId = null;
   }
   this.lastRenderTime = 0;
+  // Ensure the next play() repaints its first frame immediately instead of being
+  // throttled against a stale timestamp from the previous run.
+  this._gsapRenderClock = 0;
 }
 
 export function reset() {

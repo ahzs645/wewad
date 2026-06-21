@@ -95,6 +95,17 @@ export class BannerRenderer {
     this.fps = Math.max(1, Math.min(240, requestedFps));
     const requestedMaxRenderFps = Number.isFinite(options.maxRenderFps) ? options.maxRenderFps : 0;
     this.maxRenderFps = Math.max(0, Math.min(240, requestedMaxRenderFps));
+    // Optional cap on the canvas backing-store resolution. The renderer normally
+    // draws at the full `devicePixelRatio` for crisp output, but on Retina/HiDPI
+    // displays that means 4x the pixels to redraw and re-upload to the GPU every
+    // frame. Small or numerous instances (e.g. menu thumbnails) can clamp this to
+    // trade a little sharpness for a large reduction in per-frame paint/composite
+    // cost. Defaults to Infinity (no cap — unchanged behavior).
+    const requestedMaxDpr = Number.isFinite(options.maxDevicePixelRatio) ? options.maxDevicePixelRatio : Infinity;
+    this.maxDevicePixelRatio = Math.max(1, requestedMaxDpr);
+    // Wall-clock timestamp of the last GSAP-driven redraw, used to honor
+    // `maxRenderFps` on the GSAP playback path (see ensureGsapTimeline).
+    this._gsapRenderClock = 0;
     this.playbackMode = options.playbackMode === "hold" || options.playbackMode === "once" ? "hold" : "loop";
     this.useGsap = options.useGsap ?? true;
     this.onFrame = options.onFrame ?? (() => {});

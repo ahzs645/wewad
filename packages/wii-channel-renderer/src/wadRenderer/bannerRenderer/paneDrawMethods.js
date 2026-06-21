@@ -513,7 +513,10 @@ export function renderFrame(frame) {
   const displayScaleX = displayAspect ? displayAspect / referenceAspect : 1;
   const outputWidth = layoutWidth * displayScaleX;
   const outputHeight = layoutHeight;
-  const dpr = Math.max(1, globalThis.devicePixelRatio || 1);
+  const dpr = Math.min(
+    Math.max(1, globalThis.devicePixelRatio || 1),
+    this.maxDevicePixelRatio ?? Infinity,
+  );
   const pixelWidth = Math.max(1, Math.round(outputWidth * dpr));
   const pixelHeight = Math.max(1, Math.round(outputHeight * dpr));
 
