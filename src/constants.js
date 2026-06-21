@@ -29,6 +29,14 @@ export const PREVIEW_QUALITY_OPTIONS = [
 
 export const DEFAULT_PREVIEW_QUALITY = "balanced";
 
+// Rendering backend for the live preview. "canvas" is the mature default;
+// "webgl" is an experimental backend that composites panes with exact GX blend
+// equations on the GPU (see docs/WEBGL_TEV_MIGRATION_PLAN.md).
+export const RENDERER_BACKEND_OPTIONS = [
+  { value: "canvas", label: "Canvas 2D (default)" },
+  { value: "webgl", label: "WebGL (experimental)" },
+];
+
 export function resolvePreviewQuality(value) {
   return (
     PREVIEW_QUALITY_OPTIONS.find((option) => option.value === value) ??

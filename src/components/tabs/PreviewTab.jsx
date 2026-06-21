@@ -1,5 +1,5 @@
 import { useCallback, useMemo, useState } from "react";
-import { DISPLAY_ASPECT_OPTIONS, PREVIEW_QUALITY_OPTIONS, TITLE_LOCALE_LABELS, WEATHER_CONDITION_OPTIONS } from "../../constants";
+import { DISPLAY_ASPECT_OPTIONS, PREVIEW_QUALITY_OPTIONS, RENDERER_BACKEND_OPTIONS, TITLE_LOCALE_LABELS, WEATHER_CONDITION_OPTIONS } from "../../constants";
 import { normalizeDomId } from "../../utils/misc";
 import { PlaybackTimeline } from "../PlaybackTimeline";
 
@@ -23,6 +23,7 @@ export function PreviewTab({
     previewDisplayAspect, setPreviewDisplayAspect,
     tevQuality, setTevQuality,
     previewQuality, setPreviewQuality,
+    rendererBackend, setRendererBackend,
   } = displaySettings;
   const {
     bannerRenderState, setBannerRenderState, bannerRenderStateOptions,
@@ -229,6 +230,20 @@ export function PreviewTab({
               onChange={(event) => setPreviewQuality(event.target.value)}
             >
               {PREVIEW_QUALITY_OPTIONS.map((option) => (
+                <option key={option.value} value={option.value}>
+                  {option.label}
+                </option>
+              ))}
+            </select>
+          </div>
+          <div className="state-control">
+            <label htmlFor="renderer-backend">Renderer</label>
+            <select
+              id="renderer-backend"
+              value={rendererBackend}
+              onChange={(event) => setRendererBackend(event.target.value)}
+            >
+              {RENDERER_BACKEND_OPTIONS.map((option) => (
                 <option key={option.value} value={option.value}>
                   {option.label}
                 </option>

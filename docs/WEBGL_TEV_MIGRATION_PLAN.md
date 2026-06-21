@@ -5,6 +5,20 @@ approach every faithful Wii layout renderer uses (Dolphin, `wii-banner-player`,
 noclip.website). See `TRANSPARENCY_RENDERING_RESEARCH.md` for the research this
 is based on.
 
+## Status
+
+- **Done — swappable backend (v1).** A WebGL backend exists and is selectable in
+  the Preview tab ("Renderer" dropdown, default Canvas). It reuses the tested
+  Canvas pipeline to rasterize each pane (including the TEV evaluator) and uses
+  WebGL only for geometry placement and **exact GX blend compositing**
+  (`packages/.../glRenderer/`: `createGlBannerRenderer.js`, `paneGeometry.js`,
+  `gxBlend.js`). Geometry math is unit-tested against the Canvas transform; the
+  draw loop is smoke-tested end-to-end. Note: actual GPU output needs in-browser
+  validation — it could not be run in CI (no GPU/display).
+- **Next — in-shader TEV (v2).** Move the per-pane TEV combine into a GLSL
+  fragment shader (below) so multi-texture/konst/compare/indirect render on the
+  GPU and the per-frame Canvas raster + texture upload per pane goes away.
+
 ## Why
 
 Canvas-2D compositing is a fixed Porter-Duff + blend-mode enum (W3C spec). A GX

@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   BannerRenderer,
+  createGlBannerRenderer,
   flattenTextures,
   processArchive,
   processWAD,
@@ -79,6 +80,7 @@ export default function App() {
   const [tevQuality, setTevQuality] = useState("fast");
   const [previewQuality, setPreviewQuality] = useState(DEFAULT_PREVIEW_QUALITY);
   const [bannerBackdropMask, setBannerBackdropMask] = useState(false);
+  const [rendererBackend, setRendererBackend] = useState("canvas");
   const exportSettings = useExportSettings();
 
   // --- Custom hooks ---
@@ -581,6 +583,18 @@ export default function App() {
     const iconResult = parsed.results.icon;
     const requestedLocale = titleLocale === "auto" ? undefined : titleLocale;
     const qualityPreset = resolvePreviewQuality(previewQuality);
+    // Pick the rendering backend. WebGL is experimental; fall back to Canvas if it
+    // throws (e.g. context creation fails) so the preview never breaks.
+    const makeRenderer = (canvas, rLayout, rAnim, rTpl, rOptions) => {
+      if (rendererBackend === "webgl") {
+        try {
+          return createGlBannerRenderer(canvas, rLayout, rAnim, rTpl, rOptions);
+        } catch (error) {
+          console.warn("WebGL backend unavailable, falling back to Canvas:", error);
+        }
+      }
+      return new BannerRenderer(canvas, rLayout, rAnim, rTpl, rOptions);
+    };
 
     const resolvePhaseModeOptions = (selection) => {
       if (phaseMode === "startOnly" && selection.startAnim) {
@@ -609,7 +623,7 @@ export default function App() {
 
     if (bannerResult && bannerCanvasRef.current) {
       const bannerPhaseOpts = resolvePhaseModeOptions(bannerAnimSelection);
-      const bannerRenderer = new BannerRenderer(
+      const bannerRenderer = makeRenderer(
         bannerCanvasRef.current,
         bannerResult.renderLayout,
         bannerPhaseOpts.anim,
@@ -647,7 +661,7 @@ export default function App() {
       const iconViewport = resolveIconViewport(effectiveIconRenderLayout);
       const iconLayout = { ...effectiveIconRenderLayout, width: iconViewport.width, height: iconViewport.height };
       const iconPhaseOpts = resolvePhaseModeOptions(iconAnimSelection);
-      const iconRenderer = new BannerRenderer(
+      const iconRenderer = makeRenderer(
         iconCanvasRef.current,
         iconLayout,
         iconPhaseOpts.anim,
@@ -703,7 +717,7 @@ export default function App() {
     activeTab, parsed, startFrame, effectiveBannerStartFrame, effectiveIconStartFrame,
     stopRenderers, bannerAnimSelection, iconAnimSelection, titleLocale,
     bannerPaneStateSelections, iconPaneStateSelections, customWeatherData, customNewsData,
-    previewDisplayAspect, tevQuality, previewQuality, bannerBackdropMask, phaseMode, bannerPaneVisibilityOverrides, bannerAlphaMaskPanes, bannerTextOverrides,
+    previewDisplayAspect, tevQuality, previewQuality, bannerBackdropMask, rendererBackend, phaseMode, bannerPaneVisibilityOverrides, bannerAlphaMaskPanes, bannerTextOverrides,
     iconPaneVisibilityOverrides, iconScene, stopPlaybackState,
   ]);
 
@@ -788,6 +802,8 @@ export default function App() {
                     setTevQuality,
                     previewQuality,
                     setPreviewQuality,
+                    rendererBackend,
+                    setRendererBackend,
                   }}
                   renderSettings={{
                     bannerRenderState,
