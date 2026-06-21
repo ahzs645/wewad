@@ -7,7 +7,7 @@ import {
   processZipBundle,
 } from "@firstform/wii-channel-renderer";
 
-import { TABS } from "./constants";
+import { TABS, PREVIEW_MAX_RENDER_FPS, PREVIEW_MAX_DEVICE_PIXEL_RATIO } from "./constants";
 import { createArrayLogger, formatLayoutInfo, formatAnimationInfo, formatDuration } from "./utils/formatters";
 import { suggestInitialFrame, resolveAnimationSelection } from "./utils/animation";
 import { collectRenderStateOptions, mergeRelatedRsoAnimations } from "./utils/renderState";
@@ -596,6 +596,8 @@ export default function App() {
         bannerResult.tplImages,
         {
           initialFrame: effectiveBannerStartFrame,
+          maxRenderFps: PREVIEW_MAX_RENDER_FPS,
+          maxDevicePixelRatio: PREVIEW_MAX_DEVICE_PIXEL_RATIO,
           startAnim: bannerPhaseOpts.startAnim,
           loopAnim: bannerPhaseOpts.loopAnim,
           renderState: bannerAnimSelection.renderState,
@@ -631,6 +633,8 @@ export default function App() {
         iconResult.tplImages,
         {
           initialFrame: effectiveIconStartFrame,
+          maxRenderFps: PREVIEW_MAX_RENDER_FPS,
+          maxDevicePixelRatio: PREVIEW_MAX_DEVICE_PIXEL_RATIO,
           startAnim: iconPhaseOpts.startAnim,
           loopAnim: iconPhaseOpts.loopAnim,
           renderState: iconAnimSelection.renderState,

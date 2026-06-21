@@ -14,6 +14,14 @@ export const DISPLAY_ASPECT_OPTIONS = [
   { value: "native", label: "Native Layout" },
 ];
 
+// Live-preview performance caps. The renderer can draw at the full display
+// refresh rate and devicePixelRatio, but the banner/icon are software-rendered
+// (per-pixel TEV, 100+ panes), so on HiDPI or high-refresh displays that makes
+// interactive playback stutter. These caps bound the per-frame work without
+// changing animation timing (playback stays real-time accurate).
+export const PREVIEW_MAX_RENDER_FPS = 30;
+export const PREVIEW_MAX_DEVICE_PIXEL_RATIO = 2;
+
 export const RECENT_WAD_DB_NAME = "wewad";
 export const RECENT_WAD_STORE_NAME = "recentWads";
 export const RECENT_WAD_DB_VERSION = 1;
