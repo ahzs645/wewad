@@ -500,6 +500,13 @@ export function drawFillTextPane(context, pane, rawText, width, height) {
 
 export function renderFrame(frame) {
   const context = this.ctx;
+  // Guard: getContext("2d") returns null if the canvas was already bound to a
+  // WebGL context (e.g. a failed WebGL->Canvas fallback on the same element).
+  // Bail rather than crash on context.setTransform; the canvas should be
+  // remounted to recover.
+  if (!context) {
+    return;
+  }
   this.textureSrtAnimationCache.clear();
 
   const layoutWidth = this.layout.width || this.canvas.clientWidth || this.canvas.width;

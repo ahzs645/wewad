@@ -83,6 +83,18 @@ function createGlContext(canvas) {
 }
 
 function buildGlState(glCanvas) {
+  // Cache GL resources on the canvas element. The renderer effect re-creates the
+  // renderer on many setting changes (without remounting the canvas), so we must
+  // reuse the live context/program rather than recreate — and must never
+  // loseContext() on dispose, which would poison the canvas for the next renderer
+  // ("Shader compile failed: null"). A fresh canvas (backend switch remounts it)
+  // has no cache and gets a new context. The cached context is released by GC when
+  // its canvas is unmounted.
+  const existing = glCanvas.__wewadGlState;
+  if (existing && existing.gl && !existing.gl.isContextLost()) {
+    return existing;
+  }
+
   const gl = createGlContext(glCanvas);
   const program = createProgram(gl);
   const quadBuffer = gl.createBuffer();
@@ -96,7 +108,7 @@ function buildGlState(glCanvas) {
   gl.pixelStorei(gl.UNPACK_FLIP_Y_WEBGL, false);
   gl.pixelStorei(gl.UNPACK_PREMULTIPLY_ALPHA_WEBGL, false);
 
-  return {
+  const state = {
     gl,
     program,
     quadBuffer,
@@ -109,6 +121,8 @@ function buildGlState(glCanvas) {
     rasterCanvas: document.createElement("canvas"),
     rasterCtx: null,
   };
+  glCanvas.__wewadGlState = state;
+  return state;
 }
 
 // Rasterize a single pane's content (texture/TEV/vertex+material modulation, no
@@ -292,22 +306,10 @@ export function createGlBannerRenderer(glCanvas, layout, anim, tplImages, option
     glRenderFrame(this, glState, f);
   };
 
-  const originalDispose = core.dispose.bind(core);
-  core.dispose = function disposeGl() {
-    originalDispose();
-    try {
-      const { gl } = glState;
-      gl.deleteTexture(glState.texture);
-      gl.deleteBuffer(glState.quadBuffer);
-      gl.deleteProgram(glState.program);
-      const loseCtx = gl.getExtension("WEBGL_lose_context");
-      if (loseCtx) {
-        loseCtx.loseContext();
-      }
-    } catch {
-      // best-effort GPU cleanup
-    }
-  };
-
+  // Note: dispose does NOT delete the GL program/buffers or lose the context.
+  // Those are cached on the canvas (see buildGlState) and reused when the renderer
+  // is re-created on the same canvas (e.g. a settings change). The GPU resources
+  // are released by the browser when the canvas element is unmounted/GC'd (which
+  // happens on a backend switch, since the canvas is keyed on rendererBackend).
   return core;
 }
