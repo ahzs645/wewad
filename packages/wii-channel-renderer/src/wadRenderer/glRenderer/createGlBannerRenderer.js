@@ -26,6 +26,7 @@ import {
 
 const BASIC_VERTEX_STRIDE_BYTES = 32;
 const TEV_VERTEX_STRIDE_BYTES = (2 + MAX_TEV_TEXTURES * 2 + 4) * 4;
+const ROTATED_PANE_SEAM_PAD = 4;
 
 const VERT_SRC = `
 attribute vec2 aPos;
@@ -475,7 +476,20 @@ function getPaneVertexColors(pane, paneState) {
   ];
 }
 
-function getGpuUvs(core, pane, binding, width, height) {
+function lerpUv(a, b, t) {
+  return {
+    s: a.s + (b.s - a.s) * t,
+    t: a.t + (b.t - a.t) * t,
+  };
+}
+
+function bilerpUv(tl, tr, bl, br, x, y) {
+  const top = lerpUv(tl, tr, x);
+  const bottom = lerpUv(bl, br, x);
+  return lerpUv(top, bottom, y);
+}
+
+function getGpuUvs(core, pane, binding, width, height, seamPad = 0) {
   if (!binding) {
     return [
       { s: 0, t: 0 },
@@ -502,14 +516,29 @@ function getGpuUvs(core, pane, binding, width, height) {
     [tl, bl] = [bl, tl];
     [tr, br] = [br, tr];
   }
+  if (seamPad > 0) {
+    const absW = Math.max(1, Math.abs(width));
+    const absH = Math.max(1, Math.abs(height));
+    const left = -seamPad / absW;
+    const right = 1 + seamPad / absW;
+    const top = -seamPad / absH;
+    const bottom = 1 + seamPad / absH;
+    return [
+      bilerpUv(tl, tr, bl, br, left, top),
+      bilerpUv(tl, tr, bl, br, right, top),
+      bilerpUv(tl, tr, bl, br, left, bottom),
+      bilerpUv(tl, tr, bl, br, right, bottom),
+    ];
+  }
   return [tl, tr, bl, br];
 }
 
 function buildGpuQuadVertices(core, preparedPane, chainAffine, baseScaleX, baseScaleY, pixelWidth, pixelHeight, binding) {
   const { pane, paneState } = preparedPane;
-  const halfW = Math.abs(paneState.width) / 2;
-  const halfH = Math.abs(paneState.height) / 2;
-  const uvs = getGpuUvs(core, pane, binding, paneState.width, paneState.height);
+  const seamPad = preparedPane.has3DRotation ? ROTATED_PANE_SEAM_PAD : 0;
+  const halfW = Math.abs(paneState.width) / 2 + seamPad;
+  const halfH = Math.abs(paneState.height) / 2 + seamPad;
+  const uvs = getGpuUvs(core, pane, binding, paneState.width, paneState.height, seamPad);
   if (!uvs) {
     return null;
   }
@@ -726,11 +755,12 @@ function getTevGpuBindings(core, glState, pane, paneState) {
 
 function buildTevQuadVertices(core, preparedPane, chainAffine, metrics, bindings) {
   const { pane, paneState } = preparedPane;
-  const halfW = Math.abs(paneState.width) / 2;
-  const halfH = Math.abs(paneState.height) / 2;
+  const seamPad = preparedPane.has3DRotation ? ROTATED_PANE_SEAM_PAD : 0;
+  const halfW = Math.abs(paneState.width) / 2 + seamPad;
+  const halfH = Math.abs(paneState.height) / 2 + seamPad;
   const uvSets = [];
   for (let i = 0; i < MAX_TEV_TEXTURES; i += 1) {
-    const uvs = getGpuUvs(core, pane, bindings[i], paneState.width, paneState.height);
+    const uvs = getGpuUvs(core, pane, bindings[i], paneState.width, paneState.height, seamPad);
     if (!uvs) {
       return null;
     }
