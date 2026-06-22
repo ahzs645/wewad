@@ -15,6 +15,7 @@ import * as stateMethods from "./stateMethods.js";
 import * as textureMethods from "./textureMethods.js";
 import * as tevMethods from "./tevMethods.js";
 import * as fontMethods from "./fontMethods.js";
+import * as framePrepareMethods from "./framePrepareMethods.js";
 
 const DEFAULT_REFERENCE_ASPECT = 4 / 3;
 
@@ -154,6 +155,7 @@ export class BannerRenderer {
     );
     this.activeRenderablePanes = this.renderablePanes;
     this.localPaneStates = new Map();
+    this.preparedFrame = null;
     this.panesByName = new Map();
     this.paneTransformChains = new Map();
     this.paneGroupNames = new Map();
@@ -308,7 +310,8 @@ export class BannerRenderer {
  * & typeof paneDrawMethods
  * & typeof playbackMethods
  * & typeof tevMethods
- * & typeof fontMethods} BannerRendererMixinMethods
+ * & typeof fontMethods
+ * & typeof framePrepareMethods} BannerRendererMixinMethods
  */
 
 /** @type {BannerRenderer["prototype"] & BannerRendererMixinMethods} */
@@ -332,4 +335,5 @@ Object.assign(
   playbackMethods,
   tevMethods,
   fontMethods,
+  framePrepareMethods,
 );

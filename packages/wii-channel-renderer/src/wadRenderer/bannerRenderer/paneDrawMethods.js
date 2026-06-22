@@ -507,25 +507,17 @@ export function renderFrame(frame) {
   if (!context) {
     return;
   }
-  this.textureSrtAnimationCache.clear();
-
-  const layoutWidth = this.layout.width || this.canvas.clientWidth || this.canvas.width;
-  const layoutHeight = this.layout.height || this.canvas.clientHeight || this.canvas.height;
-  const referenceAspect = Number.isFinite(this.referenceAspectRatio) && this.referenceAspectRatio > 0
-    ? this.referenceAspectRatio
-    : 4 / 3;
-  const displayAspect = Number.isFinite(this.displayAspectRatio) && this.displayAspectRatio > 0
-    ? this.displayAspectRatio
-    : null;
-  const displayScaleX = displayAspect ? displayAspect / referenceAspect : 1;
-  const outputWidth = layoutWidth * displayScaleX;
-  const outputHeight = layoutHeight;
-  const dpr = Math.min(
-    Math.max(1, globalThis.devicePixelRatio || 1),
-    this.maxDevicePixelRatio ?? Infinity,
-  );
-  const pixelWidth = Math.max(1, Math.round(outputWidth * dpr));
-  const pixelHeight = Math.max(1, Math.round(outputHeight * dpr));
+  const prepared = this.prepareFrame(frame, this.canvas);
+  const {
+    layoutWidth,
+    layoutHeight,
+    displayScaleX,
+    outputWidth,
+    outputHeight,
+    dpr,
+    pixelWidth,
+    pixelHeight,
+  } = prepared.metrics;
 
   if (this.canvas.width !== pixelWidth || this.canvas.height !== pixelHeight) {
     this.canvas.width = pixelWidth;
@@ -542,13 +534,7 @@ export function renderFrame(frame) {
 
   context.clearRect(0, 0, layoutWidth, layoutHeight);
 
-  const localPaneStates = this.localPaneStates;
-  localPaneStates.clear();
-  for (const pane of this.allPanes) {
-    localPaneStates.set(pane, this.getLocalPaneState(pane, frame));
-  }
-
-  const orderedRenderablePanes = this.activeRenderablePanes ?? this.renderablePanes;
+  const localPaneStates = prepared.localPaneStates;
   const shouldUseWiiShopBackdropMask = this.shouldUseWiiShopBackdropMask;
 
   let backdropContext = null;
@@ -595,11 +581,8 @@ export function renderFrame(frame) {
     backdropContext.clearRect(0, 0, layoutWidth, layoutHeight);
   };
 
-  for (const pane of orderedRenderablePanes) {
-    const paneState = localPaneStates.get(pane);
-    if (!paneState) {
-      continue;
-    }
+  for (const preparedPane of prepared.preparedPanes) {
+    const { pane, paneState } = preparedPane;
 
     if (shouldUseWiiShopBackdropMask) {
       const paneName = String(pane?.name ?? "");

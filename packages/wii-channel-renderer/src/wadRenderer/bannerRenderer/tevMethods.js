@@ -358,7 +358,7 @@ function buildTevCacheKey(pane, paneState, bindings, w, h, material) {
 // Build a material object with animated RLMC color values applied.
 // Reference: Material::ProcessHermiteKey directly mutates color_regs, color_constants,
 // and material color. We must do the same for the TEV evaluator to see animated values.
-function buildAnimatedMaterial(renderer, pane, material) {
+export function buildAnimatedMaterial(renderer, pane, material) {
   const animColor = renderer.getPaneMaterialAnimColor?.(pane.name, renderer.frame);
   if (!animColor) {
     return material;
