@@ -16,6 +16,7 @@
  */
 
 import { BannerRenderer } from "./wadRenderer/BannerRenderer.js";
+import { createGlBannerRenderer, isWebGlSupported } from "./wadRenderer/glRenderer/createGlBannerRenderer.js";
 
 // ---------------------------------------------------------------------------
 // Icon viewport helper
@@ -189,6 +190,7 @@ function resolveAnimFromEntries(data, animOverrideId) {
  * @param {string} [settings.playbackMode] - Playback mode: "loop"|"hold"|"once"
  * @param {string} [settings.titleLocale] - Title locale code (e.g. "US", "JP")
  * @param {object} [settings.paneStateSelections] - Pane state group selections
+ * @param {string} [settings.rendererBackend] - Renderer backend: "canvas"|"webgl"|"auto". Defaults to "canvas".
  * @param {number} [settings.fps] - Frames per second
  * @param {number} [settings.maxRenderFps] - Cap on visible redraws/sec (0 = uncapped). Throttles both the manual and GSAP playback paths; lower it for small or numerous instances (e.g. menu thumbnails).
  * @param {number} [settings.maxDevicePixelRatio] - Cap on the canvas backing-store resolution (default Infinity = full devicePixelRatio). Clamp to ~1–1.5 for small instances to cut per-frame paint/composite cost on HiDPI displays.
@@ -243,36 +245,50 @@ export function createRendererFromBundle(canvas, bundle, target, settings = {}) 
     paneVisibilityOverrides = buildIconSceneOverrides(settings.scene ?? "auto");
   }
 
-  const renderer = new BannerRenderer(
-    canvas,
-    layout,
-    startAnim ?? loopAnim,
-    tplImages,
-    {
-      startAnim,
-      loopAnim,
-      fonts,
-      displayAspect: settings.displayAspect ?? "4:3",
-      referenceAspectRatio: refAspect,
-      fps: settings.fps ?? 30,
-      // Performance knobs — forwarded so consumers can actually cap the work the
-      // renderer does. Left undefined when unset so the constructor's defaults
-      // (and any bundle manifest overrides spread below) still apply.
-      maxRenderFps: settings.maxRenderFps ?? undefined,
-      subframePlayback: settings.subframePlayback ?? undefined,
-      maxDevicePixelRatio: settings.maxDevicePixelRatio ?? undefined,
-      useGsap: settings.useGsap ?? false,
-      ...bundle.manifest.rendererOptions,
-      renderState: settings.renderState ?? meta.animSelection?.renderState ?? null,
-      playbackMode: resolved.playbackMode ?? settings.playbackMode ?? meta.animSelection?.playbackMode ?? "loop",
-      tevQuality: settings.tevQuality ?? undefined,
-      titleLocale: settings.titleLocale ?? undefined,
-      paneStateSelections: settings.paneStateSelections ?? undefined,
-      paneVisibilityOverrides,
-      paneAlphaMaskFromFirstTexture,
-      textOverrides,
-    },
-  );
+  const rendererOptions = {
+    startAnim,
+    loopAnim,
+    fonts,
+    displayAspect: settings.displayAspect ?? "4:3",
+    referenceAspectRatio: refAspect,
+    fps: settings.fps ?? 30,
+    // Performance knobs — forwarded so consumers can actually cap the work the
+    // renderer does. Left undefined when unset so the constructor's defaults
+    // (and any bundle manifest overrides spread below) still apply.
+    maxRenderFps: settings.maxRenderFps ?? undefined,
+    subframePlayback: settings.subframePlayback ?? undefined,
+    maxDevicePixelRatio: settings.maxDevicePixelRatio ?? undefined,
+    useGsap: settings.useGsap ?? false,
+    ...bundle.manifest.rendererOptions,
+    renderState: settings.renderState ?? meta.animSelection?.renderState ?? null,
+    playbackMode: resolved.playbackMode ?? settings.playbackMode ?? meta.animSelection?.playbackMode ?? "loop",
+    tevQuality: settings.tevQuality ?? undefined,
+    titleLocale: settings.titleLocale ?? undefined,
+    paneStateSelections: settings.paneStateSelections ?? undefined,
+    paneVisibilityOverrides,
+    paneAlphaMaskFromFirstTexture,
+    textOverrides,
+  };
+
+  const rendererBackend = settings.rendererBackend ?? bundle.manifest.rendererOptions?.rendererBackend ?? "canvas";
+  const wantsWebGl = rendererBackend === "webgl" || rendererBackend === "auto";
+  let renderer;
+  if (wantsWebGl && isWebGlSupported()) {
+    try {
+      renderer = createGlBannerRenderer(canvas, layout, startAnim ?? loopAnim, tplImages, rendererOptions);
+    } catch (error) {
+      if (rendererBackend === "webgl") {
+        throw error;
+      }
+      renderer = null;
+    }
+  } else if (rendererBackend === "webgl") {
+    throw new Error("WebGL renderer requested, but WebGL is not supported in this browser");
+  }
+
+  if (!renderer) {
+    renderer = new BannerRenderer(canvas, layout, startAnim ?? loopAnim, tplImages, rendererOptions);
+  }
 
   return { renderer, layout, meta };
 }
