@@ -11,7 +11,7 @@ import {
 import { TABS, PREVIEW_QUALITY_OPTIONS, DEFAULT_PREVIEW_QUALITY, resolvePreviewQuality } from "./constants";
 import { createArrayLogger, formatLayoutInfo, formatAnimationInfo, formatDuration } from "./utils/formatters";
 import { suggestInitialFrame, resolveAnimationSelection } from "./utils/animation";
-import { collectRenderStateOptions, mergeRelatedRsoAnimations } from "./utils/renderState";
+import { buildRsoCarousel, collectRenderStateOptions, mergeRelatedRsoAnimations, normalizeRenderState } from "./utils/renderState";
 import { resolveWeatherRenderState, resolveCustomWeatherBannerFrame } from "./utils/weather";
 import { getUsedTextureNames, resolveIconViewport, createRecentIconPreview } from "./utils/layout";
 import { createAudioSyncController } from "./utils/audioSync";
@@ -298,10 +298,30 @@ export default function App() {
   }, [showIconSceneOption, iconScene]);
 
   const iconAnimSelection = useMemo(() => {
+    const iconResult = parsed?.results?.icon;
+
+    // Multi-slot RSO carousel (e.g. Wii Shop Channel): reconstruct the 4-slot
+    // "recommended titles" cycle as one looping animation rather than looping a
+    // single RSO state. Only when the user hasn't pinned a specific state/anim
+    // and isn't customizing weather (which drives its own state selection).
+    if (iconResult && !iconAnimOverride && !useCustomWeather && normalizeRenderState(effectiveIconRenderState) == null) {
+      const carousel = buildRsoCarousel(iconResult);
+      if (carousel) {
+        return {
+          anim: carousel.anim,
+          startAnim: null,
+          loopAnim: carousel.anim,
+          renderState: null,
+          playbackMode: "loop",
+          disableRenderStateFilter: true,
+          carousel: true,
+        };
+      }
+    }
+
     const selection = resolveAnimationSelection(parsed?.results?.icon, effectiveIconRenderState, iconAnimOverride);
     if (!selection.anim || !selection.renderState) return selection;
 
-    const iconResult = parsed?.results?.icon;
     let mergedAnim = mergeRelatedRsoAnimations(selection.anim, iconResult, selection.renderState);
     if (mergedAnim === selection.anim) return selection;
 
@@ -331,7 +351,7 @@ export default function App() {
       anim: mergedAnim,
       loopAnim: selection.loopAnim === selection.anim ? mergedAnim : selection.loopAnim,
     };
-  }, [parsed, effectiveIconRenderState, iconAnimOverride]);
+  }, [parsed, effectiveIconRenderState, iconAnimOverride, useCustomWeather]);
 
   const timelineTracks = useMemo(() => {
     if (!parsed) return [];
@@ -673,6 +693,7 @@ export default function App() {
           startAnim: iconPhaseOpts.startAnim,
           loopAnim: iconPhaseOpts.loopAnim,
           renderState: iconAnimSelection.renderState,
+          disableRenderStateFilter: iconAnimSelection.disableRenderStateFilter === true,
           playbackMode: iconPhaseOpts.playbackMode,
           paneStateSelections: customWeatherData ? null : iconPaneStateSelections,
           paneVisibilityOverrides: iconPaneVisibilityOverrides,
