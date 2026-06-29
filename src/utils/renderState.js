@@ -47,6 +47,44 @@ export function resolveAutoRenderState(targetResult) {
   return states[0];
 }
 
+/**
+ * The Wii Shop Channel icon is a "recommended titles" carousel: the iconic blue
+ * shopping-bags art is actually the recommendation slot's placeholder texture
+ * (tentative_Wiishop.tpl on P_RcmdImg), and the captions/thumbnails are streamed
+ * from WiiConnect24. Offline (a raw WAD) that content is empty, so the default
+ * RSO render stacks all four empty recommendation slots (overlapping "ghost
+ * cards") plus blank caption text.
+ *
+ * For that layout, return pane-visibility overrides that keep the first slot's
+ * bags placeholder + the "Wii Shop Channel" wordmark + the tiled background and
+ * hide the duplicate slots (names ending _01/_02/_03) and the empty caption
+ * text/backgrounds (T_Rcmd*, P_txtBg*). Returns null for any other layout, so no
+ * other channel is affected.
+ */
+export function buildWiiShopIconOverrides(targetResult) {
+  const panes = targetResult?.renderLayout?.panes ?? [];
+  if (panes.length === 0) {
+    return null;
+  }
+  const names = new Set(panes.map((p) => p.name));
+  const isWiiShopIcon =
+    names.has("P_ShopLogo_00") &&
+    names.has("bg_wiiplane_00") &&
+    panes.some((p) => /^T_Rcmd/.test(p.name));
+  if (!isWiiShopIcon) {
+    return null;
+  }
+
+  const overrides = new Map();
+  for (const pane of panes) {
+    const name = pane.name;
+    if (/^T_Rcmd/.test(name) || /txtBg/i.test(name) || /_0[123]$/.test(name)) {
+      overrides.set(name, false);
+    }
+  }
+  return overrides.size > 0 ? overrides : null;
+}
+
 export function findStateAnimationEntry(targetResult, state) {
   const normalizedState = normalizeRenderState(state);
   if (!normalizedState) {
