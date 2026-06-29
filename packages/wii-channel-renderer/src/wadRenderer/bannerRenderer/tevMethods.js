@@ -52,7 +52,7 @@ function isAlphaCompareAlwaysPass(alphaCompare) {
 // layouts (e.g. Wii Shop Channel) where the system menu ignores TEV for
 // these panes and draws the texture directly.  Falling through to the
 // heuristic Canvas 2D path preserves texture alpha.
-function isTevAlphaAlwaysZero(stages) {
+export function isTevAlphaAlwaysZero(stages) {
   if (!stages || stages.length !== 1) {
     return false;
   }
@@ -63,6 +63,23 @@ function isTevAlphaAlwaysZero(stages) {
   // In either case, the heuristic Canvas 2D path produces better results
   // by drawing the texture directly with its natural alpha.
   return s.tevOpA >= 8 && s.dA === 7 && (s.cA === 0 || s.cA === 5);
+}
+
+// Whether a single-stage color combiner outputs the texture colour directly —
+// either identity passthrough (out = TEXC) or texture×raster modulate. These are
+// the only colour patterns the Canvas-2D heuristic reproduces. Register-lerp
+// combiners such as lerp(C0, C1, TEXC) (used by the Wii Shop icon's P_ShopLogo
+// material) are NOT direct: the heuristic would wash them to the register colour
+// (white), so they must go through the per-pixel TEV pipeline instead.
+export function isTevColorDirectTexture(stages) {
+  if (!stages || stages.length !== 1) {
+    return false;
+  }
+  const s = stages[0];
+  // Color input selectors: TEXC=8, RASC=10, ZERO=15.
+  const identity = s.aC === 15 && s.bC === 15 && s.cC === 15 && s.dC === 8;
+  const modulate = s.aC === 15 && s.bC === 8 && s.cC === 10 && s.dC === 15;
+  return identity || modulate;
 }
 
 // Check whether a pane's material should use the per-pixel TEV pipeline.
@@ -95,9 +112,17 @@ export function shouldUseTevPipeline(pane) {
       if (textureMaps.length <= 1 && isTevModulatePattern(explicitStages) && !needsAlphaCompare) {
         return false;
       }
-      // Skip single-stage materials where alpha compare always produces zero.
-      // The heuristic path draws the texture directly, preserving its alpha.
-      if (isTevAlphaAlwaysZero(explicitStages) && !needsAlphaCompare) {
+      // Skip single-stage materials where the alpha combine is trivial AND the
+      // colour combine just outputs the texture — the heuristic path draws the
+      // texture directly, preserving its alpha. Materials whose colour combine is
+      // a register lerp (e.g. the Wii Shop icon's bags logo) must NOT take this
+      // shortcut: the heuristic can't reproduce lerp(C0,C1,TEXC) and would render
+      // them as a flat white silhouette.
+      if (
+        isTevAlphaAlwaysZero(explicitStages) &&
+        isTevColorDirectTexture(explicitStages) &&
+        !needsAlphaCompare
+      ) {
         return false;
       }
     }
