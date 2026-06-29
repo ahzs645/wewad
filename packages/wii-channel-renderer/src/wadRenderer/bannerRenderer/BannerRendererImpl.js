@@ -231,10 +231,6 @@ export class BannerRenderer {
 
     this.availableTitleLocales = this.collectTitleLocales();
     this.activeTitleLocale = this.resolveActiveTitleLocale(this.titleLocalePreference);
-    // When set, bypass the single-active-render-state visibility filter entirely.
-    // Used for the reconstructed RSO carousel, whose one combined animation drives
-    // panes across all RSO state groups simultaneously (so none should be hidden).
-    this.renderStateFilterDisabled = options.disableRenderStateFilter === true;
     this.availableRenderStates = this.collectRenderStates();
     this.activeRenderState = this.resolveActiveRenderState(options.renderState ?? null);
     this.availablePaneStateGroups = this.collectPaneStateGroups();

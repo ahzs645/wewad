@@ -15,19 +15,6 @@ function inferAnimationRole(filePath) {
   if (stem.endsWith("_in")) {
     return "start";
   }
-  // RSO state animations (e.g. Wii Shop / Photo Channel). The System Menu banner
-  // player resolves the START animation via the fallback chain
-  // (_Start → _In → _Rso0) and the LOOP animation via (bare → _Loop → _Rso1).
-  // Reference: giantpune/wii-system-menu-player Banner.cpp LoadIcon()/LoadBanner().
-  // So _Rso0 is the play-once intro and _Rso1 is the repeating loop; the higher
-  // _Rso2.._RsoN remain "generic" (they are extra state groups the host composes
-  // separately and we do not auto-select as start/loop).
-  if (/(?:^|[_-])rso0$/.test(stem)) {
-    return "start";
-  }
-  if (/(?:^|[_-])rso1$/.test(stem)) {
-    return "loop";
-  }
   return "generic";
 }
 
@@ -289,22 +276,14 @@ export function parseResourceSet(files, loggerInput) {
     animationLoop = loopEntry?.anim ?? null;
     animationStart = startEntry?.anim ?? null;
 
-    // RSO animations (e.g. Wii Shop Channel icon) have large authored frameSizes
-    // designed for the Wii's RSO state system to fill with dynamic content. The
-    // actual visible content is clustered in a small portion of the total frames,
-    // so tighten to the effective content range — otherwise a play-once intro or a
-    // loop sits on a long static "dead hold" of clamped values. (The Wii Shop
-    // icon's Rso0 keys real motion only in frames 0..650 of its authored 5000.)
-    if (startEntry?.state && animationStart) {
-      animationStart = tightenRsoFrameSize(animationStart) ?? animationStart;
-    }
-    if (loopEntry?.state && animationLoop) {
-      animationLoop = tightenRsoFrameSize(animationLoop) ?? animationLoop;
-    }
-
     if (!animationLoop && !animationStart) {
       animation = animationEntries[0]?.anim ?? null;
 
+      // RSO animations (e.g. Wii Shop Channel icon) have large frameSizes
+      // designed for the Wii's RSO state system to fill with dynamic content.
+      // The actual visible content is often clustered in a small portion of
+      // the total frames.  Tighten the loop to the effective content range
+      // so the icon doesn't go blank for long periods.
       if (animation && animationEntries.some((entry) => entry.state)) {
         const tightened = tightenRsoFrameSize(animation);
         if (tightened) {

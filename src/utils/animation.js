@@ -344,30 +344,12 @@ export function resolveAnimationSelection(targetResult, selectedState, animOverr
 
   if (stateAnim) {
     const startAnim = targetResult?.animStart ?? null;
-    // Prefer the channel's dedicated loop animation (e.g. Rso1) over re-looping
-    // the RSO state/conductor (Rso0), matching the System Menu banner player's
-    // start(_Rso0) -> loop(_Rso1) selection. Only when no state is explicitly
-    // pinned (an explicit pick should show exactly that state).
-    const distinctLoop =
-      !explicitState && targetResult?.animLoop && targetResult.animLoop !== stateAnim
-        ? targetResult.animLoop
-        : null;
     if (startAnim) {
-      // Start + RSO: play the intro once, then loop the dedicated loop animation
-      // (falling back to the state animation when there is no distinct loop).
+      // Start + RSO state: play start first, then loop the state animation.
       return {
         anim: startAnim,
         startAnim,
-        loopAnim: distinctLoop ?? stateAnim,
-        renderState: activeState ?? null,
-        playbackMode: "loop",
-      };
-    }
-    if (distinctLoop) {
-      return {
-        anim: distinctLoop,
-        startAnim: null,
-        loopAnim: distinctLoop,
+        loopAnim: stateAnim,
         renderState: activeState ?? null,
         playbackMode: "loop",
       };

@@ -155,9 +155,6 @@ export function getPaneRenderStates(pane) {
 }
 
 export function shouldRenderPaneForState(pane) {
-  if (this.renderStateFilterDisabled) {
-    return true;
-  }
   if (!this.activeRenderState || this.availableRenderStates.size <= 1) {
     return true;
   }
