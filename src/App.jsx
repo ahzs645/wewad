@@ -11,7 +11,7 @@ import {
 import { TABS, PREVIEW_QUALITY_OPTIONS, DEFAULT_PREVIEW_QUALITY, resolvePreviewQuality } from "./constants";
 import { createArrayLogger, formatLayoutInfo, formatAnimationInfo, formatDuration } from "./utils/formatters";
 import { suggestInitialFrame, resolveAnimationSelection } from "./utils/animation";
-import { collectRenderStateOptions, mergeRelatedRsoAnimations } from "./utils/renderState";
+import { buildWiiShopIconOverrides, collectRenderStateOptions, mergeRelatedRsoAnimations } from "./utils/renderState";
 import { resolveWeatherRenderState, resolveCustomWeatherBannerFrame } from "./utils/weather";
 import { getUsedTextureNames, resolveIconViewport, createRecentIconPreview } from "./utils/layout";
 import { createAudioSyncController } from "./utils/audioSync";
@@ -289,13 +289,23 @@ export default function App() {
   }, [parsed]);
 
   const iconPaneVisibilityOverrides = useMemo(() => {
-    if (!showIconSceneOption) return null;
-    if (iconScene === "update") {
-      return new Map([["N_GCIcon", false]]);
+    const overrides = new Map();
+
+    // Wii Shop Channel icon: hide the empty WiiConnect24 recommendation slots
+    // (duplicate "ghost cards" + blank caption text) so the offline icon shows
+    // the bags logo + wordmark on the tiled background. No-op for other layouts.
+    const wiiShop = buildWiiShopIconOverrides(parsed?.results?.icon);
+    if (wiiShop) {
+      for (const [name, visible] of wiiShop) overrides.set(name, visible);
     }
-    // Auto or "gc" — hide the update scene
-    return new Map([["N_DiscUpdateIcon", false]]);
-  }, [showIconSceneOption, iconScene]);
+
+    if (showIconSceneOption) {
+      // Disc Channel icon: hide the inactive scene.
+      overrides.set(iconScene === "update" ? "N_GCIcon" : "N_DiscUpdateIcon", false);
+    }
+
+    return overrides.size > 0 ? overrides : null;
+  }, [parsed, showIconSceneOption, iconScene]);
 
   const iconAnimSelection = useMemo(() => {
     const selection = resolveAnimationSelection(parsed?.results?.icon, effectiveIconRenderState, iconAnimOverride);
