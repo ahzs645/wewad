@@ -19,7 +19,7 @@ const CSS = `
 .wfc .unit{margin-left:14px;display:flex;border:1px solid rgba(190,225,255,.4);border-radius:999px;overflow:hidden;font-size:12px;cursor:pointer}
 .wfc .unit span{padding:4px 10px}
 .wfc .unit .on{background:#bfe6ff;color:#06324f;font-weight:700}
-.wfc .stage{flex:1;display:grid;grid-template-columns:1.4fr 1fr;gap:20px;padding:22px 26px;min-height:0}
+.wfc .stage{flex:1;display:grid;grid-template-columns:1.4fr 1fr;grid-template-rows:minmax(0,1fr);gap:20px;padding:22px 26px;min-height:0}
 .wfc .today{position:relative;border-radius:18px;padding:26px;overflow:hidden;background:linear-gradient(160deg,#15558c,#0a2d4d);border:1px solid rgba(150,210,255,.2);display:flex;flex-direction:column;justify-content:center}
 .wfc .city{font-size:13px;letter-spacing:2px;text-transform:uppercase;color:#bfe6ff}
 .wfc .now{display:flex;align-items:center;gap:20px;margin:14px 0}

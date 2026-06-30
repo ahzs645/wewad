@@ -16,14 +16,15 @@ describe("channelDefinition", () => {
     expect(d.rendering.bindings.ticker).toBe("payload.menuHeadlines[]");
   });
 
-  it("documents Everybody Votes with its distinct container", () => {
+  it("composes a decoded definition for Everybody Votes with its distinct container", () => {
     const d = channelDefinition("everybodyVotes");
-    expect(d.status).toBe("documented");
+    expect(d.status).toBe("decoded");
     // wrapper differs from News/Forecast — the reason per-channel definitions exist.
     expect(d.container.bodyOffset).toBe(0xc0);
     expect(d.container.signatureBytes).toBe(128);
     expect(d.container.containerPrefix.bytes).toBe(12);
     expect(d.meta.files).toContain("voting.bin");
+    expect(d.rendering.renderer).toBe("renderEverybodyVotesChannel");
   });
 
   it("throws for an unknown channel", () => {
