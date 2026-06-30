@@ -54,14 +54,17 @@ export function lz10Decompress(bytes, start = 0) {
 }
 
 /**
- * Unwrap a WC24 signed file: skip the 0x140 signature header and LZ10-decompress
- * the body into the raw container bytes.
+ * Unwrap a WC24-family signed file: skip the signature header and LZ10-decompress
+ * the body into the raw container bytes. `bodyOffset` defaults to the News/Forecast
+ * wrapper's 0x140 but differs for other channels in the family (e.g. Everybody
+ * Votes uses 0xC0 — see layouts.js).
  * @param {Uint8Array} bytes whole .bin file
+ * @param {number} [bodyOffset]
  * @returns {Uint8Array} the decompressed container
  */
-export function unwrapWC24(bytes) {
-  if (bytes.length <= WC24_BODY_OFFSET) {
+export function unwrapWC24(bytes, bodyOffset = WC24_BODY_OFFSET) {
+  if (bytes.length <= bodyOffset) {
     throw new Error("file too small to be a WC24 channel data file");
   }
-  return lz10Decompress(bytes, WC24_BODY_OFFSET);
+  return lz10Decompress(bytes, bodyOffset);
 }

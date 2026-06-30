@@ -4,6 +4,7 @@ import { probeChannelData } from "../../channels/probe.js";
 import { channelDefinition, CHANNEL_DEFINITION_NAMES } from "../../channels/manifest.js";
 import { renderNewsChannel } from "../../channels/renderNewsChannel.js";
 import { renderForecastChannel } from "../../channels/renderForecastChannel.js";
+import { renderEverybodyVotesChannel } from "../../channels/renderEverybodyVotesChannel.js";
 
 function downloadJSON(obj, filename) {
   const blob = new Blob([JSON.stringify(obj, null, 2)], { type: "application/json" });
@@ -15,7 +16,11 @@ function downloadJSON(obj, filename) {
   URL.revokeObjectURL(url);
 }
 
-const RENDERERS = { news: renderNewsChannel, forecast: renderForecastChannel };
+const RENDERERS = {
+  news: renderNewsChannel,
+  forecast: renderForecastChannel,
+  everybodyVotes: renderEverybodyVotesChannel,
+};
 
 // The Channel Data tab: a probing interface for the feeds a channel downloads at
 // runtime (news.bin, forecast.bin). It decodes a file into the shared envelope,
@@ -115,6 +120,7 @@ export function ChannelDataTab({ wadTitleId }) {
             </option>
             <option value="news">News</option>
             <option value="forecast">Forecast</option>
+            <option value="everybodyVotes">Everybody Votes</option>
           </select>
         </label>
 

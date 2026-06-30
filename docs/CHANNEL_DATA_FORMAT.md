@@ -8,8 +8,9 @@ renders: those live *inside* the WAD, while these feeds are downloaded at runtim
 the one envelope they all decode into, and how to add a channel.
 
 > Code lives in [`src/channels/`](../src/channels). News decoding is byte-validated
-> against real server data; Forecast is transcribed from the WiiLink24 generator
-> structs and validated structurally (no live `forecast.bin` was reachable at
+> against real server data; Forecast and Everybody Votes are transcribed from
+> generator references (WiiLink24's structs, RiiConnect24's `votes.py`) and
+> validated structurally (no live `forecast.bin` / `voting.bin` was reachable at
 > authoring time — see [Validation status](#validation-status)).
 
 ## Why a shared format
@@ -40,6 +41,13 @@ header-with-table-descriptors pattern, UTF-16BE strings, minutes-since-2000
 timestamps, and a **Locations** primitive that both channels carry. Only the
 table set differs. That is exactly what the shared format captures.
 
+Everybody Votes is the same WC24 family — LZ10-compressed body, a header of
+(count, offset) table descriptors, a UTF-16BE blob — but its *wrapper* genuinely
+differs (128-byte signature, body at 0xC0, a 12-byte container prefix ahead of
+the header): see [Everybody Votes Channel](#everybody-votes-channel-haj--votingbin)
+below. That's exactly the gap [per-channel definitions](#per-channel-definitions)
+exist to express.
+
 ## The shared envelope
 
 Every decoder returns this (`src/channels/format.js`):
@@ -47,7 +55,7 @@ Every decoder returns this (`src/channels/format.js`):
 ```jsonc
 {
   "format": "wii-channel-data/v1",
-  "channel": "news" | "forecast",   // discriminates `payload`
+  "channel": "news" | "forecast" | "everybodyVotes",   // discriminates `payload`
   "version": 512,                    // raw container version (512 = v2)
   "country": 49,                     // header CountryCode
   "language": 1,                     // header LanguageCode
@@ -93,6 +101,34 @@ Every decoder returns this (`src/channels/format.js`):
   "counts": { "shortForecasts": 1, "uvIndex": 49, "laundryIndex": 49, "pollenCount": 49 }
 }
 ```
+
+### Everybody Votes payload (`channel: "everybodyVotes"`)
+
+```jsonc
+{
+  "questions": [
+    { "scope": "national", "pollId": 101, "opens": "…", "closes": "…",
+      "text": "Do you prefer cats?", "responses": ["Cats", "Dogs"],
+      "translations": [{ "language": 1, "text": "…", "responses": ["…", "…"] }] }
+  ],
+  "results": [
+    { "scope": "national", "pollId": 101,
+      "male": [120, 80], "female": [100, 95], "predictors": [150, 50] }
+  ],
+  // Flat decoded tables (1:1 with votes.py), alongside the resolved views above:
+  "nationalQuestions": [ /* … */ ], "worldwideQuestions": [ /* … */ ],
+  "questionText": [ /* … */ ], "nationalResults": [ /* … */ ],
+  "nationalResultsDetailed": [ /* … */ ], "worldwideResults": [ /* … */ ],
+  "worldwideResultsDetailed": [ /* … */ ], "countryNames": [ /* … */ ],
+  "positions": { "count": 2, "offset": 182, "decoded": false }
+}
+```
+
+`questions[].text`/`.responses` resolve the first available translation; the
+full set (per language) is in `.translations[]`. `positions` (the per-region
+vote breakdown) stays an extension point: each entry is a variable-length raw
+blob keyed by a country's region count, which lives in `voteslists.py` and
+isn't ported here — see [Auto-deriving unknown tables](#auto-deriving-unknown-tables).
 
 ## Binary layouts
 
@@ -165,21 +201,60 @@ direction/speed metric+imperial, UV/laundry/pollen), then a 7-day tail
 (`day{1..7}` condition + high/low °C/°F + precipitation). Field order is mirrored
 exactly in `src/channels/forecast.js`.
 
+### Everybody Votes Channel (`HAJ?`) — `voting.bin`
+
+Unlike News/Forecast, the wrapper itself differs: **128-byte** signature (not
+256), body at **0xC0** (not 0x140), and a **12-byte container prefix**
+(`u32 magic(0)`, `u32 size`, `u32 crc32`) ahead of the header, inside the
+decompressed body. The file ends with a **footer**: 16 zero bytes + ASCII
+`"RIICONNECT24"`.
+
+**Header — 57 bytes, byte-packed (unaligned).** Timestamp `0x00`, CountryCode
+`0x04`, PublicityFlag `0x05`, QuestionVersion `0x06`, ResultVersion `0x07`; then
+(number, offset) descriptors — note several **counts are u8/u16, not u32**:
+National-Question `0x08(u8)/0x09`, Worldwide-Question `0x0D(u8)/0x0E`,
+Question-Text `0x12(u8)/0x13`, National-Result `0x17(u8)/0x18`,
+National-Result-Detailed `0x1C(u16)/0x1E`, Position `0x22(u16)/0x24`,
+Worldwide-Result `0x28(u8)/0x29`, Worldwide-Result-Detailed `0x2D(u16)/0x2F`,
+Country-Name `0x33(u16)/0x35`.
+
+Most tables are *also* addressed indirectly: a question entry's
+`textStart`/`textCount` selects a slice of the global Question-Text table; a
+result's `detailedStart`/`detailedCount` selects a slice of its Detailed table;
+and so on — a (start-index, count) pair into the table the header points at,
+not a second byte offset.
+
+| Table | Entry size | Fields |
+|-------|-----------|--------|
+| National/Worldwide Question | 19 B | `pollId u32, category u8×2, opens u32, closes u32, textCount u8, textStart u32` |
+| Question Text | 13 B | `language u8, questionOffset u32, response1Offset u32, response2Offset u32` (UTF-16BE NUL-terminated in blob) |
+| National Result | 35 B | `pollId u32, male u32×2, female u32×2, predictors u32×2, showVoters u8, detailedFlag u8, detailedCount u8, detailedStart u32` |
+| National Result Detailed | 13 B | `voters u32×2, positionCount u8, positionStart u32` |
+| Worldwide Result | 33 B | `pollId u32, male u32×2, female u32×2, predictors u32×2, detailedCount u8, detailedStart u32` |
+| Worldwide Result Detailed | 26 B | `unknown u32, male u32×2, female u32×2, countryNameCount u16, countryNameStart u32` |
+| Country Name | 5 B | `language u8, textOffset u32` (UTF-16BE NUL-terminated in blob) |
+| Position | variable | per-country raw blob (`binascii.unhexlify` in votes.py) keyed by that country's region count — **not decoded**, see [Auto-deriving unknown tables](#auto-deriving-unknown-tables) |
+
+Field layout transcribed from RiiConnect24's
+`File-Maker/Channels/Everybody_Votes_Channel/votes.py` + `voteslists.py`. Mirrored
+exactly in `src/channels/votes.js`.
+
 ## Module map
 
 | File | Responsibility |
 |------|----------------|
 | `binary.js` | Big-endian readers, UTF-16BE strings, Wii timestamps, coordinate decode |
-| `wc24.js` | WC24 unwrap + LZ10 decompression (shared binary layer) |
+| `wc24.js` | WC24 unwrap + LZ10 decompression (shared binary layer, configurable body offset) |
 | `format.js` | The shared envelope + typedefs |
 | `news.js` | `decodeNews(bytes) → ChannelData` |
 | `forecast.js` | `decodeForecast(bytes) → ChannelData` |
+| `votes.js` | `decodeEverybodyVotes(bytes) → ChannelData` |
 | `index.js` | Registry: `decodeChannelData`, `channelForTitleId`, `CHANNELS` (data-only; no GSAP/DOM) |
-| `layouts.js` | Declarative structural metadata (header fields + table descriptors) |
+| `layouts.js` | Declarative structural metadata (wrapper + crc config + header fields + table descriptors) |
 | `probe.js` | `probeChannelData(bytes) → report` — walks the structure, emits JSON |
 | `infer.js` | `inferTableLayout(...)` — derives entry layouts for unknown tables |
 | `manifest.js` | `channelDefinition(name)` — per-channel definition (structure + rendering) |
-| `renderNewsChannel.js` / `renderForecastChannel.js` | GSAP renderers for each envelope |
+| `renderNewsChannel.js` / `renderForecastChannel.js` / `renderEverybodyVotesChannel.js` | GSAP renderers for each envelope |
 | `*.test.js` | Round-trip decode, probe, inference, and definition checks |
 
 The app surfaces all of this in the **Channel Data** tab
@@ -241,7 +316,7 @@ tab's "Structure" view renders and the `↓ probe.json` button downloads.
 ## Auto-deriving unknown tables
 
 Some tables don't have a known struct yet (the forecast UV/laundry/pollen indices,
-Everybody Votes results, …). `inferTableLayout(container, { offset, count, boundary })`
+Everybody Votes' `positions` table, …). `inferTableLayout(container, { offset, count, boundary })`
 discovers a candidate layout from a real file:
 
 - **entry size** by stride — `(boundary − offset) / count`, where `boundary` is the
@@ -266,25 +341,25 @@ interface — so each has one self-contained **definition** that explains it.
 {
   "format": "wii-channel-definition/v1",
   "channel": "everybodyVotes",
-  "status": "documented",                 // vs "decoded" for News/Forecast
+  "status": "decoded",
   "meta":   { "label": "Everybody Votes Channel", "url": "http://nwcs.wapp.wii.com/",
               "files": ["voting.bin", "first_data.bin"] },
   "container": { "signatureBytes": 128, "bodyOffset": 192,    // ← differs from News/Forecast!
                  "containerPrefix": { "bytes": 12, "fields": "u32 magic(0), u32 size, u32 crc32" }, … },
   "header":  [ /* field offsets/types */ ],
-  "tables":  [ /* descriptors */ ],
+  "tables":  [ /* descriptors, incl. per-table countType (u8/u16/u32) */ ],
   "envelopeSchema": { /* decoded shape */ },
-  "rendering": { "renderer": "renderNewsChannel",
-                 "bindings": { "ticker": "payload.menuHeadlines[]", … } }   // data → UI
+  "rendering": { "renderer": "renderEverybodyVotesChannel",
+                 "bindings": { "question": "payload.questions[].text", … } }   // data → UI
 }
 ```
 
 The `rendering` block maps decoded-envelope fields to interface roles, so a host can
-drive a channel from its definition alone. **News** and **Forecast** are `decoded`
-(composed from the live layout + schema); **Everybody Votes** is `documented` from
-RiiConnect24's `votes.py` — note its wrapper (128-byte signature, 0xC0 body, 12-byte
-container prefix) differs from News/Forecast (RSA-2048 at 0x140), which is exactly why
-definitions are per-channel.
+drive a channel from its definition alone. All three channels are `decoded` (composed
+from the live layout + decoder + schema in `layouts.js`/`manifest.js`) — note
+Everybody Votes' wrapper (128-byte signature, 0xC0 body, 12-byte container prefix,
+several u8/u16 table counts) differs from News/Forecast (RSA-2048 at 0x140, all-u32
+counts), which is exactly why definitions are per-channel.
 
 ## Adding a new channel
 
@@ -297,8 +372,9 @@ definitions are per-channel.
    Reuse `unwrapWC24`, the `binary.js` readers, and `createChannelData`. Put any
    cities into the shared `locations` array; channel-specific data under `payload`.
 4. Register it in `index.js` (`CHANNELS`) with its title-code prefix.
-5. Add its structural metadata to `layouts.js` (header fields + table descriptors)
-   so `probe.js` and the Channel Data tab can introspect it.
+5. Add its structural metadata to `layouts.js` (wrapper, crc config, header fields,
+   table descriptors — set `countType` per table if a count isn't u32) so `probe.js`
+   and the Channel Data tab can introspect it.
 6. Add a fixture + test (decode known values; cross-check the probe).
 7. Add a renderer if it needs one (or extend the envelope a shared renderer reads).
 
@@ -314,6 +390,15 @@ definitions are per-channel.
   offsets, strides and endianness. It does **not** check values against live
   weather data (no public `forecast.bin` was reachable), so plug in a real file
   to confirm semantics end-to-end.
+- **Everybody Votes** — same approach as Forecast: the fixture
+  (`__fixtures__/sample-everybody-votes.bin`) is built directly to the layout
+  transcribed from RiiConnect24's `votes.py`/`voteslists.py` (header fields, all
+  nine table entry sizes, the 128-byte-signature/0xC0-body/12-byte-prefix
+  wrapper), LZ10-compressed and wrapped the same way a real `voting.bin` is, then
+  decoded by this module (`votes.test.js`) — including a CRC32 check, which
+  validates the prefix/header/table boundary math. It does **not** check values
+  against a real poll (no live `voting.bin` was reachable), and `positions` (the
+  per-region breakdown) stays undecoded — see [Everybody Votes payload](#everybody-votes-payload-channel-everybodyvotes).
 
 ## Sources
 

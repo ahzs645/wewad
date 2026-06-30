@@ -45,4 +45,25 @@ describe("probeChannelData", () => {
     expect(r.schema.properties.channel.const).toBe("forecast");
     expect(r.schema.properties.payload.properties).toHaveProperty("forecasts");
   });
+
+  it("reports the Everybody Votes container structure through its distinct wrapper", () => {
+    const r = probeChannelData(load("sample-everybody-votes.bin"), { channel: "everybodyVotes" });
+    expect(r.file.wrapper).toMatchObject({ bodyOffset: 0xc0, signatureBytes: 128, compression: "LZ10" });
+    // crc32 lives in the 12-byte prefix ahead of the header, not inside it —
+    // still validates against the post-prefix container, per votes.py.
+    expect(r.container.crc32.valid).toBe(true);
+
+    const byName = Object.fromEntries(r.tables.map((t) => [t.name, t]));
+    // counts are not all u32 in this format (several are u8/u16) — confirms
+    // probe.js reads each table's count at its declared width.
+    expect(byName.nationalQuestions).toMatchObject({ count: 1, entrySize: 19 });
+    expect(byName.nationalResultsDetailed).toMatchObject({ count: 1, entrySize: 13 });
+    expect(byName.countryNames).toMatchObject({ count: 2, entrySize: 5 });
+    expect(byName.countryNames.samples[1]).toMatchObject({ name: "USA" });
+
+    // positions is a genuine extension point (variable entry size); the probe
+    // still infers a candidate stride from the file.
+    expect(byName.positions.entrySize).toBeNull();
+    expect(byName.positions.inferred?.entrySize).toBe(4);
+  });
 });

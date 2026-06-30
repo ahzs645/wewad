@@ -8,8 +8,8 @@
 // rows is delegated to the channel decoders (one source of truth); this module
 // adds the structural layer from layouts.js.
 
-import { u8, u32, wiiMinutesToISO, crc32 } from "./binary.js";
-import { unwrapWC24, WC24_BODY_OFFSET, LZ10_MAGIC } from "./wc24.js";
+import { u8, u16, u32, wiiMinutesToISO, crc32 } from "./binary.js";
+import { unwrapWC24, LZ10_MAGIC } from "./wc24.js";
 import { decodeChannelData, channelForTitleId } from "./index.js";
 import { CHANNEL_LAYOUTS } from "./layouts.js";
 import { inferTableLayout, tableBoundary } from "./infer.js";
@@ -25,6 +25,14 @@ function hex(bytes, start, end) {
 }
 
 const hex32 = (n) => "0x" + (n >>> 0).toString(16).padStart(8, "0").toUpperCase();
+
+// Read a table's count field at its declared width — News/Forecast counts are
+// all u32, but Everybody Votes packs several as u8/u16 (see layouts.js).
+function readCount(container, offset, type) {
+  if (type === "u8") return u8(container, offset);
+  if (type === "u16") return u16(container, offset);
+  return u32(container, offset);
+}
 
 function readHeaderField(container, field) {
   switch (field.type) {
@@ -103,6 +111,40 @@ export function envelopeSchema(channel) {
         counts: { type: "object" },
       },
     },
+    everybodyVotes: {
+      type: "object",
+      properties: {
+        questions: {
+          type: "array",
+          items: {
+            type: "object",
+            properties: {
+              scope: { enum: ["national", "worldwide"] },
+              pollId: { type: "integer" },
+              opens: { type: ["string", "null"] },
+              closes: { type: ["string", "null"] },
+              text: { type: ["string", "null"] },
+              responses: { type: "array", items: { type: "string" } },
+              translations: { type: "array" },
+            },
+          },
+        },
+        results: {
+          type: "array",
+          items: {
+            type: "object",
+            properties: {
+              scope: { enum: ["national", "worldwide"] },
+              pollId: { type: "integer" },
+              male: { type: "array", items: { type: "integer" } },
+              female: { type: "array", items: { type: "integer" } },
+              predictors: { type: "array", items: { type: "integer" } },
+            },
+          },
+        },
+        positions: { type: "object", properties: { count: { type: "integer" }, offset: { type: "integer" }, decoded: { const: false } } },
+      },
+    },
   };
   return {
     $schema: "http://json-schema.org/draft-07/schema#",
@@ -136,11 +178,20 @@ export function probeChannelData(fileBytes, { channel, titleId, sampleLimit = 2 
     throw new Error(`probe: unknown channel${name ? ` "${name}"` : ""}`);
   }
 
-  const container = unwrapWC24(fileBytes);
+  const wrapper = layout.wrapper;
+  // Some channels (Everybody Votes) have a small framing prefix ahead of the
+  // header, inside the decompressed body — strip it so header/table offsets
+  // below are relative to "header at offset 0", same as News/Forecast.
+  const decompressed = unwrapWC24(fileBytes, wrapper.bodyOffset);
+  const prefixBytes = wrapper.containerPrefix?.bytes ?? 0;
+  const container = prefixBytes ? decompressed.subarray(prefixBytes) : decompressed;
   const decoded = decodeChannelData(fileBytes, { channel: name });
 
-  const storedCrc = u32(container, 8);
-  const computedCrc = crc32(container, 12);
+  // CRC32 either lives inside the header itself (News/Forecast) or in the
+  // stripped prefix (Everybody Votes) — see layouts.js's CRC_IN_* configs.
+  const crcCfg = layout.crc;
+  const storedCrc = u32(crcCfg.scope === "prefix" ? decompressed : container, crcCfg.at);
+  const computedCrc = crc32(container, crcCfg.computedFrom);
 
   const headerFields = layout.headerFields.map((field) => readHeaderField(container, field));
 
@@ -148,13 +199,13 @@ export function probeChannelData(fileBytes, { channel, titleId, sampleLimit = 2 
   const allOffsets = layout.tables.map((def) => u32(container, def.offsetOffset)).filter((o) => o > 0);
   for (const def of layout.tables) {
     if (def.entrySize != null) {
-      coveredBytes += u32(container, def.countOffset) * def.entrySize;
+      coveredBytes += readCount(container, def.countOffset, def.countType) * def.entrySize;
     }
   }
   const blobOffset = coveredBytes <= container.length ? coveredBytes : null;
 
   const tables = layout.tables.map((def) => {
-    const count = u32(container, def.countOffset);
+    const count = readCount(container, def.countOffset, def.countType);
     const offset = u32(container, def.offsetOffset);
     const totalBytes = def.entrySize != null ? count * def.entrySize : null;
     const rows = def.topKey ? decoded[def.topKey] : def.payloadKey ? decoded.payload?.[def.payloadKey] : null;
@@ -169,7 +220,7 @@ export function probeChannelData(fileBytes, { channel, titleId, sampleLimit = 2 
         : null;
     return {
       name: def.name,
-      descriptor: { countOffset: def.countOffset, offsetOffset: def.offsetOffset },
+      descriptor: { countOffset: def.countOffset, offsetOffset: def.offsetOffset, countType: def.countType },
       count,
       offset,
       entrySize: def.entrySize,
@@ -187,10 +238,10 @@ export function probeChannelData(fileBytes, { channel, titleId, sampleLimit = 2 
     file: {
       size: fileBytes.length,
       wrapper: {
-        signatureHeaderBytes: 64,
-        signatureBytes: 256,
-        bodyOffset: WC24_BODY_OFFSET,
-        compression: u8(fileBytes, WC24_BODY_OFFSET) === LZ10_MAGIC ? "LZ10" : "unknown",
+        signatureHeaderBytes: wrapper.reservedBytes,
+        signatureBytes: wrapper.signatureBytes,
+        bodyOffset: wrapper.bodyOffset,
+        compression: u8(fileBytes, wrapper.bodyOffset) === LZ10_MAGIC ? "LZ10" : "unknown",
       },
     },
     container: {

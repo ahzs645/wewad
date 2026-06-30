@@ -5,14 +5,17 @@
 
 import { decodeNews } from "./news.js";
 import { decodeForecast } from "./forecast.js";
+import { decodeEverybodyVotes } from "./votes.js";
 
 export { decodeNews } from "./news.js";
 export { decodeForecast } from "./forecast.js";
+export { decodeEverybodyVotes } from "./votes.js";
 export { unwrapWC24, lz10Decompress } from "./wc24.js";
 export { CHANNEL_DATA_FORMAT, createChannelData } from "./format.js";
 
 // The 4-char ASCII game code's first 3 chars identify the channel; the 4th is the
-// region (E=USA, J=Japan, P=Europe, ...). News = HAG?, Forecast = HAF?.
+// region (E=USA, J=Japan, P=Europe, ...). News = HAG?, Forecast = HAF?, Everybody
+// Votes = HAJ?.
 export const CHANNELS = {
   news: {
     decode: decodeNews,
@@ -25,6 +28,12 @@ export const CHANNELS = {
     titlePrefix: "HAF",
     files: ["forecast.bin", "short.bin"],
     label: "Forecast Channel",
+  },
+  everybodyVotes: {
+    decode: decodeEverybodyVotes,
+    titlePrefix: "HAJ",
+    files: ["voting.bin", "first_data.bin"],
+    label: "Everybody Votes Channel",
   },
 };
 
