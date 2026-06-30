@@ -7,11 +7,10 @@ renders: those live *inside* the WAD, while these feeds are downloaded at runtim
 (`news.bin`, `forecast.bin`, …). This doc describes the on-disk binary layouts,
 the one envelope they all decode into, and how to add a channel.
 
-> Code lives in [`src/channels/`](../src/channels). News decoding is byte-validated
-> against real server data; Forecast and Everybody Votes are transcribed from
-> generator references (WiiLink24's structs, RiiConnect24's `votes.py`) and
-> validated structurally (no live `forecast.bin` / `voting.bin` was reachable at
-> authoring time — see [Validation status](#validation-status)).
+> Code lives in [`src/channels/`](../src/channels). News and Forecast are
+> byte-validated against real server data; Everybody Votes is transcribed from
+> a generator reference (RiiConnect24's `votes.py`) and validated structurally
+> (no live `voting.bin` was reachable — see [Validation status](#validation-status)).
 
 ## Why a shared format
 
@@ -194,12 +193,16 @@ pad `u16`. Coordinates are scaled int16: **`degrees = raw × 0.0054931640625`**
 **Weather-condition entry — 8 bytes:** `Code1 u16`, `Code2 u16`,
 `TextOffset u32` (NUL-terminated UTF-16BE name).
 
-**Long-forecast entry — 121 bytes:** location key (`country/region/location`),
+**Long-forecast entry — 128 bytes:** location key (`country/region/location`),
 two timestamps, today & tomorrow blocks (forecast condition + four 6-hour codes,
 high/low in °C and °F with difference bytes, four precipitation bytes, wind
 direction/speed metric+imperial, UV/laundry/pollen), then a 7-day tail
-(`day{1..7}` condition + high/low °C/°F + precipitation). Field order is mirrored
-exactly in `src/channels/forecast.js`.
+(`day{1..7}` condition + high/low °C/°F + precipitation + **1 pad byte**).
+Field order is mirrored exactly in `src/channels/forecast.js` (Go's
+`LongForecastTable` leaves an explicit `_ uint8` after each day's
+`Precipitation` — easy to miss since it doesn't affect `today`/`tomorrow`, only
+the 7-day tail from day 2 onward; see
+[Validation status](#validation-status)).
 
 ### Everybody Votes Channel (`HAJ?`) — `voting.bin`
 
@@ -382,14 +385,17 @@ counts), which is exactly why definitions are per-channel.
 
 - **News** — byte-validated end-to-end against live server data
   (`news.bin.00`) and a self-generated fixture; the decode round-trips.
-- **Forecast** — validated by a **round-trip against the canonical structs**:
-  the fixture (`__fixtures__/sample-forecast.bin`) is produced by serializing the
-  WiiLink24/ForecastChannel structs with Go's `encoding/binary`, then decoded by
-  this module (`forecast.test.js`). That confirms the header, locations (incl.
-  the int16 coordinate scale), conditions and the full long-forecast layout —
-  offsets, strides and endianness. It does **not** check values against live
-  weather data (no public `forecast.bin` was reachable), so plug in a real file
-  to confirm semantics end-to-end.
+- **Forecast** — byte-validated end-to-end against **live data**: the fixture
+  (`__fixtures__/sample-forecast.bin`) is a real `forecast.bin` fetched from a
+  WiiLink WC24 revival server (Japan region), CRC32-verified, 653 locations /
+  283 forecast entries (`forecast.test.js`). This replaced an earlier
+  self-generated fixture (built from the WiiLink24/ForecastChannel Go structs
+  but only checked one entry's first 7-day-tail day) and caught a real bug:
+  the long-forecast entry is **128 bytes, not 121** — Go's `LongForecastTable`
+  leaves a 1-byte pad after each day's `Precipitation` field in the 7-day
+  tail, which the old fixture's single-entry check never exercised. Every
+  entry's full 7-day tail now decodes to plausible values (was producing
+  nulls/impossible temperatures like -59°C past day 1 before the fix).
 - **Everybody Votes** — same approach as Forecast: the fixture
   (`__fixtures__/sample-everybody-votes.bin`) is built directly to the layout
   transcribed from RiiConnect24's `votes.py`/`voteslists.py` (header fields, all

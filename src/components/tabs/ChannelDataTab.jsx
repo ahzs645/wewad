@@ -168,7 +168,11 @@ export function ChannelDataTab({ wadTitleId }) {
             ))}
           </div>
 
-          {view === "render" ? <div className="channel-render" ref={mountRef} /> : null}
+          {view === "render" ? (
+            <div className="channel-render">
+              <div ref={mountRef} style={{ width: "100%", height: "100%" }} />
+            </div>
+          ) : null}
 
           {view === "structure" && report ? <StructureReport report={report} /> : null}
 

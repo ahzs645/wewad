@@ -13,9 +13,9 @@ describe("probeChannelData", () => {
     expect(r.container.crc32.valid).toBe(true);
 
     const byName = Object.fromEntries(r.tables.map((t) => [t.name, t]));
-    expect(byName.articles).toMatchObject({ count: 3, entrySize: 44 });
-    expect(byName.menuHeadlines).toMatchObject({ count: 3, entrySize: 8 });
-    expect(byName.articles.samples[0].headline).toContain("WiiNewsPR custom headline");
+    expect(byName.articles).toMatchObject({ count: 7, entrySize: 44 });
+    expect(byName.menuHeadlines).toMatchObject({ count: 7, entrySize: 8 });
+    expect(byName.articles.samples[0].headline).toContain("Supreme Court ruling");
     expect(byName.articles.firstEntryHex).toMatch(/^[0-9a-f ]+$/);
   });
 
@@ -25,11 +25,11 @@ describe("probeChannelData", () => {
     expect(r.container.crc32.valid).toBe(true);
 
     const byName = Object.fromEntries(r.tables.map((t) => [t.name, t]));
-    expect(byName.locations).toMatchObject({ count: 2, entrySize: 24 });
-    expect(byName.longForecast).toMatchObject({ count: 2, entrySize: 121 });
-    // samples are capped (default sampleLimit 2) even though count is 3.
-    expect(byName.weatherConditions.count).toBe(3);
-    expect(byName.weatherConditions.samples.map((c) => c.name)).toEqual(["Sunny", "Cloudy"]);
+    expect(byName.locations).toMatchObject({ count: 653, entrySize: 24 });
+    expect(byName.longForecast).toMatchObject({ count: 283, entrySize: 128 });
+    // samples are capped (default sampleLimit 2) even though count is 80.
+    expect(byName.weatherConditions.count).toBe(80);
+    expect(byName.weatherConditions.samples.map((c) => c.name)).toEqual(["Sunny", "Sunny"]);
   });
 
   it("annotates header fields and interprets timestamps", () => {

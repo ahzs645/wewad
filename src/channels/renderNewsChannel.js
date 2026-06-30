@@ -17,12 +17,12 @@ const CSS = `
 .wcn .logo{width:34px;height:34px;border-radius:50%;background:conic-gradient(from 0deg,#1fa2ff,#36c6ff,#0e6,#1fa2ff);box-shadow:0 0 18px #1fa2ff88}
 .wcn h1{font-size:20px;font-weight:700;letter-spacing:.5px}
 .wcn .updated{margin-left:auto;font-size:12px;opacity:.7}
-.wcn .stage{flex:1;display:grid;grid-template-columns:1.3fr 1fr;gap:20px;padding:22px 26px;min-height:0}
-.wcn .feature{position:relative;display:flex;flex-direction:column;justify-content:flex-end;border-radius:18px;padding:26px;overflow:hidden;background:linear-gradient(160deg,#0c2b50,#071a32);border:1px solid rgba(54,198,255,.2)}
+.wcn .stage{flex:1;display:grid;grid-template-columns:1.3fr 1fr;grid-template-rows:minmax(0,1fr);gap:20px;padding:22px 26px;min-height:0}
+.wcn .feature{position:relative;display:flex;flex-direction:column;justify-content:center;border-radius:18px;padding:26px;overflow:hidden;background:linear-gradient(160deg,#0c2b50,#071a32);border:1px solid rgba(54,198,255,.2)}
 .wcn .globe{position:absolute;top:-60px;right:-50px;width:230px;height:230px;border-radius:50%;background:radial-gradient(circle at 35% 30%,#5fd0ff,#0a63a8 60%,#03203b);box-shadow:0 0 60px #1fa2ff55,inset -18px -18px 40px #00131f99;opacity:.85}
 .wcn .kicker{font-size:12px;letter-spacing:2px;color:#36c6ff;text-transform:uppercase}
-.wcn .feature h2{font-size:30px;line-height:1.18;margin:10px 0 14px;max-width:90%}
-.wcn .feature p{font-size:15px;line-height:1.5;opacity:.86;max-width:95%}
+.wcn .feature h2{font-size:30px;line-height:1.18;margin:10px 0 14px;max-width:90%;display:-webkit-box;-webkit-box-orient:vertical;-webkit-line-clamp:2;overflow:hidden}
+.wcn .feature p{font-size:15px;line-height:1.5;opacity:.86;max-width:95%;display:-webkit-box;-webkit-box-orient:vertical;-webkit-line-clamp:3;overflow:hidden}
 .wcn .feature .meta{margin-top:16px;font-size:12px;opacity:.6}
 .wcn .list{display:flex;flex-direction:column;gap:8px;overflow:auto;padding-right:6px}
 .wcn .item{padding:12px 14px;border-radius:12px;cursor:pointer;background:rgba(255,255,255,.03);border:1px solid rgba(255,255,255,.06);font-size:14px;line-height:1.35}

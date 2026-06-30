@@ -29,7 +29,7 @@ import { createChannelData } from "./format.js";
 
 const LOCATION_ENTRY_SIZE = 24;
 const CONDITION_ENTRY_SIZE = 8;
-const LONG_FORECAST_ENTRY_SIZE = 121;
+const LONG_FORECAST_ENTRY_SIZE = 128;
 
 function readLocation(c, base) {
   return {
@@ -53,7 +53,10 @@ function readCondition(c, base) {
 }
 
 // Ordered field layout of LongForecastTable (WiiLink24/ForecastChannel), used to
-// walk each fixed 121-byte entry. Generated to exactly mirror the Go struct.
+// walk each fixed 128-byte entry. Mirrors the Go struct exactly, including the
+// 1-byte pad field Go leaves after each 7-day-tail day's Precipitation (each day
+// is 8 bytes, not 6 — easy to miss since it doesn't affect today/tomorrow, only
+// causes the 7-day tail to drift after day 1).
 function longForecastFields() {
   const f = [
     ["countryCode", "u8"],
@@ -95,6 +98,7 @@ function longForecastFields() {
       [`day${d}HighF`, "i8"],
       [`day${d}LowF`, "i8"],
       [`day${d}Precip`, "i8"],
+      [`day${d}Pad`, "u8"],
     );
   }
   return f;

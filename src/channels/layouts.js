@@ -83,7 +83,7 @@ export const CHANNEL_LAYOUTS = {
       f(25, "u8", "temperatureFlag"),
     ],
     tables: [
-      table("longForecast", 32, 36, 121, { payloadKey: "forecasts" }),
+      table("longForecast", 32, 36, 128, { payloadKey: "forecasts" }),
       table("shortForecast", 40, 44, null),
       table("weatherConditions", 48, 52, 8, { payloadKey: "conditions" }),
       table("uvIndex", 56, 60, null),
