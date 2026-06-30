@@ -377,3 +377,47 @@
   font-size: 0.7rem;
 }
 
+.cd-definitions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 16px;
+  padding: 10px 14px;
+  border: 1px dashed var(--border-subtle);
+  border-radius: 8px;
+}
+
+.cd-definitions-label {
+  color: var(--text-secondary);
+  font-size: 0.74rem;
+  margin-right: 4px;
+}
+
+.cd-inferred {
+  margin: 6px 0;
+  padding: 8px 10px;
+  border-left: 2px solid var(--accent-secondary);
+  background: var(--bg-input);
+  border-radius: 0 6px 6px 0;
+}
+
+.cd-inferred-head {
+  color: var(--accent-secondary);
+  font-family: "JetBrains Mono", monospace;
+  font-size: 0.68rem;
+  font-weight: 600;
+  margin-bottom: 4px;
+}
+
+.cd-inferred-slot {
+  color: var(--text-secondary);
+  font-family: "JetBrains Mono", monospace;
+  font-size: 0.64rem;
+  line-height: 1.5;
+}
+
+.cd-slot-type {
+  color: var(--accent-primary);
+}
+

@@ -177,9 +177,10 @@ exactly in `src/channels/forecast.js`.
 | `index.js` | Registry: `decodeChannelData`, `channelForTitleId`, `CHANNELS` (data-only; no GSAP/DOM) |
 | `layouts.js` | Declarative structural metadata (header fields + table descriptors) |
 | `probe.js` | `probeChannelData(bytes) → report` — walks the structure, emits JSON |
-| `renderNewsChannel.js` | GSAP renderer consuming the News envelope |
-| `renderForecastChannel.js` | GSAP renderer consuming the Forecast envelope |
-| `news.test.js` / `forecast.test.js` / `probe.test.js` | Round-trip decode + probe checks |
+| `infer.js` | `inferTableLayout(...)` — derives entry layouts for unknown tables |
+| `manifest.js` | `channelDefinition(name)` — per-channel definition (structure + rendering) |
+| `renderNewsChannel.js` / `renderForecastChannel.js` | GSAP renderers for each envelope |
+| `*.test.js` | Round-trip decode, probe, inference, and definition checks |
 
 The app surfaces all of this in the **Channel Data** tab
 (`src/components/tabs/ChannelDataTab.jsx`): load a `.bin`/`.json`, auto-detect the
@@ -236,6 +237,54 @@ The structural metadata it walks (header field offsets/types + table descriptors
 lives in `layouts.js`; the decoded `samples` come from the channel decoder, so the
 two are cross-checked (`probe.test.js`). The report is what the **Channel Data**
 tab's "Structure" view renders and the `↓ probe.json` button downloads.
+
+## Auto-deriving unknown tables
+
+Some tables don't have a known struct yet (the forecast UV/laundry/pollen indices,
+Everybody Votes results, …). `inferTableLayout(container, { offset, count, boundary })`
+discovers a candidate layout from a real file:
+
+- **entry size** by stride — `(boundary − offset) / count`, where `boundary` is the
+  next table's offset (or the blob start);
+- **per-slot classification** — each 4-byte slot across all entries is tagged
+  `constant` / `smallInt` / `pointer?` (value lands inside the container — likely a
+  blob offset) / `timestamp?` / `u32`, with sample values.
+
+The probe runs this automatically for any `extension point` table that has rows and
+attaches an `inferred` block. It's a discovery aid (4-byte granularity, heuristic) —
+confirm a candidate against a few files, then promote it to a real field list in the
+decoder + `layouts.js`. Validated against known tables in `infer.test.js` (e.g. it
+recovers the 24-byte forecast location entry and flags its three string pointers).
+
+## Per-channel definitions
+
+Each channel differs — different URL, container wrapper, tables, and on-screen
+interface — so each has one self-contained **definition** that explains it.
+`channelDefinition(name)` returns it; the Channel Data tab downloads one per channel:
+
+```jsonc
+{
+  "format": "wii-channel-definition/v1",
+  "channel": "everybodyVotes",
+  "status": "documented",                 // vs "decoded" for News/Forecast
+  "meta":   { "label": "Everybody Votes Channel", "url": "http://nwcs.wapp.wii.com/",
+              "files": ["voting.bin", "first_data.bin"] },
+  "container": { "signatureBytes": 128, "bodyOffset": 192,    // ← differs from News/Forecast!
+                 "containerPrefix": { "bytes": 12, "fields": "u32 magic(0), u32 size, u32 crc32" }, … },
+  "header":  [ /* field offsets/types */ ],
+  "tables":  [ /* descriptors */ ],
+  "envelopeSchema": { /* decoded shape */ },
+  "rendering": { "renderer": "renderNewsChannel",
+                 "bindings": { "ticker": "payload.menuHeadlines[]", … } }   // data → UI
+}
+```
+
+The `rendering` block maps decoded-envelope fields to interface roles, so a host can
+drive a channel from its definition alone. **News** and **Forecast** are `decoded`
+(composed from the live layout + schema); **Everybody Votes** is `documented` from
+RiiConnect24's `votes.py` — note its wrapper (128-byte signature, 0xC0 body, 12-byte
+container prefix) differs from News/Forecast (RSA-2048 at 0x140), which is exactly why
+definitions are per-channel.
 
 ## Adding a new channel
 

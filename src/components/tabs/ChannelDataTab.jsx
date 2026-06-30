@@ -1,8 +1,19 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { decodeChannelData, channelForTitleId, CHANNELS } from "../../channels/index.js";
 import { probeChannelData } from "../../channels/probe.js";
+import { channelDefinition, CHANNEL_DEFINITION_NAMES } from "../../channels/manifest.js";
 import { renderNewsChannel } from "../../channels/renderNewsChannel.js";
 import { renderForecastChannel } from "../../channels/renderForecastChannel.js";
+
+function downloadJSON(obj, filename) {
+  const blob = new Blob([JSON.stringify(obj, null, 2)], { type: "application/json" });
+  const url = URL.createObjectURL(blob);
+  const link = document.createElement("a");
+  link.href = url;
+  link.download = filename;
+  link.click();
+  URL.revokeObjectURL(url);
+}
 
 const RENDERERS = { news: renderNewsChannel, forecast: renderForecastChannel };
 
@@ -72,15 +83,7 @@ export function ChannelDataTab({ wadTitleId }) {
   }, [decoded, view]);
 
   const download = useCallback(
-    (obj, suffix) => {
-      const blob = new Blob([JSON.stringify(obj, null, 2)], { type: "application/json" });
-      const url = URL.createObjectURL(blob);
-      const link = document.createElement("a");
-      link.href = url;
-      link.download = `${(fileName || "channel").replace(/\.[^.]+$/, "")}.${suffix}.json`;
-      link.click();
-      URL.revokeObjectURL(url);
-    },
+    (obj, suffix) => downloadJSON(obj, `${(fileName || "channel").replace(/\.[^.]+$/, "")}.${suffix}.json`),
     [fileName],
   );
 
@@ -125,6 +128,20 @@ export function ChannelDataTab({ wadTitleId }) {
             ↓ probe.json
           </button>
         </div>
+      </div>
+
+      <div className="cd-definitions">
+        <span className="cd-definitions-label">Channel definitions (structure + rendering):</span>
+        {CHANNEL_DEFINITION_NAMES.map((name) => (
+          <button
+            key={name}
+            type="button"
+            className="cd-btn ghost"
+            onClick={() => downloadJSON(channelDefinition(name), `${name}.definition.json`)}
+          >
+            ↓ {name}.json
+          </button>
+        ))}
       </div>
 
       {error ? <div className="cd-error">Could not decode as {resolveChannel()}: {error}</div> : null}
@@ -208,6 +225,18 @@ function StructureReport({ report }) {
             </div>
             {table.firstEntryHex ? <div className="cd-hex">{table.firstEntryHex}</div> : null}
             {table.entrySize == null ? <div className="cd-note">{table.decoded}</div> : null}
+            {table.inferred?.entrySize ? (
+              <div className="cd-inferred">
+                <div className="cd-inferred-head">inferred entry: {table.inferred.entrySize} B</div>
+                {table.inferred.slots.map((slot) => (
+                  <div key={slot.offset} className="cd-inferred-slot">
+                    <span>@{slot.offset}</span> <span className="cd-slot-type">{slot.type}</span>
+                    {slot.value !== undefined ? ` =${slot.value}` : ` [${slot.sampleValues.join(", ")}]`}
+                  </div>
+                ))}
+              </div>
+            ) : null}
+            {table.inferred?.note ? <div className="cd-note">{table.inferred.note}</div> : null}
             {table.samples?.length ? (
               <pre className="cd-sample">{JSON.stringify(table.samples[0], null, 1)}</pre>
             ) : null}

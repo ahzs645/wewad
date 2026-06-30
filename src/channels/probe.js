@@ -12,6 +12,7 @@ import { u8, u32, wiiMinutesToISO, crc32 } from "./binary.js";
 import { unwrapWC24, WC24_BODY_OFFSET, LZ10_MAGIC } from "./wc24.js";
 import { decodeChannelData, channelForTitleId } from "./index.js";
 import { CHANNEL_LAYOUTS } from "./layouts.js";
+import { inferTableLayout, tableBoundary } from "./infer.js";
 
 const PROBE_FORMAT = "wii-channel-data-probe/v1";
 
@@ -42,7 +43,7 @@ function readHeaderField(container, field) {
 
 // Compact JSON Schema for the decoded envelope, per channel. This is the
 // "how we should work with the entries" artifact callers can save and target.
-function envelopeSchema(channel) {
+export function envelopeSchema(channel) {
   const location = {
     type: "object",
     properties: {
@@ -144,14 +145,28 @@ export function probeChannelData(fileBytes, { channel, titleId, sampleLimit = 2 
   const headerFields = layout.headerFields.map((field) => readHeaderField(container, field));
 
   let coveredBytes = layout.headerSize;
+  const allOffsets = layout.tables.map((def) => u32(container, def.offsetOffset)).filter((o) => o > 0);
+  for (const def of layout.tables) {
+    if (def.entrySize != null) {
+      coveredBytes += u32(container, def.countOffset) * def.entrySize;
+    }
+  }
+  const blobOffset = coveredBytes <= container.length ? coveredBytes : null;
+
   const tables = layout.tables.map((def) => {
     const count = u32(container, def.countOffset);
     const offset = u32(container, def.offsetOffset);
     const totalBytes = def.entrySize != null ? count * def.entrySize : null;
-    if (totalBytes != null) {
-      coveredBytes += totalBytes;
-    }
     const rows = def.topKey ? decoded[def.topKey] : def.payloadKey ? decoded.payload?.[def.payloadKey] : null;
+    // For tables we can't decode yet, try to infer their entry layout from the file.
+    const inferred =
+      def.entrySize == null && count > 0
+        ? inferTableLayout(container, {
+            offset,
+            count,
+            boundary: tableBoundary(offset, allOffsets, blobOffset, container.length),
+          })
+        : null;
     return {
       name: def.name,
       descriptor: { countOffset: def.countOffset, offsetOffset: def.offsetOffset },
@@ -162,6 +177,7 @@ export function probeChannelData(fileBytes, { channel, titleId, sampleLimit = 2 
       decoded: def.entrySize == null ? "not decoded (extension point)" : "decoded",
       firstEntryHex: def.entrySize && count > 0 ? hex(container, offset, offset + Math.min(def.entrySize, 48)) : null,
       samples: Array.isArray(rows) ? rows.slice(0, sampleLimit) : null,
+      inferred,
     };
   });
 
@@ -182,8 +198,8 @@ export function probeChannelData(fileBytes, { channel, titleId, sampleLimit = 2 
       headerSize: layout.headerSize,
       version: u32(container, 0),
       crc32: { stored: hex32(storedCrc), computed: hex32(computedCrc), valid: storedCrc === computedCrc },
-      blobOffset: coveredBytes <= container.length ? coveredBytes : null,
-      blobBytes: coveredBytes <= container.length ? container.length - coveredBytes : null,
+      blobOffset,
+      blobBytes: blobOffset != null ? container.length - blobOffset : null,
     },
     header: { fields: headerFields },
     tables,
