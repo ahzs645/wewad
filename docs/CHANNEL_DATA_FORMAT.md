@@ -175,9 +175,16 @@ exactly in `src/channels/forecast.js`.
 | `news.js` | `decodeNews(bytes) → ChannelData` |
 | `forecast.js` | `decodeForecast(bytes) → ChannelData` |
 | `index.js` | Registry: `decodeChannelData`, `channelForTitleId`, `CHANNELS` (data-only; no GSAP/DOM) |
+| `layouts.js` | Declarative structural metadata (header fields + table descriptors) |
+| `probe.js` | `probeChannelData(bytes) → report` — walks the structure, emits JSON |
 | `renderNewsChannel.js` | GSAP renderer consuming the News envelope |
 | `renderForecastChannel.js` | GSAP renderer consuming the Forecast envelope |
-| `news.test.js` / `forecast.test.js` | Round-trip decode of a fixture |
+| `news.test.js` / `forecast.test.js` / `probe.test.js` | Round-trip decode + probe checks |
+
+The app surfaces all of this in the **Channel Data** tab
+(`src/components/tabs/ChannelDataTab.jsx`): load a `.bin`/`.json`, auto-detect the
+channel from the loaded WAD's title, then render it (GSAP), inspect the probed
+structure, and download the decoded envelope or the probe report as JSON.
 
 > The decoders (`index.js` and everything it re-exports) are GSAP/DOM-free so
 > they run anywhere, including Node and tests. The renderers depend on `gsap` and
@@ -199,6 +206,37 @@ if (data.channel === "news") {
 `fileBytes` is the raw `news.bin.NN` / `forecast.bin` as a `Uint8Array`. The
 decoder does **not** verify the RSA signature (reading only needs the LZ10 body).
 
+## Probing the structure
+
+`probeChannelData(bytes, { channel | titleId })` walks a file and returns a
+self-describing JSON report — useful to confirm the format against a real file,
+see live values, and generate the structure as data:
+
+```jsonc
+{
+  "format": "wii-channel-data-probe/v1",
+  "channel": "news",
+  "file":      { "size": 1025, "wrapper": { "bodyOffset": 320, "compression": "LZ10", … } },
+  "container": { "size": 1536, "version": 512,
+                 "crc32": { "stored": "0xE59BACFB", "computed": "0xE59BACFB", "valid": true },
+                 "blobOffset": 300, "blobBytes": 1236 },
+  "header":    { "fields": [ { "offset": 12, "type": "timestamp", "name": "updated",
+                              "value": "2026-06-30T…", "raw": 13935735 }, … ] },
+  "tables": [
+    { "name": "articles", "count": 3, "offset": 128, "entrySize": 44,
+      "totalBytes": 132, "firstEntryHex": "00 00 00 00 …", "samples": [ /* decoded rows */ ] },
+    { "name": "images", "count": 0, "entrySize": null, "decoded": "not decoded (extension point)" }
+  ],
+  "schema":  { /* JSON Schema for the decoded envelope */ },
+  "decoded": { /* the full shared envelope */ }
+}
+```
+
+The structural metadata it walks (header field offsets/types + table descriptors)
+lives in `layouts.js`; the decoded `samples` come from the channel decoder, so the
+two are cross-checked (`probe.test.js`). The report is what the **Channel Data**
+tab's "Structure" view renders and the `↓ probe.json` button downloads.
+
 ## Adding a new channel
 
 1. Identify the channel's data file(s) and download URL (in the channel's DOL,
@@ -210,8 +248,10 @@ decoder does **not** verify the RSA signature (reading only needs the LZ10 body)
    Reuse `unwrapWC24`, the `binary.js` readers, and `createChannelData`. Put any
    cities into the shared `locations` array; channel-specific data under `payload`.
 4. Register it in `index.js` (`CHANNELS`) with its title-code prefix.
-5. Add a fixture + test (decode known values).
-6. Add a renderer if it needs one (or extend the envelope a shared renderer reads).
+5. Add its structural metadata to `layouts.js` (header fields + table descriptors)
+   so `probe.js` and the Channel Data tab can introspect it.
+6. Add a fixture + test (decode known values; cross-check the probe).
+7. Add a renderer if it needs one (or extend the envelope a shared renderer reads).
 
 ## Validation status
 

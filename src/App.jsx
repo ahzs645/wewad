@@ -29,6 +29,7 @@ import { Sidebar } from "./components/Sidebar";
 import { PreviewTab } from "./components/tabs/PreviewTab";
 import { ExportTab } from "./components/tabs/ExportTab";
 import { TexturesTab } from "./components/tabs/TexturesTab";
+import { ChannelDataTab } from "./components/tabs/ChannelDataTab";
 import { DebugTab } from "./components/tabs/DebugTab";
 import { LayoutTab } from "./components/tabs/LayoutTab";
 import { LogTab } from "./components/tabs/LogTab";
@@ -897,6 +898,10 @@ export default function App() {
                   bannerTextureEntries={bannerTextureEntries}
                   iconTextureEntries={iconTextureEntries}
                 />
+              ) : null}
+
+              {activeTab === "channelData" ? (
+                <ChannelDataTab wadTitleId={parsed?.wad?.titleId} />
               ) : null}
 
               {activeTab === "debug" ? (

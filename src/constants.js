@@ -2,6 +2,7 @@ export const TABS = [
   { id: "preview", label: "Preview" },
   { id: "export", label: "Export" },
   { id: "textures", label: "Textures" },
+  { id: "channelData", label: "Channel Data" },
   { id: "debug", label: "Debug" },
   { id: "layout", label: "Layout Info" },
   { id: "log", label: "Parse Log" },
