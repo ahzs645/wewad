@@ -26,7 +26,7 @@ const RENDERERS = {
 // runtime (news.bin, forecast.bin). It decodes a file into the shared envelope,
 // probes its binary structure, renders it with GSAP, and lets you download both
 // the decoded JSON and the structure report.
-export function ChannelDataTab({ wadTitleId }) {
+export function ChannelDataTab({ wadTitleId, customization, onAppliedToPreview }) {
   const [channel, setChannel] = useState("auto");
   const [fileName, setFileName] = useState("");
   const [decoded, setDecoded] = useState(null);
@@ -92,6 +92,22 @@ export function ChannelDataTab({ wadTitleId }) {
     [fileName],
   );
 
+  // Push this decoded envelope's real content into the live banner preview's
+  // customization (Preview tab): News headlines feed the real telop0/telop1
+  // ticker panes, Forecast feeds the real weather/code/city/kion_doF panes —
+  // the same panes a real Wii drives from this exact data.
+  const canApplyToPreview = Boolean(customization) && (decoded?.channel === "news" || decoded?.channel === "forecast");
+  const applyToPreview = useCallback(() => {
+    if (!decoded || !customization) {
+      return;
+    }
+    const applied =
+      decoded.channel === "news" ? customization.news.applyDecoded(decoded) : customization.weather.applyDecoded(decoded);
+    if (applied) {
+      onAppliedToPreview?.();
+    }
+  }, [decoded, customization, onAppliedToPreview]);
+
   return (
     <div className="tab-content active">
       <div className="section-title">Channel Data</div>
@@ -125,6 +141,12 @@ export function ChannelDataTab({ wadTitleId }) {
         </label>
 
         {fileName ? <span className="cd-filename">{fileName}</span> : null}
+
+        {canApplyToPreview ? (
+          <button type="button" className="cd-btn" onClick={applyToPreview}>
+            ↑ Use in live banner preview
+          </button>
+        ) : null}
 
         <div className="cd-downloads">
           <button type="button" className="cd-btn ghost" disabled={!decoded} onClick={() => download(decoded, "envelope")}>

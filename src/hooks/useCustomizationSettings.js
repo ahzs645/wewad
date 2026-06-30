@@ -1,6 +1,6 @@
 import { useCallback, useMemo, useState } from "react";
 import { WEATHER_CONDITION_OPTIONS } from "../constants";
-import { hasWeatherScene, hasNewsScene } from "../utils/weather";
+import { hasWeatherScene, hasNewsScene, mapForecastConditionToOption } from "../utils/weather";
 
 export function useCustomizationSettings({ parsed }) {
   const [useCustomWeather, setUseCustomWeather] = useState(false);
@@ -61,6 +61,45 @@ export function useCustomizationSettings({ parsed }) {
     setUseCustomNews(false);
   }, []);
 
+  // Pull a live decoded Forecast Channel envelope (src/channels/forecast.js)
+  // into the banner preview: picks the first forecast entry, maps its real
+  // condition name to a preset, and formats its real temperature/time.
+  const applyDecodedWeather = useCallback((decoded) => {
+    const forecast = decoded?.payload?.forecasts?.[0];
+    if (decoded?.channel !== "forecast" || !forecast) {
+      return false;
+    }
+    const location = (decoded.locations ?? []).find(
+      (l) =>
+        l.countryCode === forecast.location.countryCode &&
+        l.regionCode === forecast.location.regionCode &&
+        l.locationCode === forecast.location.locationCode,
+    );
+    setCustomCity(location?.name ?? `Location ${forecast.location.locationCode}`);
+    setCustomCondition(mapForecastConditionToOption(forecast.today.conditionName));
+    setCustomTemperature(String(forecast.today.highF));
+    setCustomTemperatureUnit("F");
+    setCustomTimeLabel(
+      decoded.updated
+        ? `Updated ${new Date(decoded.updated).toLocaleTimeString([], { hour: "numeric", minute: "2-digit" })}`
+        : "Updated now",
+    );
+    setUseCustomWeather(true);
+    return true;
+  }, []);
+
+  // Pull a live decoded News Channel envelope's menuHeadlines — the exact feed
+  // the real Wii Menu ticker reads (src/channels/news.js) — into the preview.
+  const applyDecodedNews = useCallback((decoded) => {
+    const headlines = decoded?.payload?.menuHeadlines;
+    if (decoded?.channel !== "news" || !Array.isArray(headlines) || headlines.length === 0) {
+      return false;
+    }
+    setCustomHeadlines(headlines.join("\n"));
+    setUseCustomNews(true);
+    return true;
+  }, []);
+
   return {
     weather: {
       enabled: useCustomWeather,
@@ -79,6 +118,7 @@ export function useCustomizationSettings({ parsed }) {
       setTemperatureUnit: setCustomTemperatureUnit,
       canCustomize: canCustomizeWeather,
       data: customWeatherData,
+      applyDecoded: applyDecodedWeather,
     },
     news: {
       enabled: useCustomNews,
@@ -87,6 +127,7 @@ export function useCustomizationSettings({ parsed }) {
       setHeadlines: setCustomHeadlines,
       canCustomize: canCustomizeNews,
       data: customNewsData,
+      applyDecoded: applyDecodedNews,
     },
     resetCustomization,
   };

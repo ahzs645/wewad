@@ -12,7 +12,7 @@ import { TABS, PREVIEW_QUALITY_OPTIONS, DEFAULT_PREVIEW_QUALITY, resolvePreviewQ
 import { createArrayLogger, formatLayoutInfo, formatAnimationInfo, formatDuration } from "./utils/formatters";
 import { suggestInitialFrame, resolveAnimationSelection } from "./utils/animation";
 import { buildWiiShopIconOverrides, collectRenderStateOptions, mergeRelatedRsoAnimations } from "./utils/renderState";
-import { resolveWeatherRenderState, resolveCustomWeatherBannerFrame } from "./utils/weather";
+import { resolveWeatherRenderState, resolveNewsRenderState, resolveCustomWeatherBannerFrame } from "./utils/weather";
 import { getUsedTextureNames, resolveIconViewport, createRecentIconPreview } from "./utils/layout";
 import { createAudioSyncController } from "./utils/audioSync";
 import { saveRecentWad } from "./utils/recentWads";
@@ -138,9 +138,14 @@ export default function App() {
   });
 
   const effectiveIconRenderState = useMemo(() => {
-    if (!useCustomWeather) return iconRenderState;
-    return resolveWeatherRenderState(parsed?.results?.icon) ?? iconRenderState;
-  }, [iconRenderState, parsed, useCustomWeather]);
+    if (useCustomWeather) {
+      return resolveWeatherRenderState(parsed?.results?.icon) ?? iconRenderState;
+    }
+    if (newsCustomization.enabled) {
+      return resolveNewsRenderState(parsed?.results?.icon) ?? iconRenderState;
+    }
+    return iconRenderState;
+  }, [iconRenderState, parsed, useCustomWeather, newsCustomization.enabled]);
 
   // Detect whether the banner layout has Disc Channel disc-type panes.
   const bannerDiscPaneNames = useMemo(() => {
@@ -685,7 +690,7 @@ export default function App() {
           loopAnim: iconPhaseOpts.loopAnim,
           renderState: iconAnimSelection.renderState,
           playbackMode: iconPhaseOpts.playbackMode,
-          paneStateSelections: customWeatherData ? null : iconPaneStateSelections,
+          paneStateSelections: customWeatherData || customNewsData ? null : iconPaneStateSelections,
           paneVisibilityOverrides: iconPaneVisibilityOverrides,
           titleLocale: requestedLocale,
           customWeather: customWeatherData,
@@ -901,7 +906,11 @@ export default function App() {
               ) : null}
 
               {activeTab === "channelData" ? (
-                <ChannelDataTab wadTitleId={parsed?.wad?.titleId} />
+                <ChannelDataTab
+                  wadTitleId={parsed?.wad?.titleId}
+                  customization={customizationSettings}
+                  onAppliedToPreview={() => setActiveTab("preview")}
+                />
               ) : null}
 
               {activeTab === "debug" ? (
