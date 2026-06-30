@@ -8,10 +8,11 @@
 // Laundry, Pollen and Locations tables.
 //
 // Table layouts are transcribed from WiiLink24/ForecastChannel. Locations,
-// conditions and the long-forecast table are decoded here. Coordinates and the
-// shared Locations primitive are validated; the per-day weather fields are
-// decoded structurally from the generator structs (no live forecast.bin was
-// reachable to byte-validate against — see docs/CHANNEL_DATA_FORMAT.md).
+// conditions and the long-forecast table are decoded here and validated by a
+// round-trip against the canonical structs serialized with Go's encoding/binary
+// (see forecast.test.js). That confirms offsets, strides, endianness and the
+// coordinate scale; the values themselves are not checked against live weather
+// data (no public forecast.bin was reachable). See docs/CHANNEL_DATA_FORMAT.md.
 
 import {
   u8,

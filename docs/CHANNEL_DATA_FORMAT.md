@@ -174,9 +174,15 @@ exactly in `src/channels/forecast.js`.
 | `format.js` | The shared envelope + typedefs |
 | `news.js` | `decodeNews(bytes) → ChannelData` |
 | `forecast.js` | `decodeForecast(bytes) → ChannelData` |
-| `index.js` | Registry: `decodeChannelData`, `channelForTitleId`, `CHANNELS` |
+| `index.js` | Registry: `decodeChannelData`, `channelForTitleId`, `CHANNELS` (data-only; no GSAP/DOM) |
 | `renderNewsChannel.js` | GSAP renderer consuming the News envelope |
-| `news.test.js` | Round-trip decode of a real fixture |
+| `renderForecastChannel.js` | GSAP renderer consuming the Forecast envelope |
+| `news.test.js` / `forecast.test.js` | Round-trip decode of a fixture |
+
+> The decoders (`index.js` and everything it re-exports) are GSAP/DOM-free so
+> they run anywhere, including Node and tests. The renderers depend on `gsap` and
+> the DOM, so import them directly (`./renderNewsChannel.js`) rather than through
+> the registry.
 
 ## Usage
 
@@ -211,11 +217,14 @@ decoder does **not** verify the RSA signature (reading only needs the LZ10 body)
 
 - **News** — byte-validated end-to-end against live server data
   (`news.bin.00`) and a self-generated fixture; the decode round-trips.
-- **Forecast** — header, locations (incl. coordinates) and conditions are
-  decoded from the verified WiiLink24 structs; the long-forecast table is
-  transcribed field-for-field but **not yet byte-validated** against a live
-  `forecast.bin` (the weather servers were unreachable at authoring time). Treat
-  forecast weather values as provisional until checked against a real file.
+- **Forecast** — validated by a **round-trip against the canonical structs**:
+  the fixture (`__fixtures__/sample-forecast.bin`) is produced by serializing the
+  WiiLink24/ForecastChannel structs with Go's `encoding/binary`, then decoded by
+  this module (`forecast.test.js`). That confirms the header, locations (incl.
+  the int16 coordinate scale), conditions and the full long-forecast layout —
+  offsets, strides and endianness. It does **not** check values against live
+  weather data (no public `forecast.bin` was reachable), so plug in a real file
+  to confirm semantics end-to-end.
 
 ## Sources
 
